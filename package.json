@@ -1,0 +1,12 @@
+{
+  "name": "lovable-agent-worker",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": { "start": "node index.js" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@browserbasehq/sdk": "^2.4.0",
+    "playwright-core": "^1.48.0"
+  },
+  "engines": { "node": ">=20" }
+}
