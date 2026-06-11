@@ -72,33 +72,16 @@ end
 -- We cast in the camera look direction so the player swings
 -- toward wherever they are looking.
 -- ============================================================
-local MAX_REACH = 15
+local MAX_REACH = 20
 
 local function findBamboo()
-	-- Refresh rootPart reference in case of respawn
 	local char = player.Character
 	if not char then return nil end
 	local root = char:FindFirstChild("HumanoidRootPart")
 	if not root then return nil end
+	local origin = root.Position
 
-	local camera    = workspace.CurrentCamera
-	local origin    = root.Position
-	local direction = camera.CFrame.LookVector * MAX_REACH
-
-	local params = RaycastParams.new()
-	params.FilterDescendantsInstances = { char }
-	params.FilterType = Enum.RaycastFilterType.Exclude
-
-	local result = workspace:Raycast(origin, direction, params)
-	if result and result.Instance then
-		local hit = result.Instance
-		if hit:GetAttribute("IsBamboo") and not hit:GetAttribute("IsDead") then
-			return hit
-		end
-	end
-
-	-- Fallback: sphere-overlap style search when raycast misses
-	-- (useful when bamboo is close and the ray passes beside it)
+	-- Find closest bamboo within reach using distance search
 	local zonesFolder = workspace:FindFirstChild("Zones")
 	if not zonesFolder then return nil end
 
@@ -113,7 +96,7 @@ local function findBamboo()
 					and stalk:GetAttribute("IsBamboo")
 					and not stalk:GetAttribute("IsDead")
 				then
-					local dist = (stalk.Position - origin).Magnitude
+					local dist = (Vector3.new(stalk.Position.X, origin.Y, stalk.Position.Z) - origin).Magnitude
 					if dist < closestDist then
 						closestDist = dist
 						closest     = stalk

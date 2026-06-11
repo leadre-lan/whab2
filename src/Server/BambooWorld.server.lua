@@ -10,6 +10,10 @@ local Config = require(ReplicatedStorage:WaitForChild("Config"))
 -- ============================================================
 -- Ground & spawn (created via script so XML parsing doesn't matter)
 -- ============================================================
+-- Remove any existing Baseplate from template to prevent Z-fighting
+local existing = workspace:FindFirstChild("Baseplate")
+if existing then existing:Destroy() end
+
 local baseplate       = Instance.new("Part")
 baseplate.Name        = "Baseplate"
 baseplate.Anchored    = true
@@ -30,6 +34,15 @@ spawn.BrickColor      = BrickColor.new("Bright blue")
 spawn.Neutral         = true
 spawn.AllowTeamChangeOnTouch = false
 spawn.Parent          = workspace
+
+-- Background music
+local music = Instance.new("Sound")
+music.Name      = "BackgroundMusic"
+music.SoundId   = "rbxassetid://1843464219"
+music.Looped    = true
+music.Volume    = 0.4
+music.Parent    = workspace
+music:Play()
 
 -- ============================================================
 -- Workspace containers
