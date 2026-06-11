@@ -1,121 +1,110 @@
--- Config.lua
--- Place as a ModuleScript in ReplicatedStorage
--- Shared configuration for Bamboo Slasher Simulator
+-- Config.lua (ModuleScript in ReplicatedStorage)
+-- Shared configuration for Bamboo Slasher
 
 local Config = {}
 
--- ============================================================
--- BAMBOO TYPES
--- Each type maps to a zone. Health, reward, and required sword
--- level scale up with zone number.
--- ============================================================
+-- ─── Bamboo Types (1-5) ────────────────────────────────────────────────────────
 Config.BAMBOO_TYPES = {
 	[1] = {
-		health             = 10,
-		reward             = 1,
-		requiredSwordLevel = 1,
-		respawnTime        = 3,
-		brickColorName     = "Bright green",
-		thickness          = 1.2,
-		height             = 8,
+		name        = "Junger Bambus",
+		health      = 3,
+		coins       = 1,
+		color       = Color3.fromRGB(134, 200, 90),
+		thickness   = 1.2,
+		height      = 8,
+		respawnTime = 4,
 	},
 	[2] = {
-		health             = 80,
-		reward             = 15,
-		requiredSwordLevel = 5,
-		respawnTime        = 6,
-		brickColorName     = "Dark green",
-		thickness          = 1.5,
-		height             = 10,
+		name        = "Gruener Bambus",
+		health      = 6,
+		coins       = 2,
+		color       = Color3.fromRGB(72, 160, 60),
+		thickness   = 1.5,
+		height      = 11,
+		respawnTime = 6,
 	},
 	[3] = {
-		health             = 500,
-		reward             = 120,
-		requiredSwordLevel = 12,
-		respawnTime        = 10,
-		brickColorName     = "Olive",
-		thickness          = 1.8,
-		height             = 12,
+		name        = "Goldener Bambus",
+		health      = 12,
+		coins       = 5,
+		color       = Color3.fromRGB(210, 185, 50),
+		thickness   = 1.8,
+		height      = 14,
+		respawnTime = 10,
 	},
 	[4] = {
-		health             = 2500,
-		reward             = 600,
-		requiredSwordLevel = 20,
-		respawnTime        = 16,
-		brickColorName     = "Sand green",
-		thickness          = 2.1,
-		height             = 14,
+		name        = "Roter Bambus",
+		health      = 22,
+		coins       = 10,
+		color       = Color3.fromRGB(190, 60, 50),
+		thickness   = 2.0,
+		height      = 17,
+		respawnTime = 15,
 	},
 	[5] = {
-		health             = 8000,
-		reward             = 2000,
-		requiredSwordLevel = 30,
-		respawnTime        = 25,
-		brickColorName     = "Bright yellowish green",
-		thickness          = 2.5,
-		height             = 16,
+		name        = "Kristall Bambus",
+		health      = 40,
+		coins       = 20,
+		color       = Color3.fromRGB(100, 210, 230),
+		thickness   = 2.3,
+		height      = 20,
+		respawnTime = 20,
 	},
 }
 
--- ============================================================
--- SWORDS  (10 levels)
--- cost = 0 for the starter sword; swingDelay in seconds
--- ============================================================
+-- ─── Swords (levels 1-10) ─────────────────────────────────────────────────────
 Config.SWORDS = {
-	[1]  = { name = "Holzschwert",     damage = 1,    swingDelay = 0.80, cost = 0       },
-	[2]  = { name = "Steinschwert",    damage = 5,    swingDelay = 0.75, cost = 50      },
-	[3]  = { name = "Eisenschwert",    damage = 20,   swingDelay = 0.70, cost = 250     },
-	[4]  = { name = "Goldschwert",     damage = 70,   swingDelay = 0.65, cost = 1200    },
-	[5]  = { name = "Rubinschwert",    damage = 200,  swingDelay = 0.60, cost = 6000    },
-	[6]  = { name = "Diamantschwert",  damage = 550,  swingDelay = 0.55, cost = 30000   },
-	[7]  = { name = "Drachenschwert",  damage = 1200, swingDelay = 0.52, cost = 150000  },
-	[8]  = { name = "Schattenschwert", damage = 2000, swingDelay = 0.48, cost = 600000  },
-	[9]  = { name = "Himmelschwert",   damage = 2800, swingDelay = 0.44, cost = 1200000 },
-	[10] = { name = "Uralt Schwert",   damage = 3500, swingDelay = 0.40, cost = 2500000 },
+	[1]  = { name = "Holzschwert",        damage = 1,   cost = 0,     color = Color3.fromRGB(180, 130, 70)  },
+	[2]  = { name = "Steinschwert",       damage = 2,   cost = 25,    color = Color3.fromRGB(160, 160, 160) },
+	[3]  = { name = "Eisenschwert",       damage = 4,   cost = 75,    color = Color3.fromRGB(200, 210, 220) },
+	[4]  = { name = "Goldschwert",        damage = 7,   cost = 200,   color = Color3.fromRGB(240, 200, 50)  },
+	[5]  = { name = "Diamantschwert",     damage = 12,  cost = 500,   color = Color3.fromRGB(80, 220, 230)  },
+	[6]  = { name = "Rubin Klinge",       damage = 20,  cost = 1200,  color = Color3.fromRGB(220, 50, 70)   },
+	[7]  = { name = "Smaragdklinge",      damage = 32,  cost = 3000,  color = Color3.fromRGB(50, 200, 100)  },
+	[8]  = { name = "Mondklinge",         damage = 50,  cost = 7500,  color = Color3.fromRGB(180, 160, 240) },
+	[9]  = { name = "Sonnenklinge",       damage = 80,  cost = 18000, color = Color3.fromRGB(255, 180, 50)  },
+	[10] = { name = "Legendaere Klinge",  damage = 130, cost = 50000, color = Color3.fromRGB(255, 80, 200)  },
 }
 
--- ============================================================
--- ZONES  (5 zones)
--- bambooCount  = number of stalks spawned per zone
--- offset       = world-space origin of the zone platform centre
--- Zones are laid out 120 studs apart on the X axis so they
--- never overlap (platform is 100 studs wide).
--- ============================================================
+-- Global swing cooldown in seconds
+Config.SWING_DELAY = 0.5
+
+-- ─── Zones (5 zones, 130 studs apart on X axis) ───────────────────────────────
 Config.ZONES = {
 	[1] = {
-		name               = "Bambushain",
-		requiredSwordLevel = 1,
-		bambooTypeId       = 1,
-		bambooCount        = 25,
-		offset             = Vector3.new(0,   0, 0),
+		name          = "Anfaenger Wald",
+		bambooTypeId  = 1,
+		count         = 18,
+		requiredLevel = 1,
+		offsetX       = 0,
 	},
 	[2] = {
-		name               = "Dunkler Hain",
-		requiredSwordLevel = 5,
-		bambooTypeId       = 2,
-		bambooCount        = 25,
-		offset             = Vector3.new(120, 0, 0),
+		name          = "Gruener Hain",
+		bambooTypeId  = 2,
+		count         = 20,
+		requiredLevel = 2,
+		offsetX       = 130,
 	},
 	[3] = {
-		name               = "Olivenhain",
-		requiredSwordLevel = 12,
-		bambooTypeId       = 3,
-		bambooCount        = 25,
-		offset             = Vector3.new(240, 0, 0),
+		name          = "Goldener Hain",
+		bambooTypeId  = 3,
+		count         = 22,
+		requiredLevel = 4,
+		offsetX       = 260,
 	},
 	[4] = {
-		name               = "Sandhain",
-		requiredSwordLevel = 20,
-		bambooTypeId       = 4,
-		bambooCount        = 25,
-		offset             = Vector3.new(360, 0, 0),
+		name          = "Rotes Dickicht",
+		bambooTypeId  = 4,
+		count         = 20,
+		requiredLevel = 6,
+		offsetX       = 390,
 	},
 	[5] = {
-		name               = "Urwald",
-		requiredSwordLevel = 30,
-		bambooTypeId       = 5,
-		bambooCount        = 25,
-		offset             = Vector3.new(480, 0, 0),
+		name          = "Kristallwald",
+		bambooTypeId  = 5,
+		count         = 18,
+		requiredLevel = 8,
+		offsetX       = 520,
 	},
 }
 
