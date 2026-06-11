@@ -418,7 +418,10 @@ function HubService.init(ds, netRef)
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		if not root then return end
 
-		root.CFrame = CFrame.new(layer.offsetX, 6, 0)
+		-- Spawn point comes from the WorldGenerator (terrain height varies)
+		local WorldService = require(script.Parent:WaitForChild("WorldService"))
+		local spawn = WorldService.getLayerSpawn(layerIdx) or Vector3.new(layer.offsetX, 6, 0)
+		root.CFrame = CFrame.new(spawn + Vector3.new(0, 3, 0))
 		net.ApplyLayerLighting:FireClient(player, layerIdx)
 	end)
 

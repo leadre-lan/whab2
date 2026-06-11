@@ -94,11 +94,20 @@ end)
 local Lighting = game:GetService("Lighting")
 local TweenService = game:GetService("TweenService")
 
+-- Atmosphere instance: density per layer so the view ends BEFORE the world
+-- border — the player must never see the edge.
+local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+if not atmosphere then
+	atmosphere = Instance.new("Atmosphere")
+	atmosphere.Parent = Lighting
+end
+
 net.ApplyLayerLighting.OnClientEvent:Connect(function(layerIdx)
 	local ld = Layers.DATA[layerIdx]
-	local fog, ambient
+	local fog, ambient, preset
 	if ld then
 		fog, ambient = ld.fog, ld.ambient
+		preset = ld.lighting
 	else
 		-- Hub: neutral warm lighting
 		fog = { color = Color3.fromRGB(168, 185, 168), start = 120, finish = 400 }
@@ -109,6 +118,12 @@ net.ApplyLayerLighting.OnClientEvent:Connect(function(layerIdx)
 		FogStart = fog.start,
 		FogEnd   = fog.finish,
 		OutdoorAmbient = ambient,
+		ClockTime = (preset and preset.clockTime) or 14,
+	}):Play()
+	TweenService:Create(atmosphere, TweenInfo.new(1.2), {
+		Density = (preset and preset.atmoDensity) or 0.3,
+		Color   = (preset and preset.atmoColor) or fog.color,
+		Haze    = 2,
 	}):Play()
 end)
 

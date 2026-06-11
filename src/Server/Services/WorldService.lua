@@ -62,7 +62,8 @@ local function computeDamage(player, damageOverride)
 end
 
 -- ── Bamboo stalk visual builder (returns hitbox, visuals[], segH) ─────────────
-local function buildBambooVisuals(layer, bx, bz, zoneFolder)
+local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
+	baseY = baseY or 1
 	local h  = layer.bambooH
 	local th = layer.bambooThick
 	local segCount = math.max(3, math.floor(h / 3))
@@ -75,7 +76,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder)
 	local hitbox = Instance.new("Part")
 	hitbox.Name  = "Hitbox"
 	hitbox.Size  = Vector3.new(th * 2.5, h, th * 2.5)
-	hitbox.Position = Vector3.new(bx, 1 + h / 2, bz)
+	hitbox.Position = Vector3.new(bx, baseY + h / 2, bz)
 	hitbox.Transparency = 1
 	hitbox.Anchored = true
 	hitbox.CanCollide = true
@@ -87,7 +88,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder)
 	local visuals = {}
 
 	for s = 1, segCount do
-		local segY = 1 + (s - 0.5) * segH
+		local segY = baseY + (s - 0.5) * segH
 		local seg  = Instance.new("Part")
 		seg.Shape   = Enum.PartType.Cylinder
 		seg.Size    = Vector3.new(segH - 0.1, th, th)
@@ -103,7 +104,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder)
 			local ring = Instance.new("Part")
 			ring.Shape   = Enum.PartType.Cylinder
 			ring.Size    = Vector3.new(0.22, th * 1.2, th * 1.2)
-			ring.CFrame  = CFrame.new(bx, 1 + s * segH, bz) * CFrame.Angles(0, 0, math.rad(90))
+			ring.CFrame  = CFrame.new(bx, baseY + s * segH, bz) * CFrame.Angles(0, 0, math.rad(90))
 			ring.Material = Enum.Material.SmoothPlastic
 			ring.Color    = layer.nodeColor
 			ring.Anchored = true
@@ -119,7 +120,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder)
 		local ang  = (l / 4) * math.pi * 2 + rng:NextNumber(0, 0.9)
 		local leaf = Instance.new("Part")
 		leaf.Size  = Vector3.new(2.6, 0.1, 0.9)
-		leaf.CFrame = CFrame.new(bx, 1 + h - 0.5, bz)
+		leaf.CFrame = CFrame.new(bx, baseY + h - 0.5, bz)
 			* CFrame.Angles(0, ang, math.rad(-32))
 			* CFrame.new(1.3, 0, 0)
 		leaf.Material = Enum.Material.Grass
@@ -130,12 +131,13 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder)
 		table.insert(visuals, { part = leaf, color = leafCol })
 	end
 
-	return hitbox, visuals, segH, model
+	return hitbox, visuals, segH, model, baseY
 end
 
 -- ── Register bamboo with full chop handler (self-contained closure) ───────────
-local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz)
-	local layer    = Layers.DATA[layerIdx]
+local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, baseY, layerOverride)
+	baseY = baseY or 1
+	local layer    = layerOverride or Layers.DATA[layerIdx]
 	local maxHP    = Balance.bambooHP(layerIdx)
 	local respTime = Balance.BAMBOO_RESPAWN[layerIdx]
 	local h        = layer.bambooH
@@ -175,7 +177,7 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz)
 				if tok ~= growToken or not hitbox.Parent then return end
 				if hitbox:GetAttribute("IsDead") or extraSegs >= 4 then return end
 				extraSegs += 1
-				local segY = 1 + h + (extraSegs - 0.5) * segH
+				local segY = baseY + h + (extraSegs - 0.5) * segH
 				local seg  = Instance.new("Part")
 				seg.Shape   = Enum.PartType.Cylinder
 				seg.Size    = Vector3.new(segH - 0.1, th, th)
@@ -288,7 +290,8 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz)
 end
 
 -- ── Rock cluster builder ──────────────────────────────────────────────────────
-local function buildRock(layerIdx, rx, rz, zoneFolder)
+local function buildRock(layerIdx, rx, rz, zoneFolder, baseY)
+	baseY = baseY or 1
 	local layer    = Layers.DATA[layerIdx]
 	local maxHP    = Balance.rockHP(layerIdx)
 	local respTime = Balance.ROCK_RESPAWN[layerIdx] or 20
@@ -307,7 +310,7 @@ local function buildRock(layerIdx, rx, rz, zoneFolder)
 			rng:NextNumber(1.5, 3.5))
 		chunk.CFrame = CFrame.new(
 				rx + rng:NextNumber(-1.2, 1.2),
-				1 + chunk.Size.Y / 2 - rng:NextNumber(0, 0.8),
+				baseY + chunk.Size.Y / 2 - rng:NextNumber(0, 0.8),
 				rz + rng:NextNumber(-1.2, 1.2))
 			* CFrame.Angles(
 				rng:NextNumber(0, math.pi),
@@ -327,7 +330,7 @@ local function buildRock(layerIdx, rx, rz, zoneFolder)
 		sp.Size  = Vector3.new(0.38, 0.38, 0.38)
 		sp.CFrame = CFrame.new(
 			rx + rng:NextNumber(-1.6, 1.6),
-			1 + rng:NextNumber(0.5, 2.4),
+			baseY + rng:NextNumber(0.5, 2.4),
 			rz + rng:NextNumber(-1.6, 1.6))
 		sp.Material  = Enum.Material.Neon
 		sp.Color     = layer.glowColor
@@ -341,7 +344,7 @@ local function buildRock(layerIdx, rx, rz, zoneFolder)
 	local rock = Instance.new("Part")
 	rock.Name  = "Hitbox"
 	rock.Size  = Vector3.new(4, 4, 4)
-	rock.Position = Vector3.new(rx, 3, rz)
+	rock.Position = Vector3.new(rx, baseY + 2, rz)
 	rock.Transparency = 1
 	rock.Anchored  = true
 	rock.CanCollide = false
@@ -456,22 +459,73 @@ local function makeTree(x, z, parent)
 	end
 end
 
+-- ── Zone sign helper ──────────────────────────────────────────────────────────
+local function makeZoneSign(layer, li, pos, parent)
+	local post = Instance.new("Part")
+	post.Size     = Vector3.new(0.42, 6.5, 0.42)
+	post.Position = pos + Vector3.new(0, 3.25, 0)
+	post.Material = Enum.Material.Wood
+	post.Color    = Color3.fromRGB(98, 68, 38)
+	post.Anchored = true
+	post.CanCollide = false
+	post.Parent   = parent
+
+	local bb = Instance.new("BillboardGui")
+	bb.Size        = UDim2.new(0, 270, 0, 105)
+	bb.StudsOffset = Vector3.new(0, 4.5, 0)
+	bb.Parent      = post
+
+	local tl = Instance.new("TextLabel")
+	tl.Size  = UDim2.new(1, 0, 0.52, 0)
+	tl.BackgroundTransparency = 1
+	tl.TextColor3 = layer.glowColor
+	tl.TextStrokeTransparency = 0
+	tl.TextScaled = true
+	tl.Font       = Enum.Font.GothamBold
+	tl.Text       = layer.name
+	tl.Parent     = bb
+
+	local ll = Instance.new("TextLabel")
+	ll.Size     = UDim2.new(1, 0, 0.48, 0)
+	ll.Position = UDim2.new(0, 0, 0.52, 0)
+	ll.BackgroundTransparency = 1
+	ll.TextColor3 = Color3.fromRGB(255, 228, 78)
+	ll.TextStrokeTransparency = 0
+	ll.TextScaled = true
+	ll.Font       = Enum.Font.Gotham
+	ll.Text       = li == 1 and "⭐ Start-Schicht" or ("🔒 Level " .. layer.requiredLevel)
+	ll.Parent     = bb
+end
+
+-- Per-layer spawn points (filled during init; HubService teleports here)
+WorldService.layerSpawns = {}
+
 -- ── Public: init ─────────────────────────────────────────────────────────────
 function WorldService.init(ds, netRef)
 	dataService = ds
 	net         = netRef
+
+	local WorldGenerator = require(script.Parent:WaitForChild("WorldGenerator"))
+
+	-- Performance: stream the world around each player (layers are 5000 apart)
+	pcall(function()
+		workspace.StreamingEnabled = true
+	end)
 
 	workspace.Terrain:Clear()
 	for _, n in ipairs({ "Baseplate", "SpawnLocation", "Zones", "Forest" }) do
 		local old = workspace:FindFirstChild(n)
 		if old then old:Destroy() end
 	end
+	for _, child in ipairs(workspace:GetChildren()) do
+		if child.Name:match("^Gen_") then child:Destroy() end
+	end
 
-	-- Baseplate (covers hub at x=-320 through procedural layer 12 at x≈1815)
+	-- Hub ground (the hub itself is parts; layers are separate worlds)
 	local bp = Instance.new("Part")
 	bp.Name     = "Baseplate"
-	bp.Size     = Vector3.new(3200, 20, 2048)
-	bp.Position = Vector3.new(750, -10, 0)
+	bp.Size     = Vector3.new(1100, 20, 1100)
+	bp.Position = Vector3.new(-320, -10, -60)
 	bp.Material = Enum.Material.Grass
 	bp.Color    = Color3.fromRGB(98, 122, 58)
 	bp.Anchored = true
@@ -492,167 +546,147 @@ function WorldService.init(ds, netRef)
 	zonesFolder.Name  = "Zones"
 	zonesFolder.Parent = workspace
 
+	-- Decorations around the hub (so the hub horizon isn't empty either)
+	local forestFolder = Instance.new("Folder")
+	forestFolder.Name  = "Forest"
+	forestFolder.Parent = workspace
+	do
+		local placed = 0
+		while placed < 120 do
+			local ang = rng:NextNumber(0, math.pi * 2)
+			local d   = rng:NextNumber(130, 480)
+			local x, z = -320 + math.cos(ang) * d, -60 + math.sin(ang) * d
+			makeTree(x, z, forestFolder)
+			placed += 1
+		end
+		for a = 0, 13 do
+			local ang = a / 14 * math.pi * 2
+			local mh = rng:NextNumber(120, 260)
+			local mountain = Instance.new("Part")
+			mountain.Size   = Vector3.new(rng:NextNumber(160, 300), mh, rng:NextNumber(160, 300))
+			mountain.CFrame = CFrame.new(-320 + math.cos(ang) * 560, mh / 2 - 35, -60 + math.sin(ang) * 560)
+				* CFrame.Angles(0, rng:NextNumber(0, math.pi), 0)
+			mountain.Material = Enum.Material.Rock
+			mountain.Color    = Color3.fromRGB(86, 98, 86)
+			mountain.Anchored = true
+			mountain.Parent   = forestFolder
+		end
+	end
+
 	for li, layer in ipairs(Layers.DATA) do
 		local zf = Instance.new("Folder")
 		zf.Name   = "L" .. li .. "_" .. layer.name
 		zf.Parent = zonesFolder
 
-		-- Platform
-		local plat = Instance.new("Part")
-		plat.Size     = Vector3.new(135, 2, 135)
-		plat.Position = Vector3.new(layer.offsetX, 0, 0)
-		plat.Material = Enum.Material.LeafyGrass
-		plat.Color    = layer.platform
-		plat.Anchored = true
-		plat.CanCollide = true
-		plat.Parent   = zf
+		if layer.gen then
+			-- ── Generated layer: Terrain + organic scattering (GAME_DESIGN 6.5) ──
+			local genCfg = {
+				seed         = layer.gen.seed,
+				center       = Vector3.new(layer.offsetX, 0, 0),
+				size         = layer.gen.size,
+				material     = layer.gen.material,
+				layer        = layer,
+				bambooCount  = layer.gen.bambooCount,
+				oreCount     = layer.gen.oreCount,
+				treeCount    = layer.gen.treeCount,
+				boulderCount = layer.gen.boulderCount,
+			}
+			local result = WorldGenerator.generate(genCfg)
+			WorldService.layerSpawns[li] = result.spawnPoint
+			WorldService.layerCamps = WorldService.layerCamps or {}
+			WorldService.layerCamps[li] = result.camps
 
-		-- Grass tufts
-		for _ = 1, rng:NextInteger(7, 14) do
-			local tx  = layer.offsetX + rng:NextNumber(-63, 63)
-			local tz  = rng:NextNumber(-63, 63)
-			local tft = Instance.new("Part")
-			tft.Shape = Enum.PartType.Cylinder
-			local th2 = rng:NextNumber(0.5, 1.5)
-			tft.Size  = Vector3.new(th2, 0.22, 0.22)
-			tft.CFrame = CFrame.new(tx, 1 + th2 / 2, tz)
-				* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(90 + rng:NextNumber(-15, 15)))
-			tft.Material = Enum.Material.Grass
-			tft.Color    = layer.bambooColor:Lerp(Color3.fromRGB(48, 130, 38), 0.55)
-			tft.Anchored = true
-			tft.CanCollide = false
-			tft.CastShadow = false
-			tft.Parent   = zf
-		end
+			-- Interactive bamboo at the generated spots (scale + rotation variation)
+			for _, spot in ipairs(result.bambooSpots) do
+				local scaled = table.clone(layer)
+				scaled.bambooH     = layer.bambooH * spot.scale
+				scaled.bambooThick = layer.bambooThick * spot.scale
+				local hitbox, visuals, segH, model, bY = buildBambooVisuals(
+					scaled, spot.pos.X, spot.pos.Z, zf, spot.pos.Y)
+				registerBamboo(hitbox, li, visuals, segH, model,
+					spot.pos.X, spot.pos.Z, bY, scaled)
+			end
 
-		-- Zone sign
-		local post = Instance.new("Part")
-		post.Size     = Vector3.new(0.42, 6.5, 0.42)
-		post.Position = Vector3.new(layer.offsetX - 58, 4.25, 0)
-		post.Material = Enum.Material.Wood
-		post.Color    = Color3.fromRGB(98, 68, 38)
-		post.Anchored = true
-		post.CanCollide = false
-		post.Parent   = zf
+			-- Interactive ore rocks (clustered at the rock formation landmark)
+			for _, spot in ipairs(result.oreSpots) do
+				buildRock(li, spot.pos.X, spot.pos.Z, zf, spot.pos.Y)
+			end
 
-		local bb = Instance.new("BillboardGui")
-		bb.Size        = UDim2.new(0, 270, 0, 105)
-		bb.StudsOffset = Vector3.new(0, 4.5, 0)
-		bb.AlwaysOnTop = false
-		bb.Parent      = post
+			makeZoneSign(layer, li, result.spawnPoint + Vector3.new(6, 0, 6), zf)
+		else
+			-- ── Part-based layer (own island, far from everything else) ──
+			local plat = Instance.new("Part")
+			plat.Size     = Vector3.new(400, 20, 400)
+			plat.Position = Vector3.new(layer.offsetX, -9, 0)
+			plat.Material = Enum.Material.LeafyGrass
+			plat.Color    = layer.platform
+			plat.Anchored = true
+			plat.CanCollide = true
+			plat.Parent   = zf
 
-		local tl = Instance.new("TextLabel")
-		tl.Size  = UDim2.new(1, 0, 0.52, 0)
-		tl.BackgroundTransparency = 1
-		tl.TextColor3 = layer.glowColor
-		tl.TextStrokeTransparency = 0
-		tl.TextScaled = true
-		tl.Font       = Enum.Font.GothamBold
-		tl.Text       = layer.name
-		tl.Parent     = bb
+			WorldService.layerSpawns[li] = Vector3.new(layer.offsetX, 5, 0)
 
-		local ll = Instance.new("TextLabel")
-		ll.Size     = UDim2.new(1, 0, 0.48, 0)
-		ll.Position = UDim2.new(0, 0, 0.52, 0)
-		ll.BackgroundTransparency = 1
-		ll.TextColor3 = Color3.fromRGB(255, 228, 78)
-		ll.TextStrokeTransparency = 0
-		ll.TextScaled = true
-		ll.Font       = Enum.Font.Gotham
-		ll.Text       = li == 1 and "⭐ Start-Schicht" or ("🔒 Level " .. layer.requiredLevel)
-		ll.Parent     = bb
+			-- Grass tufts
+			for _ = 1, rng:NextInteger(10, 18) do
+				local tx  = layer.offsetX + rng:NextNumber(-80, 80)
+				local tz  = rng:NextNumber(-80, 80)
+				local tft = Instance.new("Part")
+				tft.Shape = Enum.PartType.Cylinder
+				local th2 = rng:NextNumber(0.5, 1.5)
+				tft.Size  = Vector3.new(th2, 0.22, 0.22)
+				tft.CFrame = CFrame.new(tx, 1 + th2 / 2, tz)
+					* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(90 + rng:NextNumber(-15, 15)))
+				tft.Material = Enum.Material.Grass
+				tft.Color    = layer.bambooColor:Lerp(Color3.fromRGB(48, 130, 38), 0.55)
+				tft.Anchored = true
+				tft.CanCollide = false
+				tft.CastShadow = false
+				tft.Parent   = zf
+			end
 
-		-- Bamboo stalks
-		local count = Balance.BAMBOO_COUNT[li] or 18
-		for _ = 1, count do
-			local bx = layer.offsetX + rng:NextNumber(-58, 58)
-			local bz = rng:NextNumber(-58, 58)
-			local hitbox, visuals, segH, model = buildBambooVisuals(layer, bx, bz, zf)
-			registerBamboo(hitbox, li, visuals, segH, model, bx, bz)
-		end
+			makeZoneSign(layer, li, Vector3.new(layer.offsetX - 20, 1, -20), zf)
 
-		-- Rocks
-		for _ = 1, rng:NextInteger(5, 8) do
-			local rx = layer.offsetX + rng:NextNumber(42, 65)
-			local rz = rng:NextNumber(-55, 55)
-			buildRock(li, rx, rz, zf)
-		end
-	end
+			-- Bamboo (random scatter with scale variation, no rows)
+			local count = Balance.BAMBOO_COUNT[li] or 18
+			for _ = 1, count do
+				local bx = layer.offsetX + rng:NextNumber(-90, 90)
+				local bz = rng:NextNumber(-90, 90)
+				local scale = rng:NextNumber(0.8, 1.3)
+				local scaled = table.clone(layer)
+				scaled.bambooH     = layer.bambooH * scale
+				scaled.bambooThick = layer.bambooThick * scale
+				local hitbox, visuals, segH, model, bY = buildBambooVisuals(scaled, bx, bz, zf, 1)
+				registerBamboo(hitbox, li, visuals, segH, model, bx, bz, bY, scaled)
+			end
 
-	-- Decorative forest + rolling hills (breaks up the flatness)
-	local forestFolder = Instance.new("Folder")
-	forestFolder.Name  = "Forest"
-	forestFolder.Parent = workspace
+			-- Rocks
+			for _ = 1, rng:NextInteger(5, 8) do
+				local rx = layer.offsetX + rng:NextNumber(50, 130)
+				local rz = rng:NextNumber(-90, 90)
+				buildRock(li, rx, rz, zf)
+			end
 
-	local function isOnPlayArea(x, z)
-		-- Hub + arena area
-		if x > -480 and x < -160 and z > -260 and z < 140 then return true end
-		for _, ld in ipairs(Layers.DATA) do
-			if math.abs(x - ld.offsetX) < 82 and math.abs(z) < 82 then
-				return true
+			-- Tree ring around the island so the edge is never visible
+			for _ = 1, 60 do
+				local ang = rng:NextNumber(0, math.pi * 2)
+				local d   = rng:NextNumber(115, 190)
+				makeTree(layer.offsetX + math.cos(ang) * d, math.sin(ang) * d, zf)
 			end
 		end
-		return false
 	end
 
-	local treeCount = 0
-	while treeCount < 380 do
-		local x = rng:NextNumber(-550, 2000)
-		local z = rng:NextNumber(-500, 500)
-		if not isOnPlayArea(x, z) then
-			makeTree(x, z, forestFolder)
-			treeCount += 1
-		end
-	end
+	-- Base lighting (hub defaults; per-layer lighting applied client-side on teleport)
+	local L = game:GetService("Lighting")
+	L.FogStart       = 120
+	L.FogEnd         = 380
+	L.FogColor       = Color3.fromRGB(168, 185, 168)
+	L.OutdoorAmbient = Color3.fromRGB(140, 150, 135)
 
-	-- Rolling hills: large half-buried spheres scattered between play areas
-	local hillCount = 0
-	while hillCount < 70 do
-		local x = rng:NextNumber(-550, 2000)
-		local z = rng:NextNumber(-520, 520)
-		if not isOnPlayArea(x, z) then
-			local r = rng:NextNumber(14, 45)
-			local hill = Instance.new("Part")
-			hill.Shape   = Enum.PartType.Ball
-			hill.Size    = Vector3.new(r * 2, r * 2, r * 2)
-			hill.Position = Vector3.new(x, rng:NextNumber(-r * 0.55, -r * 0.25), z)
-			hill.Material = Enum.Material.Grass
-			hill.Color    = Color3.fromRGB(
-				88 + rng:NextInteger(0, 24),
-				115 + rng:NextInteger(0, 26),
-				52 + rng:NextInteger(0, 14))
-			hill.Anchored = true
-			hill.CanCollide = true
-			hill.Parent   = forestFolder
-			hillCount += 1
-		end
-	end
+	print("[WorldService] " .. #Layers.DATA .. " Schichten generiert (Schicht 1 via WorldGenerator).")
+end
 
-	-- Distant mountain ring (visual depth on the horizon)
-	for a = 0, 19 do
-		local ang = a / 20 * math.pi * 2
-		local mx = 750 + math.cos(ang) * 1250
-		local mz = math.sin(ang) * 850
-		local mh = rng:NextNumber(150, 320)
-		local mountain = Instance.new("Part")
-		mountain.Size    = Vector3.new(rng:NextNumber(180, 340), mh, rng:NextNumber(180, 340))
-		mountain.CFrame  = CFrame.new(mx, mh / 2 - 40, mz)
-			* CFrame.Angles(rng:NextNumber(-0.1, 0.1), rng:NextNumber(0, math.pi), rng:NextNumber(-0.1, 0.1))
-		mountain.Material = Enum.Material.Rock
-		mountain.Color    = Color3.fromRGB(86, 98, 86)
-		mountain.Anchored = true
-		mountain.Parent   = forestFolder
-	end
-
-	-- Base lighting (Layer 1 defaults)
-	local L  = game:GetService("Lighting")
-	local ld = Layers.DATA[1]
-	L.FogStart       = ld.fog.start
-	L.FogEnd         = ld.fog.finish
-	L.FogColor       = ld.fog.color
-	L.OutdoorAmbient = ld.ambient
-
-	print("[WorldService] " .. #Layers.DATA .. " Schichten generiert.")
+function WorldService.getLayerSpawn(layerIdx)
+	return WorldService.layerSpawns[layerIdx]
 end
 
 -- ── Public: handle chop ───────────────────────────────────────────────────────

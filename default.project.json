@@ -2,6 +2,10 @@
   "name": "BambooSlasher",
   "tree": {
     "$className": "DataModel",
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": { "StreamingEnabled": true }
+    },
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "Shared": {
@@ -17,6 +21,7 @@
       "Services": {
         "$className": "Folder",
         "DataService":    { "$path": "src/Server/Services/DataService.lua" },
+        "WorldGenerator": { "$path": "src/Server/Services/WorldGenerator.lua" },
         "WorldService":   { "$path": "src/Server/Services/WorldService.lua" },
         "StatService":    { "$path": "src/Server/Services/StatService.lua" },
         "HubService":     { "$path": "src/Server/Services/HubService.lua" },

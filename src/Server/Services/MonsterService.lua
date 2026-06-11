@@ -310,20 +310,41 @@ function MonsterService.init(ds, netRef)
 	folder.Name  = "Monsters"
 	folder.Parent = workspace
 
+	-- Find ground height via raycast (terrain layers are not flat)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = { folder }
+	local function groundY(x, z)
+		local hit = workspace:Raycast(Vector3.new(x, 300, z), Vector3.new(0, -400, 0), rayParams)
+		return hit and hit.Position.Y or 1
+	end
+
+	local WorldService = require(script.Parent:WaitForChild("WorldService"))
+
 	for li, layer in ipairs(Layers.DATA) do
 		local lf = Instance.new("Folder")
 		lf.Name = "L" .. li
 		lf.Parent = folder
 
-		for _ = 1, Balance.MONSTER_COUNT do
-			local mx = layer.offsetX + rng:NextNumber(-50, 50)
-			local mz = rng:NextNumber(-50, 50)
-			spawnMonster(li, Vector3.new(mx, 1, mz), lf, false)
+		-- Generated layers: monster camps sit at the landmarks (exploration pays off)
+		local camps = WorldService.layerCamps and WorldService.layerCamps[li]
+		if camps and #camps > 0 then
+			for _, campPos in ipairs(camps) do
+				spawnMonster(li, campPos, lf, false)
+			end
+		end
+
+		local remaining = Balance.MONSTER_COUNT - (camps and #camps or 0)
+		for _ = 1, math.max(0, remaining) do
+			local mx = layer.offsetX + rng:NextNumber(-60, 60)
+			local mz = rng:NextNumber(-60, 60)
+			spawnMonster(li, Vector3.new(mx, groundY(mx, mz), mz), lf, false)
 		end
 
 		-- Boss on milestone layers
 		if layer.boss then
-			spawnMonster(li, Vector3.new(layer.offsetX, 1, 45), lf, true)
+			local bx, bz = layer.offsetX, 60
+			spawnMonster(li, Vector3.new(bx, groundY(bx, bz), bz), lf, true)
 		end
 	end
 
