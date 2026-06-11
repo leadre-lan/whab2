@@ -150,6 +150,54 @@ end)
 -- Per-player layer lighting (0 = hub)
 local Lighting = game:GetService("Lighting")
 
+-- ── Post-processing: warm grade + bloom + sun rays ───────────────────────────
+-- Cheap, big visual win — softens the blocky look considerably.
+local function ensureEffect(class, name, props)
+	local e = Lighting:FindFirstChild(name)
+	if not e or e.ClassName ~= class then
+		if e then e:Destroy() end
+		e = Instance.new(class)
+		e.Name = name
+		e.Parent = Lighting
+	end
+	for k, v in pairs(props) do e[k] = v end
+end
+ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.4, Size = 32, Threshold = 1.05 })
+ensureEffect("ColorCorrectionEffect", "GameGrade", {
+	Contrast = 0.06, Saturation = 0.16, TintColor = Color3.fromRGB(255, 252, 244),
+})
+ensureEffect("SunRaysEffect", "GameSunRays", { Intensity = 0.06, Spread = 0.7 })
+
+-- ── Ambient particles around the player (color follows the biome) ────────────
+local ambientEmitter = nil
+
+local function setupAmbientParticles(char)
+	local root = char:WaitForChild("HumanoidRootPart", 5)
+	if not root then return end
+	local att = Instance.new("Attachment")
+	att.Name = "AmbientFX"
+	att.Position = Vector3.new(0, 2, 0)
+	att.Parent = root
+
+	local pe = Instance.new("ParticleEmitter")
+	pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	pe.Rate = 1.5
+	pe.Lifetime = NumberRange.new(3, 5)
+	pe.Speed = NumberRange.new(0.4, 1.2)
+	pe.SpreadAngle = Vector2.new(180, 180)
+	pe.Size = NumberSequence.new(0.18)
+	pe.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.25, 0.25),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	pe.LightEmission = 0.7
+	pe.Acceleration = Vector3.new(0, 0.4, 0)
+	pe.Color = ColorSequence.new(Color3.fromRGB(255, 244, 200))
+	pe.Parent = att
+	ambientEmitter = pe
+end
+
 -- Atmosphere instance: density per layer so the view ends BEFORE the world
 -- border — the player must never see the edge.
 local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
@@ -182,8 +230,13 @@ local function applyZone(layerIdx)
 		Haze    = 2,
 	}):Play()
 
-	-- Music follows the biome
+	-- Music + ambient particles follow the biome
 	playZoneMusic(layerIdx)
+	if ambientEmitter then
+		local c = ld and ld.glowColor or Color3.fromRGB(255, 244, 200)
+		ambientEmitter.Color = ColorSequence.new(c)
+		ambientEmitter.Rate = ld and 3 or 1
+	end
 end
 
 net.ApplyLayerLighting.OnClientEvent:Connect(applyZone)
@@ -218,15 +271,19 @@ net.LayerUnlocked.OnClientEvent:Connect(function(layerIdx)
 end)
 
 -- ── Character lifecycle ───────────────────────────────────────────────────────
-player.CharacterAdded:Connect(function()
+player.CharacterAdded:Connect(function(char)
 	-- Respawn always happens at the hub → reset fog + music (previously the
 	-- layer lighting/music stuck around after dying in a layer)
 	applyZone(0)
+	task.spawn(setupAmbientParticles, char)
 	task.wait(0.5)
 	InputCtrl.buildSword(localData.swordTier or 1)
 	task.wait(0.2)
 	InputCtrl.autoEquip()
 end)
+if player.Character then
+	task.spawn(setupAmbientParticles, player.Character)
+end
 
 -- Auto-equip loop
 task.spawn(function()

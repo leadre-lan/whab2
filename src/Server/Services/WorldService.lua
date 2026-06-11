@@ -95,12 +95,15 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		local group = {}
 		segGroups[s] = group
 
+		-- Stalk tapers toward the top + subtle gloss → reads as a plant, not a pipe
+		local thMul = 1 - (s - 1) / segCount * 0.24
 		local segY = baseY + (s - 0.5) * segH
 		local seg  = Instance.new("Part")
 		seg.Shape   = Enum.PartType.Cylinder
-		seg.Size    = Vector3.new(segH - 0.1, th, th)
+		seg.Size    = Vector3.new(segH - 0.1, th * thMul, th * thMul)
 		seg.CFrame  = CFrame.new(bx, segY, bz) * CFrame.Angles(0, 0, math.rad(90))
 		seg.Material = Enum.Material.SmoothPlastic
+		seg.Reflectance = 0.05
 		seg.Color    = layer.bambooColor
 		seg.Anchored = true
 		seg.CanCollide = false
@@ -110,7 +113,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		if s < segCount then
 			local ring = Instance.new("Part")
 			ring.Shape   = Enum.PartType.Cylinder
-			ring.Size    = Vector3.new(0.22, th * 1.2, th * 1.2)
+			ring.Size    = Vector3.new(0.22, th * thMul * 1.18, th * thMul * 1.18)
 			ring.CFrame  = CFrame.new(bx, baseY + s * segH, bz) * CFrame.Angles(0, 0, math.rad(90))
 			ring.Material = Enum.Material.SmoothPlastic
 			ring.Color    = layer.nodeColor
@@ -488,15 +491,15 @@ local function makeTree(x, z, parent)
 	trunk.CanCollide = true
 	trunk.Parent  = parent
 
-	for c = 1, 2 do
+	for c = 1, 3 do
 		local can = Instance.new("Part")
-		can.Shape   = Enum.PartType.Ball
-		local s     = (7 - c * 1.5) * sc
-		can.Size    = Vector3.new(s, s, s)
-		can.Position = Vector3.new(
-			x + rng:NextNumber(-1, 1),
-			tH + (c - 1) * 2.2 * sc,
-			z + rng:NextNumber(-1, 1))
+		local s   = (7.2 - c * 1.4) * sc
+		can.Size  = Vector3.new(s, s * rng:NextNumber(0.55, 0.75), s)
+		can.CFrame = CFrame.new(
+				x + rng:NextNumber(-1.6, 1.6),
+				tH - 0.5 + (c - 1) * 1.7 * sc,
+				z + rng:NextNumber(-1.6, 1.6))
+			* CFrame.Angles(math.rad(rng:NextNumber(-9, 9)), rng:NextNumber(0, math.pi), 0)
 		can.Material = Enum.Material.Grass
 		can.Color    = Color3.fromRGB(
 			44 + rng:NextInteger(0, 28),
@@ -504,6 +507,9 @@ local function makeTree(x, z, parent)
 			38)
 		can.Anchored = true
 		can.CanCollide = false
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = can
 		can.Parent   = parent
 	end
 end

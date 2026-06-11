@@ -41,25 +41,30 @@ local function buildMonsterModel(layer, pos, isBoss)
 		p.Anchored = true
 		p.CanCollide = false
 		p.CastShadow = false
+		if props.ellipsoid then
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = p
+		end
 		if props.name then p.Name = props.name end
 		p.Parent = model
 		return p
 	end
 
-	-- Body
+	-- Body: squashed blob (organic, not a perfect ball)
 	local body = mpart({
-		name = "Body", shape = Enum.PartType.Ball,
-		size = Vector3.new(3.2, 3.2, 3.2) * s, offset = CFrame.new(),
+		name = "Body", ellipsoid = true,
+		size = Vector3.new(3.4, 2.9, 3.2) * s, offset = CFrame.new(),
 		color = bodyColor,
 		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
 	})
 	body:SetAttribute("IsMonster", true)
 	model.PrimaryPart = body
 
-	-- Head (slightly forward)
+	-- Head (slightly forward, a touch oval)
 	mpart({
-		shape = Enum.PartType.Ball,
-		size = Vector3.new(2.1, 2.1, 2.1) * s,
+		ellipsoid = true,
+		size = Vector3.new(2.2, 1.95, 2.05) * s,
 		offset = CFrame.new(0, 1.45 * s, -0.15 * s),
 		color = bodyColor:Lerp(Color3.fromRGB(255, 255, 255), 0.06),
 		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,

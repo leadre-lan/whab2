@@ -6,6 +6,16 @@
       "$className": "Workspace",
       "$properties": { "StreamingEnabled": true }
     },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Technology": "Future",
+        "GlobalShadows": true,
+        "Brightness": 2.2,
+        "EnvironmentDiffuseScale": 0.5,
+        "EnvironmentSpecularScale": 0.5
+      }
+    },
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "Shared": {

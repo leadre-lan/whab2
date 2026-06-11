@@ -11,9 +11,57 @@
 
 local WorldGenerator = {}
 
+local RS      = game:GetService("ReplicatedStorage")
 local Terrain = workspace.Terrain
 
 local VOXEL = 4
+
+-- ── Asset templates ───────────────────────────────────────────────────────────
+-- Drop Toolbox models into ReplicatedStorage/Assets/Trees (or /Rocks) and the
+-- generator clones them instead of building procedural props. No assets folder
+-- → procedural fallback, the game always works.
+local function spawnTemplate(folderName, rng, pos, scale, parent)
+	local assets = RS:FindFirstChild("Assets")
+	local tf = assets and assets:FindFirstChild(folderName)
+	if not tf then return nil end
+	local kids = tf:GetChildren()
+	if #kids == 0 then return nil end
+
+	local m = kids[rng:NextInteger(1, #kids)]:Clone()
+	if m:IsA("Model") then
+		pcall(function() m:ScaleTo(scale) end)
+		for _, p in ipairs(m:GetDescendants()) do
+			if p:IsA("BasePart") then p.Anchored = true end
+		end
+		local height = m:GetExtentsSize().Y
+		m:PivotTo(CFrame.new(pos + Vector3.new(0, height / 2, 0))
+			* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
+	elseif m:IsA("BasePart") then
+		m.Anchored = true
+		m.CFrame = CFrame.new(pos + Vector3.new(0, m.Size.Y / 2, 0))
+			* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	end
+	m.Parent = parent
+	return m
+end
+
+-- Ellipsoid helper: a Block part + sphere mesh renders as a squashed organic
+-- blob instead of a perfect (blocky-looking) ball
+local function ellipsoid(size, cframe, material, color, parent)
+	local p = Instance.new("Part")
+	p.Size = size
+	p.CFrame = cframe
+	p.Material = material
+	p.Color = color
+	p.Anchored = true
+	p.CanCollide = false
+	p.CastShadow = true
+	local m = Instance.new("SpecialMesh")
+	m.MeshType = Enum.MeshType.Sphere
+	m.Parent = p
+	p.Parent = parent
+	return p
+end
 
 -- ── Heightmap factory ─────────────────────────────────────────────────────────
 -- Returns heightAt(x, z) in world coords. Includes:
@@ -134,6 +182,9 @@ end
 
 -- ── Decorative prop builders ──────────────────────────────────────────────────
 local function makeTree(rng, pos, scale, parent, leafColor)
+	-- Prefer a real asset if the user dropped one into ReplicatedStorage/Assets/Trees
+	if spawnTemplate("Trees", rng, pos, scale, parent) then return end
+
 	local tH = 9 * scale
 	local trunk = Instance.new("Part")
 	trunk.Shape = Enum.PartType.Cylinder
@@ -148,41 +199,44 @@ local function makeTree(rng, pos, scale, parent, leafColor)
 	trunk.Anchored = true
 	trunk.Parent = parent
 
-	for c = 1, 2 do
-		local can = Instance.new("Part")
-		can.Shape = Enum.PartType.Ball
-		local s = (7 - c * 1.5) * scale
-		can.Size = Vector3.new(s, s, s)
-		can.Position = Vector3.new(
-			pos.X + rng:NextNumber(-1, 1),
-			pos.Y + tH + (c - 1) * 2.2 * scale,
-			pos.Z + rng:NextNumber(-1, 1))
-		can.Material = Enum.Material.Grass
-		can.Color = leafColor:Lerp(
-			Color3.fromRGB(40, 90, 35),
-			rng:NextNumber(0, 0.4))
-		can.Anchored = true
-		can.CanCollide = false
-		can.Parent = parent
+	-- Organic canopy: 3 squashed, offset blobs instead of perfect balls
+	for c = 1, 3 do
+		local w = (7.2 - c * 1.4) * scale
+		ellipsoid(
+			Vector3.new(w, w * rng:NextNumber(0.55, 0.75), w),
+			CFrame.new(
+					pos.X + rng:NextNumber(-1.6, 1.6),
+					pos.Y + tH - 0.5 + (c - 1) * 1.7 * scale,
+					pos.Z + rng:NextNumber(-1.6, 1.6))
+				* CFrame.Angles(
+					math.rad(rng:NextNumber(-9, 9)), rng:NextNumber(0, math.pi),
+					math.rad(rng:NextNumber(-9, 9))),
+			Enum.Material.Grass,
+			leafColor:Lerp(Color3.fromRGB(40, 90, 35), rng:NextNumber(0, 0.4)),
+			parent)
 	end
 end
 
 local function makeBoulder(rng, pos, scale, parent)
+	if spawnTemplate("Rocks", rng, pos, scale, parent) then return end
+
+	-- Two overlapping squashed blobs read as one organic rock
 	local g = rng:NextInteger(95, 140)
-	local b = Instance.new("Part")
-	b.Size = Vector3.new(
-		rng:NextNumber(2, 4.5),
-		rng:NextNumber(1.5, 3.5),
-		rng:NextNumber(2, 4.5)) * scale
-	b.CFrame = CFrame.new(pos.X, pos.Y + b.Size.Y * 0.3, pos.Z)
-		* CFrame.Angles(
-			rng:NextNumber(0, math.pi),
-			rng:NextNumber(0, math.pi),
-			rng:NextNumber(0, math.pi))
-	b.Material = Enum.Material.Slate
-	b.Color = Color3.fromRGB(g, g, g)
-	b.Anchored = true
-	b.Parent = parent
+	local color = Color3.fromRGB(g, g, g)
+	for i = 1, 2 do
+		local sz = Vector3.new(
+			rng:NextNumber(2.2, 4.5),
+			rng:NextNumber(1.4, 2.6),
+			rng:NextNumber(2.2, 4.5)) * scale * (i == 2 and 0.6 or 1)
+		local blob = ellipsoid(sz,
+			CFrame.new(
+					pos.X + (i - 1) * rng:NextNumber(-1.4, 1.4),
+					pos.Y + sz.Y * 0.3,
+					pos.Z + (i - 1) * rng:NextNumber(-1.4, 1.4))
+				* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(rng:NextNumber(-10, 10))),
+			Enum.Material.Slate, color, parent)
+		blob.CanCollide = (i == 1)   -- main blob blocks movement like before
+	end
 end
 
 -- ── Landmark builders ─────────────────────────────────────────────────────────
@@ -214,20 +268,18 @@ local function buildBigTree(rng, pos, parent, leafColor)
 		root.Parent = parent
 	end
 
-	for c = 1, 3 do
-		local can = Instance.new("Part")
-		can.Shape = Enum.PartType.Ball
-		local s = 26 - c * 5
-		can.Size = Vector3.new(s, s * 0.75, s)
-		can.Position = Vector3.new(
-			pos.X + rng:NextNumber(-3, 3),
-			pos.Y + 30 + c * 4,
-			pos.Z + rng:NextNumber(-3, 3))
-		can.Material = Enum.Material.Grass
-		can.Color = leafColor
-		can.Anchored = true
-		can.CanCollide = false
-		can.Parent = parent
+	for c = 1, 4 do
+		local s = 27 - c * 4.5
+		ellipsoid(
+			Vector3.new(s, s * rng:NextNumber(0.55, 0.7), s),
+			CFrame.new(
+					pos.X + rng:NextNumber(-4, 4),
+					pos.Y + 28 + c * 3.5,
+					pos.Z + rng:NextNumber(-4, 4))
+				* CFrame.Angles(math.rad(rng:NextNumber(-8, 8)), rng:NextNumber(0, math.pi), 0),
+			Enum.Material.Grass,
+			leafColor:Lerp(Color3.fromRGB(40, 90, 35), rng:NextNumber(0, 0.3)),
+			parent)
 	end
 
 	-- Fireflies / glow

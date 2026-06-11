@@ -1,13 +1,23 @@
 <roblox version="4">
-  <Item class="ReplicatedStorage" referent="0">
+  <Item class="Lighting" referent="0">
+    <Properties>
+      <string name="Name">Lighting</string>
+      <float name="Brightness">2.2</float>
+      <float name="EnvironmentDiffuseScale">0.5</float>
+      <float name="EnvironmentSpecularScale">0.5</float>
+      <bool name="GlobalShadows">true</bool>
+      <token name="Technology">4</token>
+    </Properties>
+  </Item>
+  <Item class="ReplicatedStorage" referent="1">
     <Properties>
       <string name="Name">ReplicatedStorage</string>
     </Properties>
-    <Item class="Folder" referent="1">
+    <Item class="Folder" referent="2">
       <Properties>
         <string name="Name">Shared</string>
       </Properties>
-      <Item class="ModuleScript" referent="2">
+      <Item class="ModuleScript" referent="3">
         <Properties>
           <string name="Name">Balance</string>
           <string name="Source"><![CDATA[-- Balance.lua — All game numbers. Edit here, not in service code.
@@ -140,7 +150,7 @@ return Balance
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="3">
+      <Item class="ModuleScript" referent="4">
         <Properties>
           <string name="Name">Layers</string>
           <string name="Source"><![CDATA[-- Layers.lua — 6 hand-crafted biomes + procedurally generated layers 7-12
@@ -288,7 +298,7 @@ return Layers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="4">
+      <Item class="ModuleScript" referent="5">
         <Properties>
           <string name="Name">UITheme</string>
           <string name="Source"><![CDATA[-- UITheme.lua — Consistent design system for all UI elements
@@ -348,11 +358,11 @@ return UITheme
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="5">
+  <Item class="ServerScriptService" referent="6">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Script" referent="6">
+    <Item class="Script" referent="7">
       <Properties>
         <string name="Name">Server</string>
         <token name="RunContext">0</token>
@@ -484,11 +494,11 @@ print("[BambooSlasher] Server bereit — alle Systeme online.")
 ]]></string>
       </Properties>
     </Item>
-    <Item class="Folder" referent="7">
+    <Item class="Folder" referent="8">
       <Properties>
         <string name="Name">Services</string>
       </Properties>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">ArenaService</string>
           <string name="Source"><![CDATA[-- ArenaService.lua — PVP arena (own world, far from the hub): 1v1 queue,
@@ -904,7 +914,7 @@ return ArenaService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">CombatService</string>
           <string name="Source"><![CDATA[-- CombatService.lua — Shared melee combat for PVE (monsters) and PVP (arena)
@@ -1008,7 +1018,7 @@ return CombatService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- DataService.lua — Player data management with DataStore + session fallback
@@ -1160,7 +1170,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">ForgeService</string>
           <string name="Source"><![CDATA[-- ForgeService.lua — Craft sword tiers at the forge using coins + materials
@@ -1223,7 +1233,7 @@ return ForgeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">HubService</string>
           <string name="Source"><![CDATA[-- HubService.lua — Overworld hub: spawn plaza, forest portal, layer teleports,
@@ -1774,7 +1784,7 @@ return HubService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">MonsterService</string>
           <string name="Source"><![CDATA[-- MonsterService.lua — Per-layer mobs with telegraph→attack AI, loot, bosses
@@ -1820,25 +1830,30 @@ local function buildMonsterModel(layer, pos, isBoss)
 		p.Anchored = true
 		p.CanCollide = false
 		p.CastShadow = false
+		if props.ellipsoid then
+			local mesh = Instance.new("SpecialMesh")
+			mesh.MeshType = Enum.MeshType.Sphere
+			mesh.Parent = p
+		end
 		if props.name then p.Name = props.name end
 		p.Parent = model
 		return p
 	end
 
-	-- Body
+	-- Body: squashed blob (organic, not a perfect ball)
 	local body = mpart({
-		name = "Body", shape = Enum.PartType.Ball,
-		size = Vector3.new(3.2, 3.2, 3.2) * s, offset = CFrame.new(),
+		name = "Body", ellipsoid = true,
+		size = Vector3.new(3.4, 2.9, 3.2) * s, offset = CFrame.new(),
 		color = bodyColor,
 		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
 	})
 	body:SetAttribute("IsMonster", true)
 	model.PrimaryPart = body
 
-	-- Head (slightly forward)
+	-- Head (slightly forward, a touch oval)
 	mpart({
-		shape = Enum.PartType.Ball,
-		size = Vector3.new(2.1, 2.1, 2.1) * s,
+		ellipsoid = true,
+		size = Vector3.new(2.2, 1.95, 2.05) * s,
 		offset = CFrame.new(0, 1.45 * s, -0.15 * s),
 		color = bodyColor:Lerp(Color3.fromRGB(255, 255, 255), 0.06),
 		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
@@ -2365,7 +2380,7 @@ return MonsterService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- RebirthService.lua — Reset progress for permanent multiplier + tokens
@@ -2427,7 +2442,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">StatService</string>
           <string name="Source"><![CDATA[-- StatService.lua — Handles stat upgrades and sword tier upgrades
@@ -2485,7 +2500,7 @@ return StatService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">WorldGenerator</string>
           <string name="Source"><![CDATA[-- WorldGenerator.lua — Reusable procedural layer generator (see GAME_DESIGN 6.5)
@@ -2501,9 +2516,57 @@ return StatService
 
 local WorldGenerator = {}
 
+local RS      = game:GetService("ReplicatedStorage")
 local Terrain = workspace.Terrain
 
 local VOXEL = 4
+
+-- ── Asset templates ───────────────────────────────────────────────────────────
+-- Drop Toolbox models into ReplicatedStorage/Assets/Trees (or /Rocks) and the
+-- generator clones them instead of building procedural props. No assets folder
+-- → procedural fallback, the game always works.
+local function spawnTemplate(folderName, rng, pos, scale, parent)
+	local assets = RS:FindFirstChild("Assets")
+	local tf = assets and assets:FindFirstChild(folderName)
+	if not tf then return nil end
+	local kids = tf:GetChildren()
+	if #kids == 0 then return nil end
+
+	local m = kids[rng:NextInteger(1, #kids)]:Clone()
+	if m:IsA("Model") then
+		pcall(function() m:ScaleTo(scale) end)
+		for _, p in ipairs(m:GetDescendants()) do
+			if p:IsA("BasePart") then p.Anchored = true end
+		end
+		local height = m:GetExtentsSize().Y
+		m:PivotTo(CFrame.new(pos + Vector3.new(0, height / 2, 0))
+			* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0))
+	elseif m:IsA("BasePart") then
+		m.Anchored = true
+		m.CFrame = CFrame.new(pos + Vector3.new(0, m.Size.Y / 2, 0))
+			* CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	end
+	m.Parent = parent
+	return m
+end
+
+-- Ellipsoid helper: a Block part + sphere mesh renders as a squashed organic
+-- blob instead of a perfect (blocky-looking) ball
+local function ellipsoid(size, cframe, material, color, parent)
+	local p = Instance.new("Part")
+	p.Size = size
+	p.CFrame = cframe
+	p.Material = material
+	p.Color = color
+	p.Anchored = true
+	p.CanCollide = false
+	p.CastShadow = true
+	local m = Instance.new("SpecialMesh")
+	m.MeshType = Enum.MeshType.Sphere
+	m.Parent = p
+	p.Parent = parent
+	return p
+end
 
 -- ── Heightmap factory ─────────────────────────────────────────────────────────
 -- Returns heightAt(x, z) in world coords. Includes:
@@ -2624,6 +2687,9 @@ end
 
 -- ── Decorative prop builders ──────────────────────────────────────────────────
 local function makeTree(rng, pos, scale, parent, leafColor)
+	-- Prefer a real asset if the user dropped one into ReplicatedStorage/Assets/Trees
+	if spawnTemplate("Trees", rng, pos, scale, parent) then return end
+
 	local tH = 9 * scale
 	local trunk = Instance.new("Part")
 	trunk.Shape = Enum.PartType.Cylinder
@@ -2638,41 +2704,44 @@ local function makeTree(rng, pos, scale, parent, leafColor)
 	trunk.Anchored = true
 	trunk.Parent = parent
 
-	for c = 1, 2 do
-		local can = Instance.new("Part")
-		can.Shape = Enum.PartType.Ball
-		local s = (7 - c * 1.5) * scale
-		can.Size = Vector3.new(s, s, s)
-		can.Position = Vector3.new(
-			pos.X + rng:NextNumber(-1, 1),
-			pos.Y + tH + (c - 1) * 2.2 * scale,
-			pos.Z + rng:NextNumber(-1, 1))
-		can.Material = Enum.Material.Grass
-		can.Color = leafColor:Lerp(
-			Color3.fromRGB(40, 90, 35),
-			rng:NextNumber(0, 0.4))
-		can.Anchored = true
-		can.CanCollide = false
-		can.Parent = parent
+	-- Organic canopy: 3 squashed, offset blobs instead of perfect balls
+	for c = 1, 3 do
+		local w = (7.2 - c * 1.4) * scale
+		ellipsoid(
+			Vector3.new(w, w * rng:NextNumber(0.55, 0.75), w),
+			CFrame.new(
+					pos.X + rng:NextNumber(-1.6, 1.6),
+					pos.Y + tH - 0.5 + (c - 1) * 1.7 * scale,
+					pos.Z + rng:NextNumber(-1.6, 1.6))
+				* CFrame.Angles(
+					math.rad(rng:NextNumber(-9, 9)), rng:NextNumber(0, math.pi),
+					math.rad(rng:NextNumber(-9, 9))),
+			Enum.Material.Grass,
+			leafColor:Lerp(Color3.fromRGB(40, 90, 35), rng:NextNumber(0, 0.4)),
+			parent)
 	end
 end
 
 local function makeBoulder(rng, pos, scale, parent)
+	if spawnTemplate("Rocks", rng, pos, scale, parent) then return end
+
+	-- Two overlapping squashed blobs read as one organic rock
 	local g = rng:NextInteger(95, 140)
-	local b = Instance.new("Part")
-	b.Size = Vector3.new(
-		rng:NextNumber(2, 4.5),
-		rng:NextNumber(1.5, 3.5),
-		rng:NextNumber(2, 4.5)) * scale
-	b.CFrame = CFrame.new(pos.X, pos.Y + b.Size.Y * 0.3, pos.Z)
-		* CFrame.Angles(
-			rng:NextNumber(0, math.pi),
-			rng:NextNumber(0, math.pi),
-			rng:NextNumber(0, math.pi))
-	b.Material = Enum.Material.Slate
-	b.Color = Color3.fromRGB(g, g, g)
-	b.Anchored = true
-	b.Parent = parent
+	local color = Color3.fromRGB(g, g, g)
+	for i = 1, 2 do
+		local sz = Vector3.new(
+			rng:NextNumber(2.2, 4.5),
+			rng:NextNumber(1.4, 2.6),
+			rng:NextNumber(2.2, 4.5)) * scale * (i == 2 and 0.6 or 1)
+		local blob = ellipsoid(sz,
+			CFrame.new(
+					pos.X + (i - 1) * rng:NextNumber(-1.4, 1.4),
+					pos.Y + sz.Y * 0.3,
+					pos.Z + (i - 1) * rng:NextNumber(-1.4, 1.4))
+				* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(rng:NextNumber(-10, 10))),
+			Enum.Material.Slate, color, parent)
+		blob.CanCollide = (i == 1)   -- main blob blocks movement like before
+	end
 end
 
 -- ── Landmark builders ─────────────────────────────────────────────────────────
@@ -2704,20 +2773,18 @@ local function buildBigTree(rng, pos, parent, leafColor)
 		root.Parent = parent
 	end
 
-	for c = 1, 3 do
-		local can = Instance.new("Part")
-		can.Shape = Enum.PartType.Ball
-		local s = 26 - c * 5
-		can.Size = Vector3.new(s, s * 0.75, s)
-		can.Position = Vector3.new(
-			pos.X + rng:NextNumber(-3, 3),
-			pos.Y + 30 + c * 4,
-			pos.Z + rng:NextNumber(-3, 3))
-		can.Material = Enum.Material.Grass
-		can.Color = leafColor
-		can.Anchored = true
-		can.CanCollide = false
-		can.Parent = parent
+	for c = 1, 4 do
+		local s = 27 - c * 4.5
+		ellipsoid(
+			Vector3.new(s, s * rng:NextNumber(0.55, 0.7), s),
+			CFrame.new(
+					pos.X + rng:NextNumber(-4, 4),
+					pos.Y + 28 + c * 3.5,
+					pos.Z + rng:NextNumber(-4, 4))
+				* CFrame.Angles(math.rad(rng:NextNumber(-8, 8)), rng:NextNumber(0, math.pi), 0),
+			Enum.Material.Grass,
+			leafColor:Lerp(Color3.fromRGB(40, 90, 35), rng:NextNumber(0, 0.3)),
+			parent)
 	end
 
 	-- Fireflies / glow
@@ -3107,7 +3174,7 @@ return WorldGenerator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">WorldService</string>
           <string name="Source"><![CDATA[-- WorldService.lua — Builds and manages the 6-layer bamboo forest world
@@ -3207,12 +3274,15 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		local group = {}
 		segGroups[s] = group
 
+		-- Stalk tapers toward the top + subtle gloss → reads as a plant, not a pipe
+		local thMul = 1 - (s - 1) / segCount * 0.24
 		local segY = baseY + (s - 0.5) * segH
 		local seg  = Instance.new("Part")
 		seg.Shape   = Enum.PartType.Cylinder
-		seg.Size    = Vector3.new(segH - 0.1, th, th)
+		seg.Size    = Vector3.new(segH - 0.1, th * thMul, th * thMul)
 		seg.CFrame  = CFrame.new(bx, segY, bz) * CFrame.Angles(0, 0, math.rad(90))
 		seg.Material = Enum.Material.SmoothPlastic
+		seg.Reflectance = 0.05
 		seg.Color    = layer.bambooColor
 		seg.Anchored = true
 		seg.CanCollide = false
@@ -3222,7 +3292,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		if s < segCount then
 			local ring = Instance.new("Part")
 			ring.Shape   = Enum.PartType.Cylinder
-			ring.Size    = Vector3.new(0.22, th * 1.2, th * 1.2)
+			ring.Size    = Vector3.new(0.22, th * thMul * 1.18, th * thMul * 1.18)
 			ring.CFrame  = CFrame.new(bx, baseY + s * segH, bz) * CFrame.Angles(0, 0, math.rad(90))
 			ring.Material = Enum.Material.SmoothPlastic
 			ring.Color    = layer.nodeColor
@@ -3600,15 +3670,15 @@ local function makeTree(x, z, parent)
 	trunk.CanCollide = true
 	trunk.Parent  = parent
 
-	for c = 1, 2 do
+	for c = 1, 3 do
 		local can = Instance.new("Part")
-		can.Shape   = Enum.PartType.Ball
-		local s     = (7 - c * 1.5) * sc
-		can.Size    = Vector3.new(s, s, s)
-		can.Position = Vector3.new(
-			x + rng:NextNumber(-1, 1),
-			tH + (c - 1) * 2.2 * sc,
-			z + rng:NextNumber(-1, 1))
+		local s   = (7.2 - c * 1.4) * sc
+		can.Size  = Vector3.new(s, s * rng:NextNumber(0.55, 0.75), s)
+		can.CFrame = CFrame.new(
+				x + rng:NextNumber(-1.6, 1.6),
+				tH - 0.5 + (c - 1) * 1.7 * sc,
+				z + rng:NextNumber(-1.6, 1.6))
+			* CFrame.Angles(math.rad(rng:NextNumber(-9, 9)), rng:NextNumber(0, math.pi), 0)
 		can.Material = Enum.Material.Grass
 		can.Color    = Color3.fromRGB(
 			44 + rng:NextInteger(0, 28),
@@ -3616,6 +3686,9 @@ local function makeTree(x, z, parent)
 			38)
 		can.Anchored = true
 		can.CanCollide = false
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = can
 		can.Parent   = parent
 	end
 end
@@ -4110,15 +4183,15 @@ return WorldService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="18">
+  <Item class="StarterPlayer" referent="19">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="19">
+    <Item class="StarterPlayerScripts" referent="20">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="20">
+      <Item class="LocalScript" referent="21">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[-- Client.client.lua — Main client entry point
@@ -4273,6 +4346,54 @@ end)
 -- Per-player layer lighting (0 = hub)
 local Lighting = game:GetService("Lighting")
 
+-- ── Post-processing: warm grade + bloom + sun rays ───────────────────────────
+-- Cheap, big visual win — softens the blocky look considerably.
+local function ensureEffect(class, name, props)
+	local e = Lighting:FindFirstChild(name)
+	if not e or e.ClassName ~= class then
+		if e then e:Destroy() end
+		e = Instance.new(class)
+		e.Name = name
+		e.Parent = Lighting
+	end
+	for k, v in pairs(props) do e[k] = v end
+end
+ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.4, Size = 32, Threshold = 1.05 })
+ensureEffect("ColorCorrectionEffect", "GameGrade", {
+	Contrast = 0.06, Saturation = 0.16, TintColor = Color3.fromRGB(255, 252, 244),
+})
+ensureEffect("SunRaysEffect", "GameSunRays", { Intensity = 0.06, Spread = 0.7 })
+
+-- ── Ambient particles around the player (color follows the biome) ────────────
+local ambientEmitter = nil
+
+local function setupAmbientParticles(char)
+	local root = char:WaitForChild("HumanoidRootPart", 5)
+	if not root then return end
+	local att = Instance.new("Attachment")
+	att.Name = "AmbientFX"
+	att.Position = Vector3.new(0, 2, 0)
+	att.Parent = root
+
+	local pe = Instance.new("ParticleEmitter")
+	pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	pe.Rate = 1.5
+	pe.Lifetime = NumberRange.new(3, 5)
+	pe.Speed = NumberRange.new(0.4, 1.2)
+	pe.SpreadAngle = Vector2.new(180, 180)
+	pe.Size = NumberSequence.new(0.18)
+	pe.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.25, 0.25),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	pe.LightEmission = 0.7
+	pe.Acceleration = Vector3.new(0, 0.4, 0)
+	pe.Color = ColorSequence.new(Color3.fromRGB(255, 244, 200))
+	pe.Parent = att
+	ambientEmitter = pe
+end
+
 -- Atmosphere instance: density per layer so the view ends BEFORE the world
 -- border — the player must never see the edge.
 local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
@@ -4305,8 +4426,13 @@ local function applyZone(layerIdx)
 		Haze    = 2,
 	}):Play()
 
-	-- Music follows the biome
+	-- Music + ambient particles follow the biome
 	playZoneMusic(layerIdx)
+	if ambientEmitter then
+		local c = ld and ld.glowColor or Color3.fromRGB(255, 244, 200)
+		ambientEmitter.Color = ColorSequence.new(c)
+		ambientEmitter.Rate = ld and 3 or 1
+	end
 end
 
 net.ApplyLayerLighting.OnClientEvent:Connect(applyZone)
@@ -4341,15 +4467,19 @@ net.LayerUnlocked.OnClientEvent:Connect(function(layerIdx)
 end)
 
 -- ── Character lifecycle ───────────────────────────────────────────────────────
-player.CharacterAdded:Connect(function()
+player.CharacterAdded:Connect(function(char)
 	-- Respawn always happens at the hub → reset fog + music (previously the
 	-- layer lighting/music stuck around after dying in a layer)
 	applyZone(0)
+	task.spawn(setupAmbientParticles, char)
 	task.wait(0.5)
 	InputCtrl.buildSword(localData.swordTier or 1)
 	task.wait(0.2)
 	InputCtrl.autoEquip()
 end)
+if player.Character then
+	task.spawn(setupAmbientParticles, player.Character)
+end
 
 -- Auto-equip loop
 task.spawn(function()
@@ -4383,11 +4513,11 @@ InputCtrl.autoEquip()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="21">
+      <Item class="Folder" referent="22">
         <Properties>
           <string name="Name">Controllers</string>
         </Properties>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="23">
           <Properties>
             <string name="Name">EffectsController</string>
             <string name="Source"><![CDATA[-- EffectsController.lua — All juice: shake, fragments, numbers, slice, sounds
@@ -4644,7 +4774,7 @@ return EffectsController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="23">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">InputController</string>
             <string name="Source"><![CDATA[-- InputController.lua — Sword building, input, swing animation, slam detection
@@ -5117,7 +5247,7 @@ return InputController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">UIController</string>
             <string name="Source"><![CDATA[-- UIController.lua — All HUD elements: coins, level, stats panel, sword info
@@ -5588,7 +5718,7 @@ return UIController
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="25">
+  <Item class="Workspace" referent="26">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>
