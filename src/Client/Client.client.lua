@@ -432,46 +432,100 @@ local function buildSword(level)
 	tool.GripRight   = Vector3.new(1, 0, 0)
 	tool.GripUp      = Vector3.new(0, 1, 0)
 
+	-- ── Ninja katana build ───────────────────────────────────────────────
+	-- Handle (grip): thin, dark wrapped look
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.3, 1.1, 0.3)
-	handle.Material = Enum.Material.Wood
-	handle.Color = Color3.fromRGB(90, 60, 35)
+	handle.Size = Vector3.new(0.25, 1.3, 0.25)
+	handle.Material = Enum.Material.Fabric
+	handle.Color = Color3.fromRGB(35, 35, 40)
 	handle.CanCollide = false
 	handle.Parent = tool
 
-	local pommel = Instance.new("Part")
-	pommel.Name = "Pommel"
-	pommel.Shape = Enum.PartType.Ball
-	pommel.Size = Vector3.new(0.4, 0.4, 0.4)
-	pommel.Material = Enum.Material.Metal
-	pommel.Color = Color3.fromRGB(120, 120, 130)
-	attachPart(handle, pommel, CFrame.new(0, -0.6, 0))
+	-- Two small diagonal accent rings along the grip (sword.color)
+	for i = 1, 2 do
+		local ring = Instance.new("Part")
+		ring.Name = "GripAccent" .. i
+		ring.Size = Vector3.new(0.28, 0.08, 0.28)
+		ring.Material = Enum.Material.Fabric
+		ring.Color = sword.color
+		attachPart(handle, ring,
+			CFrame.new(0, -0.45 + (i - 1) * 0.55, 0) * CFrame.Angles(0, 0, math.rad(18)))
+	end
 
-	local guard = Instance.new("Part")
-	guard.Name = "Guard"
-	guard.Size = Vector3.new(1.1, 0.18, 0.4)
-	guard.Material = Enum.Material.Metal
-	guard.Color = Color3.fromRGB(110, 110, 120)
-	attachPart(handle, guard, CFrame.new(0, 0.62, 0))
+	-- Tsuba (round guard): flat gold disc between grip and blade
+	local tsuba = Instance.new("Part")
+	tsuba.Name = "Tsuba"
+	tsuba.Shape = Enum.PartType.Cylinder
+	tsuba.Size = Vector3.new(0.15, 0.9, 0.9)
+	tsuba.Material = Enum.Material.Metal
+	tsuba.Color = Color3.fromRGB(212, 175, 55)
+	-- Cylinder lies along X; rotate so the flat disc sits horizontally
+	attachPart(handle, tsuba, CFrame.new(0, 0.72, 0) * CFrame.Angles(0, 0, math.rad(90)))
 
+	-- Blade: long thin katana blade, steel tinted toward sword.color,
+	-- slight Z-rotation for a curve illusion
+	local bladeColor = Color3.fromRGB(220, 225, 235):Lerp(sword.color, 0.3)
 	local blade = Instance.new("Part")
 	blade.Name = "Blade"
-	blade.Size = Vector3.new(0.18, 2.6, 0.55)
+	blade.Size = Vector3.new(0.12, 3.2, 0.45)
 	blade.Material = Enum.Material.Metal
-	blade.Color = sword.color
-	attachPart(handle, blade, CFrame.new(0, 2.0, 0))
+	blade.Color = bladeColor
+	attachPart(handle, blade, CFrame.new(0, 2.45, 0) * CFrame.Angles(0, 0, math.rad(4)))
 
+	-- Edge: brighter strip on the front edge of the blade
+	local edge = Instance.new("Part")
+	edge.Name = "Edge"
+	edge.Size = Vector3.new(0.13, 3.2, 0.1)
+	edge.Material = Enum.Material.Metal
+	edge.Color = Color3.fromRGB(248, 250, 255)
+	attachPart(handle, edge, CFrame.new(0, 2.45, -0.22) * CFrame.Angles(0, 0, math.rad(4)))
+
+	-- Tip: wedge matching the blade
 	local tip = Instance.new("WedgePart")
 	tip.Name = "Tip"
-	tip.Size = Vector3.new(0.18, 0.5, 0.55)
+	tip.Size = Vector3.new(0.12, 0.5, 0.45)
 	tip.Material = Enum.Material.Metal
-	tip.Color = sword.color
-	attachPart(handle, tip, CFrame.new(0, 3.55, 0))
+	tip.Color = bladeColor
+	attachPart(handle, tip, CFrame.new(-0.28, 4.18, 0) * CFrame.Angles(0, 0, math.rad(4)))
 
+	-- Level >= 5: glowing neon blade + point light
 	if level >= 5 then
 		blade.Material = Enum.Material.Neon
+		blade.Color = sword.color
+		edge.Material = Enum.Material.Neon
+		edge.Color = sword.color
 		tip.Material = Enum.Material.Neon
+		tip.Color = sword.color
+
+		local light = Instance.new("PointLight")
+		light.Color = sword.color
+		light.Range = 8
+		light.Parent = blade
+	end
+
+	-- Level >= 8: trail effect along the blade, enabled only while swinging
+	if level >= 8 then
+		local att0 = Instance.new("Attachment")
+		att0.Name = "TrailBottom"
+		att0.Position = Vector3.new(0, -1.6, 0)
+		att0.Parent = blade
+
+		local att1 = Instance.new("Attachment")
+		att1.Name = "TrailTop"
+		att1.Position = Vector3.new(0, 1.6, 0)
+		att1.Parent = blade
+
+		local trail = Instance.new("Trail")
+		trail.Name = "SwingTrail"
+		trail.Attachment0 = att0
+		trail.Attachment1 = att1
+		trail.Color = ColorSequence.new(sword.color)
+		trail.Lifetime = 0.25
+		trail.LightEmission = 0.8
+		trail.Transparency = NumberSequence.new(0.2, 1)
+		trail.Enabled = false
+		trail.Parent = blade
 	end
 
 	local swingSound = Instance.new("Sound")
@@ -512,6 +566,33 @@ local function autoEquipSword()
 	end
 end
 
+-- ─── Slash Arc Effect ────────────────────────────────────────────────────────
+-- Quick white neon arc in front of the character on every swing.
+local function spawnSlashArc(character)
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	local arc = Instance.new("Part")
+	arc.Name = "SlashArc"
+	arc.Size = Vector3.new(3.5, 0.05, 0.8)
+	arc.Material = Enum.Material.Neon
+	arc.Color = Color3.fromRGB(255, 255, 255)
+	arc.Transparency = 0.2
+	arc.Anchored = true
+	arc.CanCollide = false
+	arc.CastShadow = false
+	arc.CFrame = root.CFrame * CFrame.new(0, 0.5, -3) * CFrame.Angles(0, 0, math.rad(-35))
+	arc.Parent = workspace
+
+	local tween = TweenService:Create(arc,
+		TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Transparency = 1 })
+	tween:Play()
+	tween.Completed:Connect(function()
+		arc:Destroy()
+	end)
+end
+
 -- ─── Swing Animation ─────────────────────────────────────────────────────────
 local function swingSword(isSlam)
 	if swinging then return end
@@ -526,14 +607,24 @@ local function swingSword(isSlam)
 	-- Let's find it in the tool
 	local toolBlade = tool:FindFirstChild("Blade")
 
+	-- Enable the blade trail while swinging (level >= 8 swords)
+	local swingTrail = toolBlade and toolBlade:FindFirstChild("SwingTrail")
+	if swingTrail then swingTrail.Enabled = true end
+
 	if isSlam then
 		-- Slam sound
 		local slamSound = handle and handle:FindFirstChild("SlamSound")
 		if slamSound then slamSound:Play() end
 	else
 		local swingSound = handle and handle:FindFirstChild("SwingSound")
-		if swingSound then swingSound:Play() end
+		if swingSound then
+			swingSound.PlaybackSpeed = 1.3 + math.random() * 0.3
+			swingSound:Play()
+		end
 	end
+
+	-- Quick white slash arc in front of the character
+	spawnSlashArc(character)
 
 	-- Find the bamboo/rock to chop
 	local targetHitbox = nil
@@ -613,6 +704,7 @@ local function swingSword(isSlam)
 	end
 
 	tool.Grip = originalGrip
+	if swingTrail then swingTrail.Enabled = false end
 	swinging = false
 end
 
@@ -633,8 +725,65 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 end)
 
+-- ─── Slice Effects (falling cut-top pieces + slice sound) ────────────────────
+local function spawnFallingTop(slicePos, color, thickness)
+	local th = thickness or 1.5
+	local piece = Instance.new("Part")
+	piece.Name = "CutTop"
+	piece.Shape = Enum.PartType.Cylinder
+	piece.Size = Vector3.new(4, th, th)
+	piece.Material = Enum.Material.SmoothPlastic
+	piece.Color = color or Color3.fromRGB(100, 180, 80)
+	piece.Anchored = false
+	piece.CanCollide = false
+	piece.CastShadow = false
+	piece.CFrame = CFrame.new(slicePos + Vector3.new(
+			(math.random() - 0.5) * 1.5,
+			3 + math.random() * 2,
+			(math.random() - 0.5) * 1.5))
+		* CFrame.Angles(0, math.random() * math.pi, math.rad(90))
+
+	local angle = math.random() * math.pi * 2
+	piece.AssemblyLinearVelocity = Vector3.new(
+		math.cos(angle) * 12,
+		4 + math.random() * 4,
+		math.sin(angle) * 12)
+	piece.AssemblyAngularVelocity = Vector3.new(
+		(math.random() - 0.5) * 16,
+		(math.random() - 0.5) * 16,
+		(math.random() - 0.5) * 16)
+	piece.Parent = workspace
+
+	local tween = TweenService:Create(piece,
+		TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ Transparency = 1 })
+	tween:Play()
+	tween.Completed:Connect(function()
+		piece:Destroy()
+	end)
+end
+
+local function playSliceSound(position)
+	local soundPart = Instance.new("Part")
+	soundPart.Size = Vector3.new(0.2, 0.2, 0.2)
+	soundPart.Transparency = 1
+	soundPart.Anchored = true
+	soundPart.CanCollide = false
+	soundPart.Position = position
+	soundPart.Parent = workspace
+
+	local sliceSound = Instance.new("Sound")
+	sliceSound.SoundId = "rbxasset://sounds/swordlunge.wav"
+	sliceSound.Volume = 0.9
+	sliceSound.PlaybackSpeed = 1 + math.random() * 0.2
+	sliceSound.Parent = soundPart
+	sliceSound:Play()
+
+	game:GetService("Debris"):AddItem(soundPart, 2)
+end
+
 -- ─── HitEffect Event (from server) ───────────────────────────────────────────
-HitEffect.OnClientEvent:Connect(function(hitPos, bambooColor, died, serverCombo, damage)
+HitEffect.OnClientEvent:Connect(function(hitPos, bambooColor, died, serverCombo, damage, sliceInfo)
 	-- Camera shake
 	if died then
 		shakeCam(1.2)
@@ -647,6 +796,17 @@ HitEffect.OnClientEvent:Connect(function(hitPos, bambooColor, died, serverCombo,
 	local fragColor = bambooColor or Color3.fromRGB(100, 180, 80)
 	for _ = 1, fragCount do
 		spawnFragment(hitPos, fragColor)
+	end
+
+	-- Slice effect on death: falling cut-top pieces + slice sound
+	if died then
+		local slicePos = (sliceInfo and sliceInfo.slicePos) or hitPos
+		local sliceColor = (sliceInfo and sliceInfo.color) or fragColor
+		local thickness = sliceInfo and sliceInfo.thickness
+		for _ = 1, 2 do
+			spawnFallingTop(slicePos, sliceColor, thickness)
+		end
+		playSliceSound(slicePos)
 	end
 
 	-- Update combo from server

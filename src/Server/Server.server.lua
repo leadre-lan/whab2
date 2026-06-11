@@ -208,11 +208,31 @@ for _, zone in ipairs(Config.ZONES) do
 	-- Top surface at Y = 1 (one stud above the baseplate, prevents Z-fighting)
 	platform.Size = Vector3.new(110, 2, 110)
 	platform.Position = Vector3.new(zoneX, 0, 0)
-	platform.Material = Enum.Material.Grass
-	platform.Color = Color3.fromRGB(106, 127, 63)
+	platform.Material = Enum.Material.LeafyGrass or Enum.Material.Grass
+	platform.Color = Color3.fromRGB(88, 110, 52)
 	platform.Anchored = true
 	platform.CanCollide = true
 	platform.Parent = zoneFolder
+
+	-- Decorative grass tufts scattered on the platform
+	local tuftCount = rng:NextInteger(6, 10)
+	for _ = 1, tuftCount do
+		local tx = zoneX + rng:NextNumber(-50, 50)
+		local tz = rng:NextNumber(-50, 50)
+		local tuft = Instance.new("Part")
+		tuft.Name = "GrassTuft"
+		tuft.Shape = Enum.PartType.Cylinder
+		local tuftH = rng:NextNumber(0.6, 1.2)
+		tuft.Size = Vector3.new(tuftH, 0.25, 0.25)
+		tuft.CFrame = CFrame.new(tx, 1 + tuftH / 2, tz)
+			* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(90 + rng:NextNumber(-12, 12)))
+		tuft.Material = Enum.Material.Grass
+		tuft.Color = Color3.fromRGB(60 + rng:NextInteger(0, 30), 140 + rng:NextInteger(0, 40), 50)
+		tuft.Anchored = true
+		tuft.CanCollide = false
+		tuft.CastShadow = false
+		tuft.Parent = zoneFolder
+	end
 
 	-- Zone sign post
 	local signPart = Instance.new("Part")
@@ -361,6 +381,11 @@ for _, zone in ipairs(Config.ZONES) do
 		local capturedBambooType = bambooType
 		local capturedZone       = zone
 
+		-- Ambient growth state: extra segments stacked above the base height
+		local extraSegments = 0
+		local extraParts    = {}   -- Parts created by ambient growth
+		local growToken     = 0    -- invalidates older growth loops
+
 		local function setAllTransparency(value)
 			for _, v in ipairs(visuals) do
 				v.part.Transparency = value
@@ -382,6 +407,56 @@ for _, zone in ipairs(Config.ZONES) do
 			end
 		end
 
+		local function clearExtraSegments()
+			extraSegments = 0
+			for _, p in ipairs(extraParts) do
+				p:Destroy()
+			end
+			table.clear(extraParts)
+		end
+
+		-- Slow ambient growth: every 10 seconds a new segment fades in on top
+		-- (up to +4 extra segments above the base height).
+		local function startAmbientGrowth()
+			growToken += 1
+			local myToken = growToken
+			task.spawn(function()
+				while true do
+					task.wait(10)
+					if myToken ~= growToken then return end
+					if not hitbox.Parent then return end
+					if hitbox:GetAttribute("IsDead") then return end
+					if extraSegments >= 4 then return end
+
+					extraSegments += 1
+					local segY = 1 + h + (extraSegments - 0.5) * segH
+					local seg = Instance.new("Part")
+					seg.Name = "ExtraSegment"
+					seg.Shape = Enum.PartType.Cylinder
+					seg.Size = Vector3.new(segH - 0.1, th, th)
+					seg.CFrame = CFrame.new(baseX, segY, baseZ) * CFrame.Angles(0, 0, math.rad(90))
+					seg.Material = Enum.Material.SmoothPlastic
+					seg.Color = capturedBambooType.color
+					seg.Anchored = true
+					seg.CanCollide = false
+					seg.Transparency = 1
+					seg.Parent = model
+					table.insert(extraParts, seg)
+
+					-- Visible fade-in over 0.4 seconds
+					task.spawn(function()
+						local steps = 8
+						for i = 1, steps do
+							task.wait(0.4 / steps)
+							if seg.Parent then
+								seg.Transparency = 1 - i / steps
+							end
+						end
+					end)
+				end
+			end)
+		end
+
 		local function respawnThis()
 			task.wait(capturedBambooType.respawnTime)
 			if not hitbox.Parent then return end
@@ -390,6 +465,7 @@ for _, zone in ipairs(Config.ZONES) do
 			hitbox.CanCollide = true
 			resetColors()
 			growBamboo()
+			startAmbientGrowth()
 		end
 
 		local function tryChop(player, damageOverride)
@@ -441,6 +517,7 @@ for _, zone in ipairs(Config.ZONES) do
 			local sword  = Config.SWORDS[data.swordLevel]
 			local damage = damageOverride or (sword and sword.damage or 1)
 			bambooHealth[hitbox] = bambooHealth[hitbox] - damage
+			hitSound.PlaybackSpeed = 0.9 + math.random() * 0.3
 			hitSound:Play()
 
 			-- Lerp all visuals toward orange as health drops
@@ -452,13 +529,23 @@ for _, zone in ipairs(Config.ZONES) do
 
 			local died = bambooHealth[hitbox] <= 0
 
-			-- Fire HitEffect to all players within 60 studs
+			-- Fire HitEffect to all players within 60 studs.
+			-- On death, also send slice info so clients can spawn falling top pieces.
 			local hitPos = hitbox.Position
+			local sliceInfo = nil
+			if died then
+				sliceInfo = {
+					slicePos  = hitPos,
+					topHeight = h + extraSegments * segH,
+					color     = capturedBambooType.color,
+					thickness = th,
+				}
+			end
 			for _, p in ipairs(Players:GetPlayers()) do
 				local char = p.Character
 				local root = char and char:FindFirstChild("HumanoidRootPart")
 				if root and (root.Position - hitPos).Magnitude <= 60 then
-					HitEffect:FireClient(p, hitPos, capturedBambooType.color, died, combo, damage)
+					HitEffect:FireClient(p, hitPos, capturedBambooType.color, died, combo, damage, sliceInfo)
 				end
 			end
 
@@ -469,7 +556,11 @@ for _, zone in ipairs(Config.ZONES) do
 				setAllTransparency(1)
 				breakSound:Play()
 
-				local coinsEarned = math.ceil(capturedBambooType.coins * coinMult)
+				-- Each extra grown segment gives +1 bonus coin
+				local bonusCoins = extraSegments
+				clearExtraSegments()
+
+				local coinsEarned = math.ceil(capturedBambooType.coins * coinMult) + bonusCoins
 				data.coins        = data.coins + coinsEarned
 				data.totalChopped = data.totalChopped + 1
 				sendUpdate(player)
@@ -481,6 +572,9 @@ for _, zone in ipairs(Config.ZONES) do
 
 		chopHandlers[hitbox] = tryChop
 		clickDetector.MouseClick:Connect(tryChop)
+
+		-- Bamboo keeps growing slowly from the start
+		startAmbientGrowth()
 	end
 end
 
@@ -551,18 +645,72 @@ for _, zone in ipairs(Config.ZONES) do
 		local rx = zone.offsetX + rng:NextNumber(65, 110)
 		local rz = rng:NextNumber(-40, 40)
 
+		-- Rock = Model of overlapping Slate chunks + an invisible hitbox part
+		local rockModel = Instance.new("Model")
+		rockModel.Name = "Rock"
+
+		local rockParts = {}   -- { {part=Part, color=Color3}, ... }
+		local chunkCount = rng:NextInteger(3, 5)
+		for _ = 1, chunkCount do
+			local gray = rng:NextInteger(105, 135)
+			local chunk = Instance.new("Part")
+			chunk.Name = "RockChunk"
+			chunk.Size = Vector3.new(
+				rng:NextNumber(1.5, 3.5),
+				rng:NextNumber(1.5, 3.5),
+				rng:NextNumber(1.5, 3.5))
+			chunk.CFrame = CFrame.new(
+					rx + rng:NextNumber(-1.2, 1.2),
+					1 + chunk.Size.Y / 2 - rng:NextNumber(0, 0.8),
+					rz + rng:NextNumber(-1.2, 1.2))
+				* CFrame.Angles(
+					rng:NextNumber(0, math.pi),
+					rng:NextNumber(0, math.pi),
+					rng:NextNumber(0, math.pi))
+			chunk.Material = Enum.Material.Slate
+			chunk.Color = Color3.fromRGB(gray, gray, gray)
+			chunk.Anchored = true
+			chunk.CanCollide = true
+			chunk.Parent = rockModel
+			table.insert(rockParts, { part = chunk, color = chunk.Color })
+		end
+
+		-- Small gold ore sparkles embedded on the surface
+		local sparkleCount = rng:NextInteger(2, 3)
+		for _ = 1, sparkleCount do
+			local sparkle = Instance.new("Part")
+			sparkle.Name = "OreSparkle"
+			sparkle.Size = Vector3.new(0.35, 0.35, 0.35)
+			sparkle.CFrame = CFrame.new(
+					rx + rng:NextNumber(-1.6, 1.6),
+					1 + rng:NextNumber(0.6, 2.4),
+					rz + rng:NextNumber(-1.6, 1.6))
+				* CFrame.Angles(
+					rng:NextNumber(0, math.pi),
+					rng:NextNumber(0, math.pi),
+					rng:NextNumber(0, math.pi))
+			sparkle.Material = Enum.Material.Neon
+			sparkle.Color = Color3.fromRGB(255, 210, 70)
+			sparkle.Anchored = true
+			sparkle.CanCollide = false
+			sparkle.CastShadow = false
+			sparkle.Parent = rockModel
+			table.insert(rockParts, { part = sparkle, color = sparkle.Color })
+		end
+
+		-- Invisible hitbox carries the ClickDetector and attributes
 		local rock = Instance.new("Part")
-		rock.Name = "Rock"
-		rock.Shape = Enum.PartType.Ball
-		rock.Size = Vector3.new(3, 3, 3)
-		rock.Position = Vector3.new(rx, 2.5, rz)
-		rock.Material = Enum.Material.SmoothPlastic
-		rock.Color = Color3.fromRGB(130, 130, 130)
+		rock.Name = "Hitbox"
+		rock.Size = Vector3.new(4, 4, 4)
+		rock.Position = Vector3.new(rx, 3, rz)
+		rock.Transparency = 1
 		rock.Anchored = true
-		rock.CanCollide = true
+		rock.CanCollide = false
 		rock:SetAttribute("IsRock", true)
 		rock:SetAttribute("IsDead", false)
-		rock.Parent = zoneFolder
+		rock.Parent = rockModel
+		rockModel.PrimaryPart = rock
+		rockModel.Parent = zoneFolder
 
 		rockHealth[rock] = 8
 
@@ -585,14 +733,28 @@ for _, zone in ipairs(Config.ZONES) do
 		local capturedZone = zone
 		local capturedBambooType = bambooType
 
+		local function setRockTransparency(value)
+			for _, v in ipairs(rockParts) do
+				v.part.Transparency = value
+			end
+		end
+
+		local function resetRockColors()
+			for _, v in ipairs(rockParts) do
+				v.part.Color = v.color
+			end
+		end
+
 		local function respawnRock()
 			task.wait(20)
 			if not rock.Parent then return end
 			rockHealth[rock] = 8
 			rock:SetAttribute("IsDead", false)
-			rock.CanCollide = true
-			rock.Transparency = 0
-			rock.Color = Color3.fromRGB(130, 130, 130)
+			for _, v in ipairs(rockParts) do
+				v.part.CanCollide = (v.part.Name == "RockChunk")
+			end
+			setRockTransparency(0)
+			resetRockColors()
 		end
 
 		local function tryMineRock(player, damageOverride)
