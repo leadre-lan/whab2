@@ -7,6 +7,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 
+-- ─── Cleanup leftovers from older versions ───────────────────────────────────
+for _, name in ipairs({ "BambooRemotes" }) do
+	local old = ReplicatedStorage:FindFirstChild(name)
+	if old then old:Destroy() end
+end
+local oldZones = workspace:FindFirstChild("Zones")
+if oldZones then oldZones:Destroy() end
+
 -- ─── RemoteEvents Setup ───────────────────────────────────────────────────────
 local remotesFolder = Instance.new("Folder")
 remotesFolder.Name = "BambooRemotes"
@@ -19,6 +27,10 @@ UpdateData.Parent = remotesFolder
 local BuyUpgrade = Instance.new("RemoteEvent")
 BuyUpgrade.Name = "BuyUpgrade"
 BuyUpgrade.Parent = remotesFolder
+
+local Notify = Instance.new("RemoteEvent")
+Notify.Name = "Notify"
+Notify.Parent = remotesFolder
 
 -- ─── World Setup ──────────────────────────────────────────────────────────────
 workspace.Terrain:Clear()
@@ -41,7 +53,7 @@ baseplate.Parent = workspace
 local spawnLocation = Instance.new("SpawnLocation")
 spawnLocation.Name = "SpawnLocation"
 spawnLocation.Size = Vector3.new(8, 1, 8)
-spawnLocation.Position = Vector3.new(0, 0.5, 0)
+spawnLocation.Position = Vector3.new(0, 1.5, 0)
 spawnLocation.Anchored = true
 spawnLocation.Neutral = true
 spawnLocation.Color = Color3.fromRGB(163, 162, 165)
@@ -171,8 +183,9 @@ for _, zone in ipairs(Config.ZONES) do
 	-- Grass platform (110x2x110)
 	local platform = Instance.new("Part")
 	platform.Name = "Platform"
+	-- Top surface at Y = 1 (one stud above the baseplate, prevents Z-fighting)
 	platform.Size = Vector3.new(110, 2, 110)
-	platform.Position = Vector3.new(zoneX, -1, 0)
+	platform.Position = Vector3.new(zoneX, 0, 0)
 	platform.Material = Enum.Material.Grass
 	platform.Color = Color3.fromRGB(106, 127, 63)
 	platform.Anchored = true
@@ -182,8 +195,8 @@ for _, zone in ipairs(Config.ZONES) do
 	-- Zone sign post
 	local signPart = Instance.new("Part")
 	signPart.Name = "ZoneSign"
-	signPart.Size = Vector3.new(0.2, 5, 0.2)
-	signPart.Position = Vector3.new(zoneX - 50, 2.5, 0)
+	signPart.Size = Vector3.new(0.4, 5, 0.4)
+	signPart.Position = Vector3.new(zoneX - 50, 3.5, 0)
 	signPart.Material = Enum.Material.Wood
 	signPart.Color = Color3.fromRGB(106, 74, 40)
 	signPart.Anchored = true
@@ -230,8 +243,8 @@ for _, zone in ipairs(Config.ZONES) do
 		part.Name = "Bamboo"
 		-- Upright block: X=thickness, Y=height, Z=thickness
 		part.Size = Vector3.new(th, h, th)
-		-- Bottom of bamboo sits on platform surface (platform top is at y=0)
-		part.Position = Vector3.new(zoneX + rx, h / 2, rz)
+		-- Bottom of bamboo sits on platform surface (platform top is at y=1)
+		part.Position = Vector3.new(zoneX + rx, 1 + h / 2, rz)
 		part.Material = Enum.Material.SmoothPlastic
 		part.Color = bambooType.color
 		part.Anchored = true
@@ -242,6 +255,19 @@ for _, zone in ipairs(Config.ZONES) do
 		part.Parent = zoneFolder
 
 		bambooHealth[part] = bambooType.health
+
+		-- Hit + break sounds (rbxasset builtins always load, unlike marketplace IDs)
+		local hitSound = Instance.new("Sound")
+		hitSound.Name = "HitSound"
+		hitSound.SoundId = "rbxasset://sounds/snap.mp3"
+		hitSound.Volume = 0.8
+		hitSound.Parent = part
+
+		local breakSound = Instance.new("Sound")
+		breakSound.Name = "BreakSound"
+		breakSound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+		breakSound.Volume = 1
+		breakSound.Parent = part
 
 		-- ClickDetector so client doesn't need raycasts
 		local clickDetector = Instance.new("ClickDetector")
@@ -261,7 +287,10 @@ for _, zone in ipairs(Config.ZONES) do
 			if capturedPart:GetAttribute("IsDead") then return end
 
 			-- Zone level requirement
-			if data.swordLevel < capturedZone.requiredLevel then return end
+			if data.swordLevel < capturedZone.requiredLevel then
+				Notify:FireClient(player, "⚔ Schwertlevel " .. capturedZone.requiredLevel .. " benoetigt!")
+				return
+			end
 
 			-- Per-player per-bamboo cooldown
 			local cdKey = tostring(player.UserId) .. "_" .. tostring(capturedPart)
@@ -274,6 +303,7 @@ for _, zone in ipairs(Config.ZONES) do
 			local sword  = Config.SWORDS[data.swordLevel]
 			local damage = sword and sword.damage or 1
 			bambooHealth[capturedPart] = bambooHealth[capturedPart] - damage
+			hitSound:Play()
 
 			-- Lerp color toward orange as health drops
 			local maxHealth  = capturedBambooType.health
@@ -285,6 +315,7 @@ for _, zone in ipairs(Config.ZONES) do
 				capturedPart:SetAttribute("IsDead", true)
 				capturedPart.Transparency = 1
 				capturedPart.CanCollide   = false
+				breakSound:Play()
 
 				data.coins        = data.coins + capturedBambooType.coins
 				data.totalChopped = data.totalChopped + 1
@@ -296,3 +327,5 @@ for _, zone in ipairs(Config.ZONES) do
 		end)
 	end
 end
+
+print("[BambooSlasher] Server ready - " .. #Config.ZONES .. " Zonen generiert.")

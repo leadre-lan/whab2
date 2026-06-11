@@ -14,6 +14,7 @@ local Config        = require(ReplicatedStorage:WaitForChild("Config"))
 local remotesFolder = ReplicatedStorage:WaitForChild("BambooRemotes")
 local UpdateData    = remotesFolder:WaitForChild("UpdateData")
 local BuyUpgrade    = remotesFolder:WaitForChild("BuyUpgrade")
+local Notify        = remotesFolder:WaitForChild("Notify")
 
 -- Local copy of player data
 local localData = {
@@ -23,13 +24,39 @@ local localData = {
 }
 
 -- ─── Background Music ─────────────────────────────────────────────────────────
-local music = Instance.new("Sound")
-music.Name = "BambooMusic"
-music.SoundId = "rbxassetid://1843464219"
-music.Looped = true
-music.Volume = 0.4
-music.Parent = SoundService
-music:Play()
+-- Most marketplace audio IDs are private since 2022; try several candidates and
+-- play the first one that actually loads.
+local MUSIC_IDS = {
+	"rbxassetid://1841647093",
+	"rbxassetid://1843463175",
+	"rbxassetid://9046897116",
+	"rbxassetid://1837879082",
+}
+
+task.spawn(function()
+	for _, id in ipairs(MUSIC_IDS) do
+		local music = Instance.new("Sound")
+		music.Name = "BambooMusic"
+		music.SoundId = id
+		music.Looped = true
+		music.Volume = 0.35
+		music.Parent = SoundService
+
+		-- Wait briefly for the asset to load
+		local waited = 0
+		while not music.IsLoaded and waited < 3 do
+			task.wait(0.2)
+			waited += 0.2
+		end
+
+		if music.IsLoaded and music.TimeLength > 0 then
+			music:Play()
+			return
+		end
+		music:Destroy()
+	end
+	warn("[BambooSlasher] Keine Musik-ID konnte geladen werden.")
+end)
 
 -- ─── Sword Tool ───────────────────────────────────────────────────────────────
 local function buildSword(level)
@@ -67,7 +94,7 @@ local function buildSword(level)
 	-- Swing sound
 	local swingSound = Instance.new("Sound")
 	swingSound.Name = "SwingSound"
-	swingSound.SoundId = "rbxassetid://341336780"
+	swingSound.SoundId = "rbxasset://sounds/swordslash.wav"
 	swingSound.Volume = 0.6
 	swingSound.Parent = handle
 
@@ -286,6 +313,32 @@ UpdateData.OnClientEvent:Connect(function(data)
 	if data.swordLevel ~= oldSwordLevel then
 		buildSword(data.swordLevel)
 	end
+end)
+
+-- ─── Notify (z.B. "Schwertlevel zu niedrig") ─────────────────────────────────
+Notify.OnClientEvent:Connect(function(message)
+	local note = Instance.new("TextLabel")
+	note.Size = UDim2.new(0, 320, 0, 40)
+	note.Position = UDim2.new(0.5, -160, 0.25, 0)
+	note.BackgroundColor3 = Color3.fromRGB(160, 30, 30)
+	note.BackgroundTransparency = 0.2
+	note.TextColor3 = Color3.fromRGB(255, 255, 255)
+	note.TextSize = 18
+	note.Font = Enum.Font.GothamBold
+	note.Text = message
+	note.ZIndex = 20
+	local noteCorner = Instance.new("UICorner")
+	noteCorner.CornerRadius = UDim.new(0, 8)
+	noteCorner.Parent = note
+	note.Parent = screenGui
+
+	local tween = TweenService:Create(note,
+		TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ TextTransparency = 1, BackgroundTransparency = 1 })
+	tween:Play()
+	tween.Completed:Connect(function()
+		note:Destroy()
+	end)
 end)
 
 -- ─── Character Respawn ────────────────────────────────────────────────────────
