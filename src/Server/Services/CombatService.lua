@@ -73,8 +73,8 @@ function CombatService.init(ds, ms, netRef)
 				dmg = math.ceil(dmg * (1 - Balance.BLOCK_REDUCTION))
 			end
 			tHum:TakeDamage(dmg)
-			net.HitEffect:FireClient(player, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, dmg, nil)
-			net.HitEffect:FireClient(targetPlayer, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, nil, nil)
+			net.HitEffect:FireClient(player, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, dmg, nil, "monster")
+			net.HitEffect:FireClient(targetPlayer, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, nil, nil, "hurt")
 		end
 	end)
 

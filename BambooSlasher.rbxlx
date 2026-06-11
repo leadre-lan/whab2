@@ -19,6 +19,144 @@
       </Properties>
       <Item class="ModuleScript" referent="3">
         <Properties>
+          <string name="Name">Assets</string>
+          <string name="Source"><![CDATA[-- Assets.lua — Zentrales Register aller externen Roblox-Assets.
+--
+-- Jede ID hier wurde über die Roblox-APIs verifiziert (Typ + öffentliche
+-- Verfügbarkeit, Stand 2026-06-11):
+--   • Meshes/Texturen: offizielle Roblox-Classic-Assets (Creator "Roblox"),
+--     Maße offline aus den Mesh-Dateien geparst — Skalierung/Achsen stimmen.
+--   • SFX: "ProSoundEffects" (Robloxs lizenzfreie Sound-Library).
+--   • Musik: "DistrokidOfficial"/"APMOfficial" (Robloxs lizenzierte Musik-
+--     Library) + die alten, noch funktionierenden IDs als Fallback.
+--
+-- IDs austauschen: einfach hier ändern — kein Service-Code nötig.
+
+local Assets = {}
+
+-- ── Meshes (SpecialMesh/FileMesh — zur Laufzeit setzbar) ──────────────────────
+-- axis  = Achse der Klinge in Mesh-Koordinaten (+Z bei beiden)
+-- length = gerenderte Länge in Studs bei Scale = 1
+-- handleZ = Z-Position der Griffmitte im Mesh (für den Weld-Offset)
+Assets.MESHES = {
+	-- "sword.mesh" by Roblox — das klassische Linked-Sword-Modell
+	ClassicSword = {
+		meshId    = "rbxassetid://12221720",
+		textureId = "rbxasset://textures/SwordTexture.png",
+		length    = 4.37,
+		handleZ   = -1.5,
+	},
+	-- "Katana Mesh" + "Katana Texture" by Roblox
+	Katana = {
+		meshId    = "rbxassetid://11442510",
+		textureId = "rbxassetid://11442524",
+		length    = 2.93,
+		handleZ   = -1.0,
+	},
+}
+
+-- ── Sound-Effekte (alle kurz, alle öffentlich) ────────────────────────────────
+Assets.SFX = {
+	Swing        = "rbxassetid://9126284532",  -- Wood Swish Whoosh (schnell)
+	Slice        = "rbxassetid://9116333867",  -- Machete Cutting Cactus (saftiger Schnitt)
+	RockHit      = "rbxassetid://9118627392",  -- Rock Impact
+	RockBreak    = "rbxassetid://9125869797",  -- Rock Drops/Smashes
+	Anvil        = "rbxassetid://9113446174",  -- Blacksmith Anvil Hammer Hit
+	MonsterHit   = "rbxassetid://9113980480",  -- Creature Roar/Growl (kurz)
+	MonsterDeath = "rbxassetid://9113988071",  -- Creature Death Shriek
+	Chime        = "rbxassetid://9116395089",  -- Magic Glow Chime (Level-Up)
+	ChimeSoft    = "rbxassetid://9116394876",  -- Magic Glow Chime (Unlock)
+	Coin         = "rbxassetid://9113848490",  -- Coin Bounce
+	Teleport     = "rbxassetid://9116394545",  -- Magic Glow (kurz — Portal)
+}
+
+-- ── Musik pro Biom-Gruppe (erste ladbare ID gewinnt) ──────────────────────────
+Assets.MUSIC = {
+	Hub = {        -- ruhig, japanischer Garten
+		"rbxassetid://89453444795932",   -- Koi Fish Dream Beneath Lotus Flowers
+		"rbxassetid://9043887091",       -- Fallback (alt, verifiziert)
+	},
+	Forest = {     -- hell, entspannt (Grüner/Goldener Hain)
+		"rbxassetid://98002463968288",   -- Forest Calm Ambient
+		"rbxassetid://119364922573470",  -- Cherry Blossoms Falling on Still Water
+		"rbxassetid://1843463175",       -- Fallback (alt, verifiziert)
+	},
+	Mystic = {     -- geheimnisvoll (Kristall/Schatten)
+		"rbxassetid://106152951949961",  -- Mysterious Endeavour (APM)
+		"rbxassetid://73731220283940",   -- Mysterious Magic (APM)
+		"rbxassetid://1843463175",
+	},
+	Epic = {       -- treibend (Vulkan/Himmel)
+		"rbxassetid://130204756191999",  -- Epic Inspirational Adventure
+		"rbxassetid://113554213644551",  -- Fantastic Race (APM)
+		"rbxassetid://9046515361",       -- Fallback (alt, verifiziert)
+	},
+}
+
+-- ── Partikel-Texturen (eingebaute rbxasset-Inhalte — immer verfügbar) ─────────
+Assets.PARTICLES = {
+	Sparkles = "rbxasset://textures/particles/sparkles_main.dds",
+	Smoke    = "rbxasset://textures/particles/smoke_main.dds",
+	Fire     = "rbxasset://textures/particles/fire_main.dds",
+}
+
+-- ── Helfer ────────────────────────────────────────────────────────────────────
+
+-- 3D-Sound an einer Weltposition abspielen (Wegwerf-Part als Träger)
+function Assets.playAt(position, soundId, volume, minPitch, maxPitch)
+	local p = Instance.new("Part")
+	p.Size = Vector3.new(0.2, 0.2, 0.2)
+	p.Transparency = 1
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.Position = position
+	p.Parent = workspace
+
+	local s = Instance.new("Sound")
+	s.SoundId = soundId
+	s.Volume = volume or 0.8
+	s.RollOffMaxDistance = 90
+	if minPitch then
+		s.PlaybackSpeed = minPitch + math.random() * ((maxPitch or minPitch) - minPitch)
+	end
+	s.Parent = p
+	s:Play()
+	game:GetService("Debris"):AddItem(p, 4)
+	return s
+end
+
+-- 2D-Sound (UI / global)
+function Assets.play2D(soundId, volume, pitch)
+	local s = Instance.new("Sound")
+	s.SoundId = soundId
+	s.Volume = volume or 0.6
+	if pitch then s.PlaybackSpeed = pitch end
+	s.Parent = game:GetService("SoundService")
+	s:Play()
+	game:GetService("Debris"):AddItem(s, 6)
+	return s
+end
+
+-- Alles, was der Client vorladen sollte (Meshes, Texturen, SFX)
+function Assets.preloadList()
+	local list = {}
+	for _, m in pairs(Assets.MESHES) do
+		table.insert(list, m.meshId)
+		table.insert(list, m.textureId)
+	end
+	for _, id in pairs(Assets.SFX) do
+		table.insert(list, id)
+	end
+	return list
+end
+
+return Assets
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="4">
+        <Properties>
           <string name="Name">Balance</string>
           <string name="Source"><![CDATA[-- Balance.lua — All game numbers. Edit here, not in service code.
 local Balance = {}
@@ -150,7 +288,7 @@ return Balance
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="4">
+      <Item class="ModuleScript" referent="5">
         <Properties>
           <string name="Name">Layers</string>
           <string name="Source"><![CDATA[-- Layers.lua — 6 hand-crafted biomes + procedurally generated layers 7-12
@@ -171,6 +309,7 @@ Layers.DATA = {
 		glowColor     = Color3.fromRGB(75, 210, 75),
 		monsterName   = "Bambusgeist",
 		lighting      = { clockTime = 13.5, atmoDensity = 0.42, atmoColor = Color3.fromRGB(170, 210, 160) },
+		theme         = "forest",   -- steuert Prop-Bauweise im WorldGenerator
 		-- gen = endless biome via chunk streaming (seed → reproducible world)
 		gen = { seed = 20260611, material = Enum.Material.LeafyGrass },
 	},
@@ -187,6 +326,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(158, 148, 90),
 		glowColor     = Color3.fromRGB(220, 190, 45),
 		monsterName   = "Wildschwein",
+		theme         = "gold",
 		gen = { seed = 20260612, material = Enum.Material.Sand },
 	},
 	[3] = {
@@ -202,6 +342,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(78, 178, 198),
 		glowColor     = Color3.fromRGB(80, 220, 235),
 		monsterName   = "Kristallkäfer",
+		theme         = "crystal",
 		gen = { seed = 20260613, material = Enum.Material.Glacier },
 	},
 	[4] = {
@@ -217,6 +358,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(55, 45, 88),
 		glowColor     = Color3.fromRGB(165, 80, 225),
 		monsterName   = "Schatten-Ninja",
+		theme         = "shadow",
 		gen = { seed = 20260614, material = Enum.Material.Mud },
 	},
 	[5] = {
@@ -232,6 +374,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(148, 78, 48),
 		glowColor     = Color3.fromRGB(255, 118, 35),
 		monsterName   = "Lava-Golem",
+		theme         = "lava",
 		gen = { seed = 20260615, material = Enum.Material.Basalt },
 		boss          = { name = "Aschegeneral", hpMult = 12, dmgMult = 2.5 },
 	},
@@ -248,6 +391,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(178, 208, 238),
 		glowColor     = Color3.fromRGB(195, 228, 255),
 		monsterName   = "Wächter",
+		theme         = "sky",
 		gen = { seed = 20260616, material = Enum.Material.Snow },
 		boss          = { name = "Bambus-Drache", hpMult = 20, dmgMult = 3.5 },
 	},
@@ -282,6 +426,7 @@ for i = 7, 12 do
 		ambient       = baseColor:Lerp(Color3.fromRGB(100, 100, 100), 0.6),
 		glowColor     = baseColor,
 		monsterName   = MONSTERS[idx],
+		theme         = ({ "forest", "gold", "crystal", "shadow", "lava", "sky" })[idx],
 		gen = {
 			seed     = 20260620 + i,
 			material = ({ Enum.Material.LeafyGrass, Enum.Material.Sand, Enum.Material.Glacier,
@@ -298,7 +443,7 @@ return Layers
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="5">
+      <Item class="ModuleScript" referent="6">
         <Properties>
           <string name="Name">UITheme</string>
           <string name="Source"><![CDATA[-- UITheme.lua — Consistent design system for all UI elements
@@ -358,11 +503,11 @@ return UITheme
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="6">
+  <Item class="ServerScriptService" referent="7">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Script" referent="7">
+    <Item class="Script" referent="8">
       <Properties>
         <string name="Name">Server</string>
         <token name="RunContext">0</token>
@@ -384,6 +529,7 @@ local REMOTE_NAMES = {
 	-- server → client
 	"UpdateData", "HitEffect", "Notify", "LayerUnlocked",
 	"OpenLayerSelect", "ApplyLayerLighting", "OpenForge", "RebirthDone",
+	"PlaySFX",
 	-- client → server
 	"ChopTarget", "SlamAttack", "UpgradeStat",
 	"AttackEntity", "SetBlocking",
@@ -494,11 +640,11 @@ print("[BambooSlasher] Server bereit — alle Systeme online.")
 ]]></string>
       </Properties>
     </Item>
-    <Item class="Folder" referent="8">
+    <Item class="Folder" referent="9">
       <Properties>
         <string name="Name">Services</string>
       </Properties>
-      <Item class="ModuleScript" referent="9">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">ArenaService</string>
           <string name="Source"><![CDATA[-- ArenaService.lua — PVP arena (own world, far from the hub): 1v1 queue,
@@ -914,7 +1060,7 @@ return ArenaService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="10">
+      <Item class="ModuleScript" referent="11">
         <Properties>
           <string name="Name">CombatService</string>
           <string name="Source"><![CDATA[-- CombatService.lua — Shared melee combat for PVE (monsters) and PVP (arena)
@@ -992,8 +1138,8 @@ function CombatService.init(ds, ms, netRef)
 				dmg = math.ceil(dmg * (1 - Balance.BLOCK_REDUCTION))
 			end
 			tHum:TakeDamage(dmg)
-			net.HitEffect:FireClient(player, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, dmg, nil)
-			net.HitEffect:FireClient(targetPlayer, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, nil, nil)
+			net.HitEffect:FireClient(player, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, dmg, nil, "monster")
+			net.HitEffect:FireClient(targetPlayer, tRoot.Position, Color3.fromRGB(255, 90, 60), false, nil, nil, nil, "hurt")
 		end
 	end)
 
@@ -1018,7 +1164,7 @@ return CombatService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="11">
+      <Item class="ModuleScript" referent="12">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- DataService.lua — Player data management with DataStore + session fallback
@@ -1170,7 +1316,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">ForgeService</string>
           <string name="Source"><![CDATA[-- ForgeService.lua — Craft sword tiers at the forge using coins + materials
@@ -1217,6 +1363,7 @@ function ForgeService.init(ds, netRef)
 		dataService.sendUpdate(player)
 
 		-- Craft moment: tell everyone for tier 5+
+		net.PlaySFX:FireClient(player, "Anvil")
 		net.Notify:FireClient(player, "🔨 " .. recipe.name .. " geschmiedet!")
 		if nextTier >= 5 then
 			local Players = game:GetService("Players")
@@ -1233,7 +1380,7 @@ return ForgeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">HubService</string>
           <string name="Source"><![CDATA[-- HubService.lua — Overworld hub: spawn plaza, forest portal, layer teleports,
@@ -1245,6 +1392,7 @@ local RS      = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Layers = require(RS:WaitForChild("Shared"):WaitForChild("Layers"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 -- Hub is far west of the forest layers (layers start at x=5000)
 local HUB_X = -320
@@ -1289,6 +1437,7 @@ local function teleportToLayer(player, layerIdx)
 	local WorldService = require(script.Parent:WaitForChild("WorldService"))
 	local spawn = WorldService.getLayerSpawn(layerIdx) or Vector3.new(layer.offsetX, 6, 0)
 	safeTeleport(player, CFrame.new(spawn + Vector3.new(0, 3, 0)))
+	net.PlaySFX:FireClient(player, "Teleport")
 	net.ApplyLayerLighting:FireClient(player, layerIdx)
 	net.Notify:FireClient(player, "🌲 " .. layer.name)
 end
@@ -1387,43 +1536,107 @@ local function buildHub(hubFolder)
 		color = Color3.fromRGB(85, 170, 220),
 		transparency = 0.35, collide = false,
 	}, hubFolder)
-	local pillar = part({
+	part({
 		size = Vector3.new(1.4, 7, 1.4),
 		pos = Vector3.new(HUB_X, 5, HUB_Z),
 		material = Enum.Material.Marble,
 		color = Color3.fromRGB(205, 200, 192),
 	}, hubFolder)
-	-- "Statue" placeholder (Ranked #1 statue comes with RankedService)
-	part({
-		shape = Enum.PartType.Ball,
-		size = Vector3.new(2.6, 2.6, 2.6),
-		pos = Vector3.new(HUB_X, 9.6, HUB_Z),
-		material = Enum.Material.Neon,
-		color = Color3.fromRGB(255, 215, 80),
-		collide = false,
-	}, hubFolder)
+	-- Katana-Monument: das klassische Roblox-Katana steckt mit der Spitze
+	-- nach unten im Marmorsockel (Mesh + Textur, siehe Shared/Assets.lua)
+	do
+		local katana = Assets.MESHES.Katana
+		local monument = Instance.new("Part")
+		monument.Size = Vector3.new(1, 1, 1)
+		monument.Transparency = 1   -- nur das Mesh ist sichtbar
+		monument.Anchored = true
+		monument.CanCollide = false
+		-- Mesh-Klinge zeigt +Z → um +90° um X gedreht zeigt sie nach unten
+		monument.CFrame = CFrame.new(HUB_X, 11.6, HUB_Z)
+			* CFrame.Angles(math.rad(90), math.rad(35), 0)
+		monument.Parent = hubFolder
+
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.FileMesh
+		mesh.MeshId = katana.meshId
+		mesh.TextureId = katana.textureId
+		mesh.Scale = Vector3.new(2.6, 2.6, 2.6)
+		mesh.Parent = monument
+
+		local glow = Instance.new("PointLight")
+		glow.Color = Color3.fromRGB(255, 215, 120)
+		glow.Range = 16
+		glow.Brightness = 0.9
+		glow.Parent = monument
+	end
 	makeSign(hubFolder, Vector3.new(HUB_X, 3.75, HUB_Z - 12),
 		"🏯 Bamboo Slasher", "Willkommen in der Overworld!",
 		Color3.fromRGB(120, 230, 120))
 
-	-- ── Wald-Portal (north, +Z) — leads to the forest layers ──
+	-- ── Wald-Portal (north, +Z) — ein rotes Torii-Tor zu den Wald-Schichten ──
 	local portalZ = HUB_Z + 60
-	-- Bamboo gate: two thick green pillars + crossbar
+	local TORII_RED  = Color3.fromRGB(186, 48, 38)
+	local TORII_DARK = Color3.fromRGB(40, 34, 32)
 	for side = -1, 1, 2 do
+		-- Steinsockel + roter Pfeiler
 		part({
 			shape = Enum.PartType.Cylinder,
-			size = Vector3.new(16, 2.6, 2.6),
+			size = Vector3.new(1.2, 3.6, 3.6),
+			cframe = CFrame.new(HUB_X + side * 7, 1.6, portalZ) * CFrame.Angles(0, 0, math.rad(90)),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(95, 92, 88),
+		}, hubFolder)
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(14.5, 2.2, 2.2),
 			cframe = CFrame.new(HUB_X + side * 7, 9, portalZ) * CFrame.Angles(0, 0, math.rad(90)),
 			material = Enum.Material.SmoothPlastic,
-			color = Color3.fromRGB(72, 185, 62),
+			color = TORII_RED,
 		}, hubFolder)
 	end
+	-- Nuki (unterer Querbalken, steckt durch die Pfeiler)
 	part({
-		shape = Enum.PartType.Cylinder,
-		size = Vector3.new(18, 2.2, 2.2),
-		cframe = CFrame.new(HUB_X, 16.5, portalZ) * CFrame.Angles(0, math.rad(90), math.rad(90)),
+		size = Vector3.new(19, 1.4, 1.1),
+		pos = Vector3.new(HUB_X, 13.2, portalZ),
 		material = Enum.Material.SmoothPlastic,
-		color = Color3.fromRGB(58, 150, 50),
+		color = TORII_RED,
+	}, hubFolder)
+	-- Shimaki + Kasagi (Doppel-Dachbalken, der obere dunkel und überstehend)
+	part({
+		size = Vector3.new(21, 1.2, 1.6),
+		pos = Vector3.new(HUB_X, 16, portalZ),
+		material = Enum.Material.SmoothPlastic,
+		color = TORII_RED,
+	}, hubFolder)
+	part({
+		size = Vector3.new(24, 1.1, 2.2),
+		pos = Vector3.new(HUB_X, 17.1, portalZ),
+		material = Enum.Material.Slate,
+		color = TORII_DARK,
+	}, hubFolder)
+	-- Geschwungene Dach-Enden (leicht nach oben gekippt)
+	for side = -1, 1, 2 do
+		part({
+			size = Vector3.new(3.4, 1.1, 2.2),
+			cframe = CFrame.new(HUB_X + side * 13.1, 17.55, portalZ)
+				* CFrame.Angles(0, 0, side * math.rad(14)),
+			material = Enum.Material.Slate,
+			color = TORII_DARK,
+		}, hubFolder)
+	end
+	-- Gakuzuka (Mittelstrebe) mit goldener Plakette
+	part({
+		size = Vector3.new(1.2, 2.0, 0.9),
+		pos = Vector3.new(HUB_X, 14.8, portalZ),
+		material = Enum.Material.SmoothPlastic,
+		color = TORII_RED,
+	}, hubFolder)
+	part({
+		size = Vector3.new(1.6, 1.2, 0.3),
+		pos = Vector3.new(HUB_X, 14.8, portalZ - 0.5),
+		material = Enum.Material.Metal,
+		color = Color3.fromRGB(212, 175, 55),
+		collide = false,
 	}, hubFolder)
 	-- Glowing portal plane (color updated per player would need local parts;
 	-- use layer-1 green as the shared base)
@@ -1713,26 +1926,54 @@ local function buildHub(hubFolder)
 		local reward = 250 * (1 + (pdata.rebirths or 0))
 		pdata.coins = pdata.coins + reward
 		dataService.sendUpdate(player)
+		net.PlaySFX:FireClient(player, "Coin")
 		net.Notify:FireClient(player, "🎁 +" .. reward .. " Bamboos!")
 	end)
 
-	-- Lantern posts around the plaza
+	-- Japanische Laternen rund um den Platz (Sockel, Pfosten, Lichtkasten, Dach)
 	for a = 0, 7 do
 		local ang = a / 8 * math.pi * 2
 		local lx = HUB_X + math.cos(ang) * 38
 		local lz = HUB_Z + math.sin(ang) * 38
-		part({
-			size = Vector3.new(0.5, 7, 0.5),
+		part({  -- Steinsockel
+			size = Vector3.new(1.6, 1, 1.6),
+			pos = Vector3.new(lx, 1.5, lz),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(98, 95, 90),
+		}, hubFolder)
+		part({  -- Holzpfosten
+			size = Vector3.new(0.5, 5.5, 0.5),
 			pos = Vector3.new(lx, 4.5, lz),
 			material = Enum.Material.Wood,
 			color = Color3.fromRGB(70, 50, 32),
 			collide = false,
 		}, hubFolder)
-		local lamp = part({
-			size = Vector3.new(1.1, 1.1, 1.1),
-			pos = Vector3.new(lx, 8.3, lz),
+		part({  -- dunkler Rahmen des Lichtkastens
+			size = Vector3.new(1.5, 1.7, 1.5),
+			pos = Vector3.new(lx, 8.1, lz),
+			material = Enum.Material.Wood,
+			color = Color3.fromRGB(45, 36, 28),
+			collide = false,
+		}, hubFolder)
+		local lamp = part({  -- warmes Licht, leicht aus dem Rahmen tretend
+			size = Vector3.new(1.15, 1.3, 1.15),
+			pos = Vector3.new(lx, 8.1, lz),
 			material = Enum.Material.Neon,
 			color = Color3.fromRGB(255, 205, 120),
+			collide = false,
+		}, hubFolder)
+		part({  -- geschwungenes Dach (zwei Ebenen)
+			size = Vector3.new(2.2, 0.35, 2.2),
+			pos = Vector3.new(lx, 9.15, lz),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(40, 34, 32),
+			collide = false,
+		}, hubFolder)
+		part({
+			size = Vector3.new(1.1, 0.3, 1.1),
+			pos = Vector3.new(lx, 9.5, lz),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(40, 34, 32),
 			collide = false,
 		}, hubFolder)
 		local light = Instance.new("PointLight")
@@ -1740,6 +1981,87 @@ local function buildHub(hubFolder)
 		light.Range = 16
 		light.Brightness = 0.8
 		light.Parent = lamp
+	end
+
+	-- ── Kirschblütenbaum am Platzrand (mit fallenden Blütenblättern) ──
+	do
+		local tx, tz = HUB_X + 30, HUB_Z - 32
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(11, 1.6, 1.6),
+			cframe = CFrame.new(tx, 6.5, tz) * CFrame.Angles(0, 0, math.rad(86)),
+			material = Enum.Material.Wood,
+			color = Color3.fromRGB(122, 102, 96),
+		}, hubFolder)
+		local petalColor = Color3.fromRGB(248, 198, 222)
+		for c = 1, 3 do
+			local w = 9 - c * 1.8
+			local blob = part({
+				size = Vector3.new(w, w * 0.6, w),
+				pos = Vector3.new(tx + rng:NextNumber(-1.5, 1.5), 11 + c * 1.4, tz + rng:NextNumber(-1.5, 1.5)),
+				material = Enum.Material.Grass,
+				color = petalColor:Lerp(Color3.fromRGB(255, 246, 250), rng:NextNumber(0, 0.45)),
+				collide = false,
+			}, hubFolder)
+			local m = Instance.new("SpecialMesh")
+			m.MeshType = Enum.MeshType.Sphere
+			m.Parent = blob
+			if c == 1 then
+				local pe = Instance.new("ParticleEmitter")
+				pe.Texture = Assets.PARTICLES.Sparkles
+				pe.Rate = 2.5
+				pe.Lifetime = NumberRange.new(3.5, 5.5)
+				pe.Speed = NumberRange.new(0.5, 1.2)
+				pe.SpreadAngle = Vector2.new(40, 40)
+				pe.Acceleration = Vector3.new(0.5, -1.6, 0.2)
+				pe.Size = NumberSequence.new(0.24)
+				pe.Color = ColorSequence.new(petalColor)
+				pe.LightEmission = 0.3
+				pe.Parent = blob
+			end
+		end
+	end
+
+	-- ── Koi-Teich (Nordwesten): Steinring, Wasser, Seerosen-Lichter ──
+	do
+		local px, pz = HUB_X - 32, HUB_Z + 30
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(1.0, 17, 17),
+			cframe = CFrame.new(px, 1.4, pz) * CFrame.Angles(0, 0, math.rad(90)),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(105, 102, 96),
+		}, hubFolder)
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(0.7, 14.5, 14.5),
+			cframe = CFrame.new(px, 1.65, pz) * CFrame.Angles(0, 0, math.rad(90)),
+			material = Enum.Material.Glass,
+			color = Color3.fromRGB(72, 160, 205),
+			transparency = 0.4, collide = false,
+		}, hubFolder)
+		for _ = 1, 4 do
+			local lily = part({
+				shape = Enum.PartType.Cylinder,
+				size = Vector3.new(0.12, rng:NextNumber(1.2, 2.0), rng:NextNumber(1.2, 2.0)),
+				cframe = CFrame.new(px + rng:NextNumber(-5, 5), 2.05, pz + rng:NextNumber(-5, 5))
+					* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(90)),
+				material = Enum.Material.Grass,
+				color = Color3.fromRGB(70, 150, 70),
+				collide = false,
+			}, hubFolder)
+			if rng:NextNumber() < 0.6 then
+				local bloom = part({
+					shape = Enum.PartType.Ball,
+					size = Vector3.new(0.5, 0.5, 0.5),
+					pos = lily.Position + Vector3.new(0, 0.3, 0),
+					material = Enum.Material.Neon,
+					color = Color3.fromRGB(255, 170, 200),
+					collide = false,
+				}, hubFolder)
+				bloom.CastShadow = false
+			end
+		end
 	end
 end
 
@@ -1774,6 +2096,7 @@ function HubService.init(ds, netRef)
 	-- Teleport back to hub
 	net.TeleportToHub.OnServerEvent:Connect(function(player)
 		safeTeleport(player, CFrame.new(HubService.getSpawnPosition() + Vector3.new(0, 3, 0)))
+		net.PlaySFX:FireClient(player, "Teleport")
 		net.ApplyLayerLighting:FireClient(player, 0)  -- 0 = hub lighting
 	end)
 
@@ -1784,7 +2107,7 @@ return HubService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">MonsterService</string>
           <string name="Source"><![CDATA[-- MonsterService.lua — Per-layer mobs with telegraph→attack AI, loot, bosses
@@ -2049,7 +2372,7 @@ function MonsterService.damageMonster(player, model, damage)
 		if m.state ~= "dead" then body.Color = oc end
 	end)
 
-	net.HitEffect:FireClient(player, body.Position, m.baseColor, false, nil, damage, nil)
+	net.HitEffect:FireClient(player, body.Position, m.baseColor, false, nil, damage, nil, "monster")
 
 	if m.hp <= 0 then
 		m.state = "dead"
@@ -2084,7 +2407,7 @@ function MonsterService.damageMonster(player, model, damage)
 		end
 
 		-- Death effect: dissolve
-		net.HitEffect:FireClient(player, m.body.Position, m.baseColor, true, nil, nil, nil)
+		net.HitEffect:FireClient(player, m.body.Position, m.baseColor, true, nil, nil, nil, "monster")
 		local respawnPos = m.homePos
 		local layerIdx   = m.layerIdx
 		local isBoss     = m.isBoss
@@ -2194,7 +2517,7 @@ local function doAttack(m, targetRoot)
 					dmg = math.ceil(dmg * (1 - Balance.BLOCK_REDUCTION))
 				end
 				h:TakeDamage(dmg)
-				net.HitEffect:FireClient(p, r.Position, Color3.fromRGB(255, 60, 40), false, nil, nil, nil)
+				net.HitEffect:FireClient(p, r.Position, Color3.fromRGB(255, 60, 40), false, nil, nil, nil, "hurt")
 			end
 		end
 
@@ -2380,7 +2703,7 @@ return MonsterService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">RebirthService</string>
           <string name="Source"><![CDATA[-- RebirthService.lua — Reset progress for permanent multiplier + tokens
@@ -2419,6 +2742,7 @@ function RebirthService.tryRebirth(player)
 		pdata.rebirthTokens = (pdata.rebirthTokens or 0) + Balance.REBIRTH_TOKENS
 
 		dataService.sendUpdate(player)
+		net.PlaySFX:FireClient(player, "Chime")
 		net.RebirthDone:FireClient(player, pdata.rebirths, Balance.rebirthMult(pdata.rebirths))
 
 		-- Move back to hub spawn
@@ -2442,7 +2766,7 @@ return RebirthService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">StatService</string>
           <string name="Source"><![CDATA[-- StatService.lua — Handles stat upgrades and sword tier upgrades
@@ -2500,7 +2824,7 @@ return StatService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">WorldGenerator</string>
           <string name="Source"><![CDATA[-- WorldGenerator.lua — Reusable procedural layer generator (see GAME_DESIGN 6.5)
@@ -2685,11 +3009,13 @@ local function writeTerrain(cfg, heightAt)
 	end
 end
 
--- ── Decorative prop builders ──────────────────────────────────────────────────
-local function makeTree(rng, pos, scale, parent, leafColor)
-	-- Prefer a real asset if the user dropped one into ReplicatedStorage/Assets/Trees
-	if spawnTemplate("Trees", rng, pos, scale, parent) then return end
+-- ── Decorative prop builders (theme-aware) ────────────────────────────────────
+-- Jedes Biom hat eine eigene Vegetations-Sprache statt überall derselben
+-- grünen Blob-Bäume: forest/gold = Laubbäume, crystal = Kristallformationen,
+-- shadow = tote Bäume + Leuchtpilze, lava = verkohlte Dornen + Glutrisse,
+-- sky = Blütenbäume mit fallenden Blütenblättern.
 
+local function buildLeafTree(rng, pos, scale, parent, leafColor, golden)
 	local tH = 9 * scale
 	local trunk = Instance.new("Part")
 	trunk.Shape = Enum.PartType.Cylinder
@@ -2720,14 +3046,231 @@ local function makeTree(rng, pos, scale, parent, leafColor)
 			leafColor:Lerp(Color3.fromRGB(40, 90, 35), rng:NextNumber(0, 0.4)),
 			parent)
 	end
+
+	-- Goldener Hain: ein paar glühende "Früchte" in der Krone
+	if golden then
+		for _ = 1, rng:NextInteger(2, 4) do
+			local fruit = Instance.new("Part")
+			fruit.Shape = Enum.PartType.Ball
+			fruit.Size = Vector3.new(0.5, 0.5, 0.5) * scale
+			fruit.Position = pos + Vector3.new(
+				rng:NextNumber(-3, 3) * scale,
+				tH + rng:NextNumber(-1, 2.5) * scale,
+				rng:NextNumber(-3, 3) * scale)
+			fruit.Material = Enum.Material.Neon
+			fruit.Color = Color3.fromRGB(255, 214, 70)
+			fruit.Anchored = true
+			fruit.CanCollide = false
+			fruit.CastShadow = false
+			fruit.Parent = parent
+		end
+	end
 end
 
-local function makeBoulder(rng, pos, scale, parent)
+local function buildCrystalCluster(rng, pos, scale, parent, glowColor)
+	-- 3-5 schief stehende Neon-Prismen, gemeinsame Lichtquelle
+	local count = rng:NextInteger(3, 5)
+	local main = nil
+	for i = 1, count do
+		local h = (i == 1 and rng:NextNumber(7, 11) or rng:NextNumber(2.5, 6)) * scale
+		local w = h * rng:NextNumber(0.18, 0.3)
+		local c = Instance.new("Part")
+		c.Size = Vector3.new(w, h, w)
+		c.CFrame = CFrame.new(
+				pos.X + (i == 1 and 0 or rng:NextNumber(-2.2, 2.2) * scale),
+				pos.Y + h * 0.38,
+				pos.Z + (i == 1 and 0 or rng:NextNumber(-2.2, 2.2) * scale))
+			* CFrame.Angles(
+				math.rad(rng:NextNumber(-16, 16)),
+				rng:NextNumber(0, math.pi),
+				math.rad(45 + rng:NextNumber(-16, 16)))
+		c.Material = Enum.Material.Neon
+		c.Color = glowColor:Lerp(Color3.fromRGB(255, 255, 255), rng:NextNumber(0, 0.35))
+		c.Transparency = 0.12
+		c.Anchored = true
+		c.CanCollide = (i == 1)
+		c.Parent = parent
+		if i == 1 then main = c end
+	end
+	if main then
+		local light = Instance.new("PointLight")
+		light.Color = glowColor
+		light.Range = 14 * scale
+		light.Brightness = 0.7
+		light.Parent = main
+	end
+end
+
+local function buildDeadTree(rng, pos, scale, parent)
+	local tH = 8 * scale
+	local trunk = Instance.new("Part")
+	trunk.Shape = Enum.PartType.Cylinder
+	trunk.Size = Vector3.new(tH, 1.1 * scale, 1.1 * scale)
+	trunk.CFrame = CFrame.new(pos.X, pos.Y + tH / 2, pos.Z)
+		* CFrame.Angles(math.rad(rng:NextNumber(-6, 6)), 0, math.rad(90 + rng:NextNumber(-6, 6)))
+	trunk.Material = Enum.Material.Wood
+	trunk.Color = Color3.fromRGB(48, 40, 36)
+	trunk.Anchored = true
+	trunk.Parent = parent
+
+	-- Kahle, verdrehte Äste statt einer Krone
+	for _ = 1, rng:NextInteger(3, 5) do
+		local bL = rng:NextNumber(2.5, 5) * scale
+		local ang = rng:NextNumber(0, math.pi * 2)
+		local branch = Instance.new("Part")
+		branch.Shape = Enum.PartType.Cylinder
+		branch.Size = Vector3.new(bL, 0.45 * scale, 0.45 * scale)
+		branch.CFrame = CFrame.new(
+				pos.X + math.cos(ang) * bL * 0.4,
+				pos.Y + tH * rng:NextNumber(0.55, 0.95),
+				pos.Z + math.sin(ang) * bL * 0.4)
+			* CFrame.Angles(0, -ang, math.rad(rng:NextNumber(15, 55)))
+		branch.Material = Enum.Material.Wood
+		branch.Color = Color3.fromRGB(42, 35, 32)
+		branch.Anchored = true
+		branch.CanCollide = false
+		branch.Parent = parent
+	end
+end
+
+local function buildGlowMushroom(rng, pos, scale, parent, glowColor)
+	local sH = rng:NextNumber(1.2, 2.4) * scale
+	local stem = Instance.new("Part")
+	stem.Shape = Enum.PartType.Cylinder
+	stem.Size = Vector3.new(sH, 0.5 * scale, 0.5 * scale)
+	stem.CFrame = CFrame.new(pos.X, pos.Y + sH / 2, pos.Z)
+		* CFrame.Angles(0, 0, math.rad(90 + rng:NextNumber(-8, 8)))
+	stem.Material = Enum.Material.SmoothPlastic
+	stem.Color = Color3.fromRGB(225, 218, 235)
+	stem.Anchored = true
+	stem.CanCollide = false
+	stem.Parent = parent
+
+	local cap = ellipsoid(
+		Vector3.new(1.7, 1.0, 1.7) * scale,
+		CFrame.new(pos.X, pos.Y + sH + 0.25 * scale, pos.Z),
+		Enum.Material.Neon, glowColor, parent)
+	cap.Transparency = 0.1
+	local light = Instance.new("PointLight")
+	light.Color = glowColor
+	light.Range = 9 * scale
+	light.Brightness = 0.55
+	light.Parent = cap
+end
+
+local function buildCharredSpike(rng, pos, scale, parent)
+	-- Verkohlter Dornbaum: dunkler Kegel + glühender Riss am Fuß
+	local tH = rng:NextNumber(7, 11) * scale
+	local spike = Instance.new("Part")
+	spike.Size = Vector3.new(1.6 * scale, tH, 1.6 * scale)
+	spike.CFrame = CFrame.new(pos.X, pos.Y + tH / 2, pos.Z)
+		* CFrame.Angles(
+			math.rad(rng:NextNumber(-7, 7)),
+			rng:NextNumber(0, math.pi),
+			math.rad(rng:NextNumber(-7, 7)))
+	spike.Material = Enum.Material.Basalt
+	spike.Color = Color3.fromRGB(32, 28, 28)
+	spike.Anchored = true
+	spike.Parent = parent
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Wedge
+	mesh.Scale = Vector3.new(1, 1, 1)
+	mesh.Parent = spike
+
+	local crack = Instance.new("Part")
+	crack.Size = Vector3.new(0.5 * scale, 1.6 * scale, 0.5 * scale)
+	crack.Position = pos + Vector3.new(
+		rng:NextNumber(-0.6, 0.6), 0.6 * scale, rng:NextNumber(-0.6, 0.6))
+	crack.Material = Enum.Material.Neon
+	crack.Color = Color3.fromRGB(255, 110, 30)
+	crack.Anchored = true
+	crack.CanCollide = false
+	crack.CastShadow = false
+	crack.Parent = parent
+end
+
+local function buildBlossomTree(rng, pos, scale, parent, withPetals)
+	local tH = 9 * scale
+	local trunk = Instance.new("Part")
+	trunk.Shape = Enum.PartType.Cylinder
+	trunk.Size = Vector3.new(tH, 1.3 * scale, 1.3 * scale)
+	trunk.CFrame = CFrame.new(pos.X, pos.Y + tH / 2, pos.Z)
+		* CFrame.Angles(math.rad(rng:NextNumber(-5, 5)), 0, math.rad(90 + rng:NextNumber(-5, 5)))
+	trunk.Material = Enum.Material.Wood
+	trunk.Color = Color3.fromRGB(122, 102, 96)
+	trunk.Anchored = true
+	trunk.Parent = parent
+
+	local petalColor = Color3.fromRGB(248, 198, 222)
+	for c = 1, 3 do
+		local w = (7.5 - c * 1.5) * scale
+		local blob = ellipsoid(
+			Vector3.new(w, w * rng:NextNumber(0.5, 0.65), w),
+			CFrame.new(
+					pos.X + rng:NextNumber(-1.8, 1.8),
+					pos.Y + tH - 0.5 + (c - 1) * 1.6 * scale,
+					pos.Z + rng:NextNumber(-1.8, 1.8))
+				* CFrame.Angles(math.rad(rng:NextNumber(-8, 8)), rng:NextNumber(0, math.pi), 0),
+			Enum.Material.Grass,
+			petalColor:Lerp(Color3.fromRGB(255, 246, 250), rng:NextNumber(0, 0.5)),
+			parent)
+
+		-- Fallende Blütenblätter nur an manchen Bäumen (Performance)
+		if withPetals and c == 1 then
+			local pe = Instance.new("ParticleEmitter")
+			pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			pe.Rate = 1.6
+			pe.Lifetime = NumberRange.new(3, 5)
+			pe.Speed = NumberRange.new(0.5, 1.2)
+			pe.SpreadAngle = Vector2.new(35, 35)
+			pe.Acceleration = Vector3.new(0.4, -1.6, 0.2)
+			pe.Size = NumberSequence.new(0.22)
+			pe.Color = ColorSequence.new(petalColor)
+			pe.LightEmission = 0.25
+			pe.Parent = blob
+		end
+	end
+end
+
+local function makeTree(rng, pos, scale, parent, leafColor, theme)
+	-- Prefer a real asset if the user dropped one into ReplicatedStorage/Assets/Trees
+	if spawnTemplate("Trees", rng, pos, scale, parent) then return end
+
+	if theme == "crystal" then
+		buildCrystalCluster(rng, pos, scale, parent, leafColor)
+	elseif theme == "shadow" then
+		if rng:NextNumber() < 0.3 then
+			buildGlowMushroom(rng, pos, scale * 1.4, parent, leafColor)
+		else
+			buildDeadTree(rng, pos, scale, parent)
+		end
+	elseif theme == "lava" then
+		buildCharredSpike(rng, pos, scale, parent)
+	elseif theme == "sky" then
+		buildBlossomTree(rng, pos, scale, parent, rng:NextNumber() < 0.3)
+	else
+		buildLeafTree(rng, pos, scale, parent, leafColor, theme == "gold")
+	end
+end
+
+local THEME_ROCK = {
+	forest  = { material = Enum.Material.Slate,   tint = nil },
+	gold    = { material = Enum.Material.Sandstone, tint = Color3.fromRGB(178, 152, 105) },
+	crystal = { material = Enum.Material.Glacier, tint = Color3.fromRGB(168, 205, 218) },
+	shadow  = { material = Enum.Material.Slate,   tint = Color3.fromRGB(62, 54, 78) },
+	lava    = { material = Enum.Material.Basalt,  tint = Color3.fromRGB(45, 38, 38) },
+	sky     = { material = Enum.Material.Marble,  tint = Color3.fromRGB(212, 222, 238) },
+}
+
+local function makeBoulder(rng, pos, scale, parent, theme)
 	if spawnTemplate("Rocks", rng, pos, scale, parent) then return end
 
+	local style = THEME_ROCK[theme] or THEME_ROCK.forest
 	-- Two overlapping squashed blobs read as one organic rock
 	local g = rng:NextInteger(95, 140)
-	local color = Color3.fromRGB(g, g, g)
+	local color = style.tint
+		and style.tint:Lerp(Color3.fromRGB(g, g, g), 0.3)
+		or Color3.fromRGB(g, g, g)
 	for i = 1, 2 do
 		local sz = Vector3.new(
 			rng:NextNumber(2.2, 4.5),
@@ -2739,8 +3282,83 @@ local function makeBoulder(rng, pos, scale, parent)
 					pos.Y + sz.Y * 0.3,
 					pos.Z + (i - 1) * rng:NextNumber(-1.4, 1.4))
 				* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(rng:NextNumber(-10, 10))),
-			Enum.Material.Slate, color, parent)
+			style.material, color, parent)
 		blob.CanCollide = (i == 1)   -- main blob blocks movement like before
+	end
+
+	-- Vulkan-Felsen glimmen an einer Stelle
+	if theme == "lava" and rng:NextNumber() < 0.4 then
+		local ember = Instance.new("Part")
+		ember.Size = Vector3.new(0.7, 0.25, 0.7) * scale
+		ember.Position = pos + Vector3.new(rng:NextNumber(-1, 1), 0.4 * scale, rng:NextNumber(-1, 1))
+		ember.Material = Enum.Material.Neon
+		ember.Color = Color3.fromRGB(255, 96, 24)
+		ember.Anchored = true
+		ember.CanCollide = false
+		ember.CastShadow = false
+		ember.Parent = parent
+	end
+end
+
+-- Bodendeko: Grasbüschel/Blumen (forest, gold, sky) bzw. Glutfunken (lava)
+local function makeGroundTuft(rng, pos, parent, leafColor, theme)
+	if theme == "lava" then
+		local ember = Instance.new("Part")
+		ember.Size = Vector3.new(0.35, 0.35, 0.35)
+		ember.Position = pos + Vector3.new(0, 0.2, 0)
+		ember.Material = Enum.Material.Neon
+		ember.Color = Color3.fromRGB(255, 120, 40)
+		ember.Anchored = true
+		ember.CanCollide = false
+		ember.CastShadow = false
+		ember.Parent = parent
+		return
+	end
+	if theme == "crystal" or theme == "shadow" then
+		-- kleine Leucht-Splitter am Boden
+		local shard = Instance.new("Part")
+		shard.Size = Vector3.new(0.3, rng:NextNumber(0.5, 1.1), 0.3)
+		shard.CFrame = CFrame.new(pos + Vector3.new(0, 0.3, 0))
+			* CFrame.Angles(math.rad(rng:NextNumber(-20, 20)), rng:NextNumber(0, math.pi), math.rad(45))
+		shard.Material = Enum.Material.Neon
+		shard.Color = leafColor
+		shard.Transparency = 0.25
+		shard.Anchored = true
+		shard.CanCollide = false
+		shard.CastShadow = false
+		shard.Parent = parent
+		return
+	end
+
+	local tuftH = rng:NextNumber(0.6, 1.4)
+	local tuft = Instance.new("Part")
+	tuft.Shape = Enum.PartType.Cylinder
+	tuft.Size = Vector3.new(tuftH, 0.2, 0.2)
+	tuft.CFrame = CFrame.new(pos + Vector3.new(0, tuftH / 2, 0))
+		* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(90 + rng:NextNumber(-18, 18)))
+	tuft.Material = Enum.Material.Grass
+	tuft.Color = leafColor:Lerp(Color3.fromRGB(48, 130, 38), 0.5)
+	tuft.Anchored = true
+	tuft.CanCollide = false
+	tuft.CastShadow = false
+	tuft.Parent = parent
+
+	-- gelegentlich eine Blüte obendrauf
+	if rng:NextNumber() < 0.3 then
+		local bloom = Instance.new("Part")
+		bloom.Shape = Enum.PartType.Ball
+		bloom.Size = Vector3.new(0.34, 0.34, 0.34)
+		bloom.Position = pos + Vector3.new(0, tuftH + 0.1, 0)
+		bloom.Material = Enum.Material.Neon
+		bloom.Color = ({
+			Color3.fromRGB(255, 120, 160),
+			Color3.fromRGB(255, 214, 70),
+			Color3.fromRGB(160, 160, 255),
+		})[rng:NextInteger(1, 3)]
+		bloom.Anchored = true
+		bloom.CanCollide = false
+		bloom.CastShadow = false
+		bloom.Parent = parent
 	end
 end
 
@@ -2830,7 +3448,7 @@ local function buildRockFormation(rng, pos, parent)
 	end
 	for _ = 1, 4 do
 		makeBoulder(rng, pos + Vector3.new(
-			rng:NextNumber(-5, 5), 0, rng:NextNumber(-5, 5)), 1.4, parent)
+			rng:NextNumber(-5, 5), 0, rng:NextNumber(-5, 5)), 1.4, parent, "forest")
 	end
 end
 
@@ -2950,13 +3568,14 @@ function WorldGenerator.generate(cfg)
 		folder)
 
 	-- 5) Decorative scattering (trees + boulders), clustered, varied
+	local theme = cfg.layer and cfg.layer.theme or "forest"
 	local treeSpots = scatterPositions(cfg, heightAt, landmarks, cfg.treeCount or 90, 110, 500)
 	for _, s in ipairs(treeSpots) do
-		makeTree(rng, s.pos, s.scale, folder, leafColor)
+		makeTree(rng, s.pos, s.scale, folder, leafColor, theme)
 	end
 	local boulderSpots = scatterPositions(cfg, heightAt, landmarks, cfg.boulderCount or 30, 90, 900)
 	for _, s in ipairs(boulderSpots) do
-		makeBoulder(rng, s.pos, s.scale, folder)
+		makeBoulder(rng, s.pos, s.scale, folder, theme)
 	end
 
 	-- 6) Interactive spots for WorldService (bamboo clusters + ore)
@@ -3124,6 +3743,7 @@ function WorldGenerator.populateChunk(cfg, heightAt, ci, cj, folder)
 	end
 
 	-- Trees: separate mask channel so woods and bamboo fields interleave
+	local theme = layer and layer.theme or "forest"
 	for _ = 1, 9 do
 		local x = x0 + rng:NextNumber(3, CHUNK - 3)
 		local z = z0 + rng:NextNumber(3, CHUNK - 3)
@@ -3131,7 +3751,7 @@ function WorldGenerator.populateChunk(cfg, heightAt, ci, cj, folder)
 		if mask > 0.05 and not nearCenter(x, z, 32) and isFree(x, z, 7) then
 			table.insert(placed, Vector3.new(x, 0, z))
 			makeTree(rng, Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
-				rng:NextNumber(0.85, 1.5), folder, leafColor)
+				rng:NextNumber(0.85, 1.5), folder, leafColor, theme)
 		end
 	end
 
@@ -3143,8 +3763,20 @@ function WorldGenerator.populateChunk(cfg, heightAt, ci, cj, folder)
 			if not nearCenter(x, z, 30) and isFree(x, z, 5) then
 				table.insert(placed, Vector3.new(x, 0, z))
 				makeBoulder(rng, Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
-					rng:NextNumber(0.9, 1.6), folder)
+					rng:NextNumber(0.9, 1.6), folder, theme)
 			end
+		end
+	end
+
+	-- Bodendeko: Grasbüschel, Blumen, Splitter, Glut — billig, aber macht den
+	-- Boden lebendig (CanCollide/CastShadow aus → kaum Kosten)
+	for _ = 1, 10 do
+		local x = x0 + rng:NextNumber(2, CHUNK - 2)
+		local z = z0 + rng:NextNumber(2, CHUNK - 2)
+		if isFree(x, z, 2) then
+			makeGroundTuft(rng,
+				Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
+				folder, leafColor, theme)
 		end
 	end
 
@@ -3174,7 +3806,7 @@ return WorldGenerator
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">WorldService</string>
           <string name="Source"><![CDATA[-- WorldService.lua — Builds and manages the 6-layer bamboo forest world
@@ -3198,12 +3830,13 @@ local net         = nil
 
 -- ── Helpers ──────────────────────────────────────────────────────────────────
 
-local function broadcastHit(pos, color, died, combo, damage, sliceInfo)
+-- kind steuert den Treffer-Sound auf dem Client: "bamboo" | "rock" | "monster"
+local function broadcastHit(pos, color, died, combo, damage, sliceInfo, kind)
 	for _, p in ipairs(Players:GetPlayers()) do
 		local char = p.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		if root and (root.Position - pos).Magnitude <= 80 then
-			net.HitEffect:FireClient(p, pos, color, died, combo, damage, sliceInfo)
+			net.HitEffect:FireClient(p, pos, color, died, combo, damage, sliceInfo, kind)
 		end
 	end
 end
@@ -3270,12 +3903,18 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 
 	local segGroups = {}
 
+	-- Echter Bambus ist unten dunkler/satter und wird nach oben heller —
+	-- der Verlauf + Blattquirle an den Nodes lassen die Stange lebendig wirken
+	local topColor = layer.bambooColor:Lerp(Color3.fromRGB(225, 240, 200), 0.3)
+	local nodeLeafColor = layer.bambooColor:Lerp(Color3.fromRGB(55, 140, 48), 0.45)
+
 	for s = 1, segCount do
 		local group = {}
 		segGroups[s] = group
 
 		-- Stalk tapers toward the top + subtle gloss → reads as a plant, not a pipe
 		local thMul = 1 - (s - 1) / segCount * 0.24
+		local segColor = layer.bambooColor:Lerp(topColor, (s - 1) / math.max(1, segCount - 1))
 		local segY = baseY + (s - 0.5) * segH
 		local seg  = Instance.new("Part")
 		seg.Shape   = Enum.PartType.Cylinder
@@ -3283,11 +3922,11 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		seg.CFrame  = CFrame.new(bx, segY, bz) * CFrame.Angles(0, 0, math.rad(90))
 		seg.Material = Enum.Material.SmoothPlastic
 		seg.Reflectance = 0.05
-		seg.Color    = layer.bambooColor
+		seg.Color    = segColor
 		seg.Anchored = true
 		seg.CanCollide = false
 		seg.Parent  = model
-		table.insert(group, { part = seg, color = layer.bambooColor })
+		table.insert(group, { part = seg, color = segColor })
 
 		if s < segCount then
 			local ring = Instance.new("Part")
@@ -3300,6 +3939,26 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 			ring.CanCollide = false
 			ring.Parent  = model
 			table.insert(group, { part = ring, color = layer.nodeColor })
+
+			-- Blattquirl: ab der Mitte trägt jeder zweite Node ein Blattpaar
+			if s >= math.ceil(segCount / 2) and s % 2 == 0 then
+				local baseAng = rng:NextNumber(0, math.pi * 2)
+				for l = 0, 1 do
+					local ang  = baseAng + l * math.pi + rng:NextNumber(-0.4, 0.4)
+					local leaf = Instance.new("Part")
+					leaf.Size  = Vector3.new(1.9, 0.08, 0.6)
+					leaf.CFrame = CFrame.new(bx, baseY + s * segH + 0.15, bz)
+						* CFrame.Angles(0, ang, math.rad(-24))
+						* CFrame.new(1.0, 0, 0)
+					leaf.Material = Enum.Material.Grass
+					leaf.Color    = nodeLeafColor
+					leaf.Anchored = true
+					leaf.CanCollide = false
+					leaf.CastShadow = false
+					leaf.Parent  = model
+					table.insert(group, { part = leaf, color = nodeLeafColor })
+				end
+			end
 		end
 	end
 
@@ -3436,7 +4095,7 @@ local function registerBamboo(hitbox, layerIdx, segGroups, segH, model, bx, bz, 
 		if cuts < 1 then
 			-- Not through yet — feedback hit without a slice
 			broadcastHit(Vector3.new(bx, baseY + segsLeft * segH, bz),
-				layer.bambooColor, false, combo, damage, nil)
+				layer.bambooColor, false, combo, damage, nil, "bamboo")
 			return
 		end
 		accum -= cuts * segHP
@@ -3494,7 +4153,7 @@ local function registerBamboo(hitbox, layerIdx, segGroups, segH, model, bx, bz, 
 		end
 		dataService.sendUpdate(player)
 
-		broadcastHit(sliceInfo.slicePos, layer.bambooColor, died, combo, damage, sliceInfo)
+		broadcastHit(sliceInfo.slicePos, layer.bambooColor, died, combo, damage, sliceInfo, "bamboo")
 
 		if died then
 			hitbox:SetAttribute("IsDead", true)
@@ -3555,16 +4214,21 @@ local function buildRock(layerIdx, rx, rz, zoneFolder, baseY)
 		table.insert(rockParts, { part = chunk, color = chunk.Color })
 	end
 
-	-- Ore sparkles tinted to layer glow
-	for _ = 1, rng:NextInteger(2, 3) do
+	-- Erz-Adern: kleine Kristallprismen statt schwebender Würfel
+	for _ = 1, rng:NextInteger(2, 4) do
 		local sp = Instance.new("Part")
-		sp.Size  = Vector3.new(0.38, 0.38, 0.38)
+		sp.Size  = Vector3.new(0.32, rng:NextNumber(0.7, 1.3), 0.32)
 		sp.CFrame = CFrame.new(
-			rx + rng:NextNumber(-1.6, 1.6),
-			baseY + rng:NextNumber(0.5, 2.4),
-			rz + rng:NextNumber(-1.6, 1.6))
+				rx + rng:NextNumber(-1.6, 1.6),
+				baseY + rng:NextNumber(0.5, 2.4),
+				rz + rng:NextNumber(-1.6, 1.6))
+			* CFrame.Angles(
+				math.rad(rng:NextNumber(-30, 30)),
+				rng:NextNumber(0, math.pi),
+				math.rad(45 + rng:NextNumber(-15, 15)))
 		sp.Material  = Enum.Material.Neon
 		sp.Color     = layer.glowColor
+		sp.Transparency = 0.1
 		sp.Anchored  = true
 		sp.CanCollide = false
 		sp.CastShadow = false
@@ -3622,7 +4286,7 @@ local function buildRock(layerIdx, rx, rz, zoneFolder, baseY)
 		end
 
 		local died = bambooHP[rock] <= 0
-		broadcastHit(rock.Position, layer.glowColor, died, combo, damage, nil)
+		broadcastHit(rock.Position, layer.glowColor, died, combo, damage, nil, "rock")
 
 		if died then
 			rock:SetAttribute("IsDead", true)
@@ -4183,15 +4847,15 @@ return WorldService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="19">
+  <Item class="StarterPlayer" referent="20">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="20">
+    <Item class="StarterPlayerScripts" referent="21">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="21">
+      <Item class="LocalScript" referent="22">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[-- Client.client.lua — Main client entry point
@@ -4209,6 +4873,7 @@ local netFolder = RS:WaitForChild("BambooNet")
 local REMOTE_NAMES = {
 	"UpdateData", "HitEffect", "Notify", "LayerUnlocked",
 	"OpenLayerSelect", "ApplyLayerLighting", "OpenForge", "RebirthDone",
+	"PlaySFX",
 	"ChopTarget", "SlamAttack", "UpgradeStat",
 	"AttackEntity", "SetBlocking",
 	"TeleportToLayer", "TeleportToHub",
@@ -4221,6 +4886,7 @@ end
 
 -- ── Load shared modules ───────────────────────────────────────────────────────
 local Layers = require(RS:WaitForChild("Shared"):WaitForChild("Layers"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 -- ── Load client controllers ───────────────────────────────────────────────────
 local Controllers     = script.Parent:WaitForChild("Controllers")
@@ -4239,19 +4905,11 @@ InputCtrl.init(net, EffectsCtrl, UICtrl)
 -- known-good ids so every zone always ends up with music.
 local TweenService = game:GetService("TweenService")
 
--- ▼▼ HIER eigene Musik-IDs eintragen (erste ladbare ID gewinnt) ▼▼
-local TRACK_HUB    = {  -- gemütlich/fröhlich
-	"rbxassetid://9043887091", "rbxassetid://9046863017", "rbxassetid://1843463175",
-}
-local TRACK_FOREST = {  -- hell, entspannt (Grüner/Goldener Hain)
-	"rbxassetid://9046896990", "rbxassetid://9045766818", "rbxassetid://1843463175",
-}
-local TRACK_MYSTIC = {  -- geheimnisvoll (Kristall/Schatten)
-	"rbxassetid://9046897116", "rbxassetid://1843463175",
-}
-local TRACK_EPIC   = {  -- treibend (Vulkan/Himmel)
-	"rbxassetid://9046515361", "rbxassetid://1837879082",
-}
+-- Musik-IDs leben in Shared/Assets.lua (alle verifiziert; erste ladbare gewinnt)
+local TRACK_HUB    = Assets.MUSIC.Hub
+local TRACK_FOREST = Assets.MUSIC.Forest
+local TRACK_MYSTIC = Assets.MUSIC.Mystic
+local TRACK_EPIC   = Assets.MUSIC.Epic
 local MUSIC_VOLUME = 0.27
 
 local function zoneTracks(layerIdx)
@@ -4309,6 +4967,15 @@ local function playZoneMusic(layerIdx)
 end
 
 playZoneMusic(0)  -- start with hub music
+
+-- Meshes, Texturen und SFX im Hintergrund vorladen (kein Ruckeln beim ersten
+-- Schwerthieb / Treffer)
+task.spawn(function()
+	local ContentProvider = game:GetService("ContentProvider")
+	pcall(function()
+		ContentProvider:PreloadAsync(Assets.preloadList())
+	end)
+end)
 
 -- ── Local data cache ──────────────────────────────────────────────────────────
 local localData = { coins = 0, xp = 0, level = 1, totalFelled = 0, totalMined = 0,
@@ -4437,7 +5104,7 @@ end
 
 net.ApplyLayerLighting.OnClientEvent:Connect(applyZone)
 
-net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage, sliceInfo)
+net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage, sliceInfo, kind)
 	EffectsCtrl.shake(died and 1.25 or 0.38)
 	EffectsCtrl.spawnFragments(hitPos, color, died and 9 or 3)
 
@@ -4447,10 +5114,23 @@ net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage,
 		EffectsCtrl.playSliceSound(sliceInfo.slicePos or hitPos)
 	end
 
+	-- Treffer-Sound je nach Ziel (Stein, Monster, Spieler-Schaden)
+	if kind and kind ~= "bamboo" then
+		EffectsCtrl.playHitSound(kind, hitPos, died)
+	end
+
 	if combo then UICtrl.showCombo(combo) end
 	if damage then
 		local isCrit = combo and combo >= 5
 		EffectsCtrl.spawnDamageNum(hitPos, damage, isCrit)
+	end
+end)
+
+-- Server-seitig ausgelöste UI-/Welt-Sounds (Schmiede, Portal, Rebirth, Daily)
+net.PlaySFX.OnClientEvent:Connect(function(key, volume, pitch)
+	local id = Assets.SFX[key]
+	if id then
+		Assets.play2D(id, volume or 0.7, pitch)
 	end
 end)
 
@@ -4513,11 +5193,11 @@ InputCtrl.autoEquip()
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="22">
+      <Item class="Folder" referent="23">
         <Properties>
           <string name="Name">Controllers</string>
         </Properties>
-        <Item class="ModuleScript" referent="23">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">EffectsController</string>
             <string name="Source"><![CDATA[-- EffectsController.lua — All juice: shake, fragments, numbers, slice, sounds
@@ -4526,6 +5206,9 @@ local EffectsController = {}
 local TweenService = game:GetService("TweenService")
 local RunService   = game:GetService("RunService")
 local Debris       = game:GetService("Debris")
+local RS           = game:GetService("ReplicatedStorage")
+
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local camera   = workspace.CurrentCamera
 local shakeAmt = 0
@@ -4688,28 +5371,35 @@ function EffectsController.spawnFallingTops(sliceInfo)
 	end
 end
 
--- ── Slice Sound ───────────────────────────────────────────────────────────────
+-- ── Sounds (Asset-Library, siehe Shared/Assets.lua) ──────────────────────────
 function EffectsController.playSliceSound(position)
-	local p = Instance.new("Part")
-	p.Size  = Vector3.new(0.2, 0.2, 0.2)
-	p.Transparency = 1
-	p.Anchored = true
-	p.CanCollide = false
-	p.Position = position
-	p.Parent   = workspace
+	Assets.playAt(position, Assets.SFX.Slice, 0.9, 1.0, 1.25)
+end
 
-	local s = Instance.new("Sound")
-	s.SoundId = "rbxasset://sounds/swordlunge.wav"
-	s.Volume  = 1.0
-	s.PlaybackSpeed = 1 + math.random() * 0.2
-	s.Parent  = p
-	s:Play()
-	Debris:AddItem(p, 2)
+-- Treffer-Sound je nach Ziel-Art; der Server schickt kind über HitEffect mit
+function EffectsController.playHitSound(kind, position, died)
+	if kind == "rock" then
+		if died then
+			Assets.playAt(position, Assets.SFX.RockBreak, 0.9, 0.95, 1.1)
+		else
+			Assets.playAt(position, Assets.SFX.RockHit, 0.7, 0.9, 1.2)
+		end
+	elseif kind == "monster" then
+		if died then
+			Assets.playAt(position, Assets.SFX.MonsterDeath, 0.85, 0.95, 1.1)
+		else
+			Assets.playAt(position, Assets.SFX.MonsterHit, 0.55, 1.0, 1.3)
+		end
+	elseif kind == "hurt" then
+		-- Spieler wurde getroffen: dumpfer, tiefer
+		Assets.playAt(position, Assets.SFX.RockHit, 0.6, 0.55, 0.7)
+	end
 end
 
 -- ── Coin Magnet Popup ─────────────────────────────────────────────────────────
 function EffectsController.spawnCoinPopup(screenGui, amount)
 	if amount <= 0 then return end
+	Assets.play2D(Assets.SFX.Coin, 0.35, 1.1 + math.random() * 0.25)
 	local lbl = Instance.new("TextLabel")
 	lbl.Size  = UDim2.new(0, 180, 0, 38)
 	lbl.Position = UDim2.new(0, 12, 0, 110)
@@ -4730,6 +5420,7 @@ end
 
 -- ── Level-Up Flash ────────────────────────────────────────────────────────────
 function EffectsController.showLevelUp(screenGui, newLevel)
+	Assets.play2D(Assets.SFX.Chime, 0.7)
 	local lbl = Instance.new("TextLabel")
 	lbl.Size  = UDim2.new(0, 500, 0, 90)
 	lbl.Position = UDim2.new(0.5, -250, 0.4, 0)
@@ -4751,6 +5442,7 @@ end
 
 -- ── Layer Unlock Flash ────────────────────────────────────────────────────────
 function EffectsController.showLayerUnlocked(screenGui, layerName, layerColor)
+	Assets.play2D(Assets.SFX.ChimeSoft, 0.65)
 	local lbl = Instance.new("TextLabel")
 	lbl.Size  = UDim2.new(0, 560, 0, 80)
 	lbl.Position = UDim2.new(0.5, -280, 0.35, 0)
@@ -4774,7 +5466,7 @@ return EffectsController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">InputController</string>
             <string name="Source"><![CDATA[-- InputController.lua — Sword building, input, swing animation, slam detection
@@ -4786,22 +5478,25 @@ local TweenService     = game:GetService("TweenService")
 local RS               = game:GetService("ReplicatedStorage")
 
 local Layers = require(RS:WaitForChild("Shared"):WaitForChild("Layers"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local player = Players.LocalPlayer
 local mouse  = player:GetMouse()
 
--- Sword tier visual configs (name, bladeColor, gripColor, handleColor, neon on tier>=5, trail on tier>=8)
+-- Sword tier visuals: Tiers 1-4 = klassisches Roblox-Schwert-Mesh, Tiers 5-10 =
+-- Katana-Mesh. `tint` färbt die Textur (VertexColor, >1 = heller als Original).
+-- blade/grip bleiben für Effekte (Slash-Arc, Licht, Trail) erhalten.
 local TIER_SWORD = {
-	[1]  = { name = "Holzschwert",       blade = Color3.fromRGB(180, 130, 70),  grip = Color3.fromRGB(35, 28, 18) },
-	[2]  = { name = "Steinschwert",      blade = Color3.fromRGB(155, 158, 162), grip = Color3.fromRGB(45, 42, 42) },
-	[3]  = { name = "Eisenschwert",      blade = Color3.fromRGB(200, 212, 222), grip = Color3.fromRGB(38, 40, 50) },
-	[4]  = { name = "Goldschwert",       blade = Color3.fromRGB(240, 198, 48),  grip = Color3.fromRGB(50, 40, 15) },
-	[5]  = { name = "Diamantschwert",    blade = Color3.fromRGB(80, 222, 232),  grip = Color3.fromRGB(22, 42, 50) },
-	[6]  = { name = "Rubin Klinge",      blade = Color3.fromRGB(222, 48, 68),   grip = Color3.fromRGB(50, 15, 20) },
-	[7]  = { name = "Smaragdklinge",     blade = Color3.fromRGB(48, 202, 98),   grip = Color3.fromRGB(15, 45, 22) },
-	[8]  = { name = "Mondklinge",        blade = Color3.fromRGB(180, 158, 242), grip = Color3.fromRGB(30, 22, 50) },
-	[9]  = { name = "Sonnenklinge",      blade = Color3.fromRGB(255, 178, 48),  grip = Color3.fromRGB(50, 38, 10) },
-	[10] = { name = "Legendäre Klinge",  blade = Color3.fromRGB(255, 78, 202),  grip = Color3.fromRGB(50, 15, 42) },
+	[1]  = { name = "Holzschwert",       mesh = "ClassicSword", tint = Vector3.new(1.05, 0.75, 0.45), blade = Color3.fromRGB(180, 130, 70),  grip = Color3.fromRGB(35, 28, 18) },
+	[2]  = { name = "Steinschwert",      mesh = "ClassicSword", tint = Vector3.new(0.75, 0.75, 0.78), blade = Color3.fromRGB(155, 158, 162), grip = Color3.fromRGB(45, 42, 42) },
+	[3]  = { name = "Eisenschwert",      mesh = "ClassicSword", tint = Vector3.new(1.1, 1.15, 1.25),  blade = Color3.fromRGB(200, 212, 222), grip = Color3.fromRGB(38, 40, 50) },
+	[4]  = { name = "Goldschwert",       mesh = "ClassicSword", tint = Vector3.new(1.6, 1.25, 0.45),  blade = Color3.fromRGB(240, 198, 48),  grip = Color3.fromRGB(50, 40, 15) },
+	[5]  = { name = "Diamantschwert",    mesh = "Katana",       tint = Vector3.new(0.6, 1.6, 1.75),   blade = Color3.fromRGB(80, 222, 232),  grip = Color3.fromRGB(22, 42, 50) },
+	[6]  = { name = "Rubin Klinge",      mesh = "Katana",       tint = Vector3.new(1.8, 0.45, 0.6),   blade = Color3.fromRGB(222, 48, 68),   grip = Color3.fromRGB(50, 15, 20) },
+	[7]  = { name = "Smaragdklinge",     mesh = "Katana",       tint = Vector3.new(0.45, 1.7, 0.85),  blade = Color3.fromRGB(48, 202, 98),   grip = Color3.fromRGB(15, 45, 22) },
+	[8]  = { name = "Mondklinge",        mesh = "Katana",       tint = Vector3.new(1.3, 1.1, 1.9),    blade = Color3.fromRGB(180, 158, 242), grip = Color3.fromRGB(30, 22, 50) },
+	[9]  = { name = "Sonnenklinge",      mesh = "Katana",       tint = Vector3.new(1.9, 1.3, 0.4),    blade = Color3.fromRGB(255, 178, 48),  grip = Color3.fromRGB(50, 38, 10) },
+	[10] = { name = "Legendäre Klinge",  mesh = "Katana",       tint = Vector3.new(1.9, 0.55, 1.6),   blade = Color3.fromRGB(255, 78, 202),  grip = Color3.fromRGB(50, 15, 42) },
 }
 
 local currentTool = nil
@@ -4848,63 +5543,42 @@ function InputController.buildSword(tier)
 	tool.GripRight   = Vector3.new(1, 0, 0)
 	tool.GripUp      = Vector3.new(0, 1, 0)
 
-	-- Handle / grip
+	-- Handle / grip (unsichtbar — sichtbar ist nur das Mesh-Schwert)
 	local handle = Instance.new("Part")
 	handle.Name  = "Handle"
 	handle.Size  = Vector3.new(0.25, 1.35, 0.25)
 	handle.Material = Enum.Material.Fabric
 	handle.Color = def.grip
+	handle.Transparency = 1
 	handle.CanCollide = false
 	handle.Parent = tool
 
-	-- Grip accent rings
-	for i = 1, 2 do
-		local ring = Instance.new("Part")
-		ring.Size  = Vector3.new(0.29, 0.09, 0.29)
-		ring.Material = Enum.Material.Fabric
-		ring.Color = def.blade
-		attachPart(handle, ring,
-			CFrame.new(0, -0.44 + (i - 1) * 0.56, 0) * CFrame.Angles(0, 0, math.rad(18)))
-	end
+	-- Klinge: klassisches Roblox-Mesh (sword.mesh / Katana), per VertexColor
+	-- pro Tier eingefärbt. Mesh-Maße stammen aus Shared/Assets.lua (geparst,
+	-- Klinge liegt entlang +Z) — daher die -90°-Drehung: +Z → Handle-+Y.
+	local meshDef   = Assets.MESHES[def.mesh] or Assets.MESHES.ClassicSword
+	local targetLen = 4.3
+	local meshScale = targetLen / meshDef.length
+	local yOff      = -meshDef.handleZ * meshScale - 0.2
 
-	-- Tsuba (guard)
-	local tsuba = Instance.new("Part")
-	tsuba.Shape  = Enum.PartType.Cylinder
-	tsuba.Size   = Vector3.new(0.16, 0.92, 0.92)
-	tsuba.Material = Enum.Material.Metal
-	tsuba.Color  = Color3.fromRGB(210, 172, 52)
-	attachPart(handle, tsuba, CFrame.new(0, 0.74, 0) * CFrame.Angles(0, 0, math.rad(90)))
-
-	-- Blade
-	local bladeColor = Color3.fromRGB(218, 224, 235):Lerp(def.blade, 0.35)
 	local blade = Instance.new("Part")
 	blade.Name  = "Blade"
-	blade.Size  = Vector3.new(0.12, 3.2, 0.48)
+	blade.Size  = Vector3.new(0.4, 0.4, targetLen)
 	blade.Material = Enum.Material.Metal
-	blade.Color = bladeColor
-	attachPart(handle, blade, CFrame.new(0, 2.46, 0) * CFrame.Angles(0, 0, math.rad(4)))
+	blade.Color = def.blade
+	attachPart(handle, blade, CFrame.new(0, yOff, 0) * CFrame.Angles(-math.rad(90), 0, 0))
 
-	local edge = Instance.new("Part")
-	edge.Size  = Vector3.new(0.13, 3.2, 0.11)
-	edge.Material = Enum.Material.Metal
-	edge.Color = Color3.fromRGB(248, 250, 255)
-	attachPart(handle, edge, CFrame.new(0, 2.46, -0.22) * CFrame.Angles(0, 0, math.rad(4)))
+	local mesh = Instance.new("SpecialMesh")
+	mesh.Name = "BladeMesh"
+	mesh.MeshType = Enum.MeshType.FileMesh
+	mesh.MeshId = meshDef.meshId
+	mesh.TextureId = meshDef.textureId
+	mesh.Scale = Vector3.new(meshScale, meshScale, meshScale)
+	mesh.VertexColor = def.tint or Vector3.new(1, 1, 1)
+	mesh.Parent = blade
 
-	local tip = Instance.new("WedgePart")
-	tip.Name  = "Tip"
-	tip.Size  = Vector3.new(0.12, 0.52, 0.48)
-	tip.Material = Enum.Material.Metal
-	tip.Color = bladeColor
-	attachPart(handle, tip, CFrame.new(-0.28, 4.19, 0) * CFrame.Angles(0, 0, math.rad(4)))
-
-	-- Tier >= 5: neon + glow
+	-- Tier >= 5: glow
 	if tier >= 5 then
-		blade.Material = Enum.Material.Neon
-		blade.Color    = def.blade
-		edge.Material  = Enum.Material.Neon
-		edge.Color     = def.blade
-		tip.Material   = Enum.Material.Neon
-		tip.Color      = def.blade
 		local light = Instance.new("PointLight")
 		light.Color  = def.blade
 		light.Range  = 9
@@ -4912,19 +5586,20 @@ function InputController.buildSword(tier)
 		light.Parent = blade
 	end
 
-	-- Tier >= 8: trail
+	-- Tier >= 8: trail (entlang der Klinge = lokale +Z-Achse des Mesh-Parts)
 	if tier >= 8 then
 		local a0 = Instance.new("Attachment")
 		a0.Name  = "TrailBottom"
-		a0.Position = Vector3.new(0, -1.6, 0)
+		a0.Position = Vector3.new(0, 0, 0.4)
 		a0.Parent = blade
 
 		local a1 = Instance.new("Attachment")
 		a1.Name  = "TrailTop"
-		a1.Position = Vector3.new(0, 1.6, 0)
+		a1.Position = Vector3.new(0, 0, 2.1)
 		a1.Parent = blade
 
 		local trail = Instance.new("Trail")
+		trail.Name           = "SwingTrail"   -- swingSword sucht nach diesem Namen
 		trail.Attachment0    = a0
 		trail.Attachment1    = a1
 		trail.Color          = ColorSequence.new(def.blade)
@@ -4935,18 +5610,18 @@ function InputController.buildSword(tier)
 		trail.Parent         = blade
 	end
 
-	-- Swing sound
+	-- Swing/Slam-Sounds aus der Asset-Library (Whoosh; Slam tiefer gepitcht)
 	local swingSnd = Instance.new("Sound")
 	swingSnd.Name  = "SwingSound"
-	swingSnd.SoundId = "rbxasset://sounds/swordslash.wav"
-	swingSnd.Volume  = 0.65
+	swingSnd.SoundId = Assets.SFX.Swing
+	swingSnd.Volume  = 0.7
 	swingSnd.Parent  = handle
 
 	local slamSnd = Instance.new("Sound")
 	slamSnd.Name  = "SlamSound"
-	slamSnd.SoundId = "rbxasset://sounds/swordslash.wav"
+	slamSnd.SoundId = Assets.SFX.Swing
 	slamSnd.Volume  = 1.1
-	slamSnd.PlaybackSpeed = 0.5
+	slamSnd.PlaybackSpeed = 0.55
 	slamSnd.Parent  = handle
 
 	currentTool = tool
@@ -5084,11 +5759,13 @@ local function swingSword(isSlam)
 			task.wait(0.012)
 		end
 		task.wait(0.055)
-		if toolBlade then
-			local oc = toolBlade.Color
-			toolBlade.Color = Color3.fromRGB(255, 255, 255)
+		local bladeMesh = toolBlade and toolBlade:FindFirstChild("BladeMesh")
+		if bladeMesh then
+			-- Weißer Blitz über die Textur (Color am Part greift bei Meshes nicht)
+			local ov = bladeMesh.VertexColor
+			bladeMesh.VertexColor = Vector3.new(2.5, 2.5, 2.5)
 			task.wait(0.016)
-			toolBlade.Color = oc
+			bladeMesh.VertexColor = ov
 		end
 		for s = 5, 0, -1 do
 			tool.Grip = origGrip * CFrame.Angles(math.rad(-155 * s / 6), 0, 0)
@@ -5100,11 +5777,12 @@ local function swingSword(isSlam)
 			task.wait(0.008)
 		end
 		task.wait(0.015)
-		if toolBlade then
-			local oc = toolBlade.Color
-			toolBlade.Color = Color3.fromRGB(255, 255, 255)
+		local bladeMesh = toolBlade and toolBlade:FindFirstChild("BladeMesh")
+		if bladeMesh then
+			local ov = bladeMesh.VertexColor
+			bladeMesh.VertexColor = Vector3.new(2.5, 2.5, 2.5)
 			task.wait(0.016)
-			toolBlade.Color = oc
+			bladeMesh.VertexColor = ov
 		end
 		for s = 3, 0, -1 do
 			tool.Grip = origGrip * CFrame.Angles(math.rad(-132 * s / 4), 0, 0)
@@ -5133,6 +5811,8 @@ local function doDash()
 	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if not root or not hum then return end
 	lastDash = now
+
+	Assets.play2D(Assets.SFX.Swing, 0.5, 1.45)   -- Dash-Whoosh
 
 	local dir = hum.MoveDirection
 	if dir.Magnitude < 0.1 then
@@ -5247,7 +5927,7 @@ return InputController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="25">
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">UIController</string>
             <string name="Source"><![CDATA[-- UIController.lua — All HUD elements: coins, level, stats panel, sword info
@@ -5718,7 +6398,7 @@ return UIController
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="26">
+  <Item class="Workspace" referent="27">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>

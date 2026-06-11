@@ -16,6 +16,7 @@ Layers.DATA = {
 		glowColor     = Color3.fromRGB(75, 210, 75),
 		monsterName   = "Bambusgeist",
 		lighting      = { clockTime = 13.5, atmoDensity = 0.42, atmoColor = Color3.fromRGB(170, 210, 160) },
+		theme         = "forest",   -- steuert Prop-Bauweise im WorldGenerator
 		-- gen = endless biome via chunk streaming (seed → reproducible world)
 		gen = { seed = 20260611, material = Enum.Material.LeafyGrass },
 	},
@@ -32,6 +33,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(158, 148, 90),
 		glowColor     = Color3.fromRGB(220, 190, 45),
 		monsterName   = "Wildschwein",
+		theme         = "gold",
 		gen = { seed = 20260612, material = Enum.Material.Sand },
 	},
 	[3] = {
@@ -47,6 +49,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(78, 178, 198),
 		glowColor     = Color3.fromRGB(80, 220, 235),
 		monsterName   = "Kristallkäfer",
+		theme         = "crystal",
 		gen = { seed = 20260613, material = Enum.Material.Glacier },
 	},
 	[4] = {
@@ -62,6 +65,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(55, 45, 88),
 		glowColor     = Color3.fromRGB(165, 80, 225),
 		monsterName   = "Schatten-Ninja",
+		theme         = "shadow",
 		gen = { seed = 20260614, material = Enum.Material.Mud },
 	},
 	[5] = {
@@ -77,6 +81,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(148, 78, 48),
 		glowColor     = Color3.fromRGB(255, 118, 35),
 		monsterName   = "Lava-Golem",
+		theme         = "lava",
 		gen = { seed = 20260615, material = Enum.Material.Basalt },
 		boss          = { name = "Aschegeneral", hpMult = 12, dmgMult = 2.5 },
 	},
@@ -93,6 +98,7 @@ Layers.DATA = {
 		ambient       = Color3.fromRGB(178, 208, 238),
 		glowColor     = Color3.fromRGB(195, 228, 255),
 		monsterName   = "Wächter",
+		theme         = "sky",
 		gen = { seed = 20260616, material = Enum.Material.Snow },
 		boss          = { name = "Bambus-Drache", hpMult = 20, dmgMult = 3.5 },
 	},
@@ -127,6 +133,7 @@ for i = 7, 12 do
 		ambient       = baseColor:Lerp(Color3.fromRGB(100, 100, 100), 0.6),
 		glowColor     = baseColor,
 		monsterName   = MONSTERS[idx],
+		theme         = ({ "forest", "gold", "crystal", "shadow", "lava", "sky" })[idx],
 		gen = {
 			seed     = 20260620 + i,
 			material = ({ Enum.Material.LeafyGrass, Enum.Material.Sand, Enum.Material.Glacier,

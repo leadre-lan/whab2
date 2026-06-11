@@ -260,7 +260,7 @@ function MonsterService.damageMonster(player, model, damage)
 		if m.state ~= "dead" then body.Color = oc end
 	end)
 
-	net.HitEffect:FireClient(player, body.Position, m.baseColor, false, nil, damage, nil)
+	net.HitEffect:FireClient(player, body.Position, m.baseColor, false, nil, damage, nil, "monster")
 
 	if m.hp <= 0 then
 		m.state = "dead"
@@ -295,7 +295,7 @@ function MonsterService.damageMonster(player, model, damage)
 		end
 
 		-- Death effect: dissolve
-		net.HitEffect:FireClient(player, m.body.Position, m.baseColor, true, nil, nil, nil)
+		net.HitEffect:FireClient(player, m.body.Position, m.baseColor, true, nil, nil, nil, "monster")
 		local respawnPos = m.homePos
 		local layerIdx   = m.layerIdx
 		local isBoss     = m.isBoss
@@ -405,7 +405,7 @@ local function doAttack(m, targetRoot)
 					dmg = math.ceil(dmg * (1 - Balance.BLOCK_REDUCTION))
 				end
 				h:TakeDamage(dmg)
-				net.HitEffect:FireClient(p, r.Position, Color3.fromRGB(255, 60, 40), false, nil, nil, nil)
+				net.HitEffect:FireClient(p, r.Position, Color3.fromRGB(255, 60, 40), false, nil, nil, nil, "hurt")
 			end
 		end
 

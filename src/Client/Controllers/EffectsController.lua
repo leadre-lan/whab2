@@ -4,6 +4,9 @@ local EffectsController = {}
 local TweenService = game:GetService("TweenService")
 local RunService   = game:GetService("RunService")
 local Debris       = game:GetService("Debris")
+local RS           = game:GetService("ReplicatedStorage")
+
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local camera   = workspace.CurrentCamera
 local shakeAmt = 0
@@ -166,28 +169,35 @@ function EffectsController.spawnFallingTops(sliceInfo)
 	end
 end
 
--- ── Slice Sound ───────────────────────────────────────────────────────────────
+-- ── Sounds (Asset-Library, siehe Shared/Assets.lua) ──────────────────────────
 function EffectsController.playSliceSound(position)
-	local p = Instance.new("Part")
-	p.Size  = Vector3.new(0.2, 0.2, 0.2)
-	p.Transparency = 1
-	p.Anchored = true
-	p.CanCollide = false
-	p.Position = position
-	p.Parent   = workspace
+	Assets.playAt(position, Assets.SFX.Slice, 0.9, 1.0, 1.25)
+end
 
-	local s = Instance.new("Sound")
-	s.SoundId = "rbxasset://sounds/swordlunge.wav"
-	s.Volume  = 1.0
-	s.PlaybackSpeed = 1 + math.random() * 0.2
-	s.Parent  = p
-	s:Play()
-	Debris:AddItem(p, 2)
+-- Treffer-Sound je nach Ziel-Art; der Server schickt kind über HitEffect mit
+function EffectsController.playHitSound(kind, position, died)
+	if kind == "rock" then
+		if died then
+			Assets.playAt(position, Assets.SFX.RockBreak, 0.9, 0.95, 1.1)
+		else
+			Assets.playAt(position, Assets.SFX.RockHit, 0.7, 0.9, 1.2)
+		end
+	elseif kind == "monster" then
+		if died then
+			Assets.playAt(position, Assets.SFX.MonsterDeath, 0.85, 0.95, 1.1)
+		else
+			Assets.playAt(position, Assets.SFX.MonsterHit, 0.55, 1.0, 1.3)
+		end
+	elseif kind == "hurt" then
+		-- Spieler wurde getroffen: dumpfer, tiefer
+		Assets.playAt(position, Assets.SFX.RockHit, 0.6, 0.55, 0.7)
+	end
 end
 
 -- ── Coin Magnet Popup ─────────────────────────────────────────────────────────
 function EffectsController.spawnCoinPopup(screenGui, amount)
 	if amount <= 0 then return end
+	Assets.play2D(Assets.SFX.Coin, 0.35, 1.1 + math.random() * 0.25)
 	local lbl = Instance.new("TextLabel")
 	lbl.Size  = UDim2.new(0, 180, 0, 38)
 	lbl.Position = UDim2.new(0, 12, 0, 110)
@@ -208,6 +218,7 @@ end
 
 -- ── Level-Up Flash ────────────────────────────────────────────────────────────
 function EffectsController.showLevelUp(screenGui, newLevel)
+	Assets.play2D(Assets.SFX.Chime, 0.7)
 	local lbl = Instance.new("TextLabel")
 	lbl.Size  = UDim2.new(0, 500, 0, 90)
 	lbl.Position = UDim2.new(0.5, -250, 0.4, 0)
@@ -229,6 +240,7 @@ end
 
 -- ── Layer Unlock Flash ────────────────────────────────────────────────────────
 function EffectsController.showLayerUnlocked(screenGui, layerName, layerColor)
+	Assets.play2D(Assets.SFX.ChimeSoft, 0.65)
 	local lbl = Instance.new("TextLabel")
 	lbl.Size  = UDim2.new(0, 560, 0, 80)
 	lbl.Position = UDim2.new(0.5, -280, 0.35, 0)

@@ -16,6 +16,7 @@ local REMOTE_NAMES = {
 	-- server → client
 	"UpdateData", "HitEffect", "Notify", "LayerUnlocked",
 	"OpenLayerSelect", "ApplyLayerLighting", "OpenForge", "RebirthDone",
+	"PlaySFX",
 	-- client → server
 	"ChopTarget", "SlamAttack", "UpgradeStat",
 	"AttackEntity", "SetBlocking",

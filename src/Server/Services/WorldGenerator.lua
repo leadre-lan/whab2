@@ -180,11 +180,13 @@ local function writeTerrain(cfg, heightAt)
 	end
 end
 
--- ── Decorative prop builders ──────────────────────────────────────────────────
-local function makeTree(rng, pos, scale, parent, leafColor)
-	-- Prefer a real asset if the user dropped one into ReplicatedStorage/Assets/Trees
-	if spawnTemplate("Trees", rng, pos, scale, parent) then return end
+-- ── Decorative prop builders (theme-aware) ────────────────────────────────────
+-- Jedes Biom hat eine eigene Vegetations-Sprache statt überall derselben
+-- grünen Blob-Bäume: forest/gold = Laubbäume, crystal = Kristallformationen,
+-- shadow = tote Bäume + Leuchtpilze, lava = verkohlte Dornen + Glutrisse,
+-- sky = Blütenbäume mit fallenden Blütenblättern.
 
+local function buildLeafTree(rng, pos, scale, parent, leafColor, golden)
 	local tH = 9 * scale
 	local trunk = Instance.new("Part")
 	trunk.Shape = Enum.PartType.Cylinder
@@ -215,14 +217,231 @@ local function makeTree(rng, pos, scale, parent, leafColor)
 			leafColor:Lerp(Color3.fromRGB(40, 90, 35), rng:NextNumber(0, 0.4)),
 			parent)
 	end
+
+	-- Goldener Hain: ein paar glühende "Früchte" in der Krone
+	if golden then
+		for _ = 1, rng:NextInteger(2, 4) do
+			local fruit = Instance.new("Part")
+			fruit.Shape = Enum.PartType.Ball
+			fruit.Size = Vector3.new(0.5, 0.5, 0.5) * scale
+			fruit.Position = pos + Vector3.new(
+				rng:NextNumber(-3, 3) * scale,
+				tH + rng:NextNumber(-1, 2.5) * scale,
+				rng:NextNumber(-3, 3) * scale)
+			fruit.Material = Enum.Material.Neon
+			fruit.Color = Color3.fromRGB(255, 214, 70)
+			fruit.Anchored = true
+			fruit.CanCollide = false
+			fruit.CastShadow = false
+			fruit.Parent = parent
+		end
+	end
 end
 
-local function makeBoulder(rng, pos, scale, parent)
+local function buildCrystalCluster(rng, pos, scale, parent, glowColor)
+	-- 3-5 schief stehende Neon-Prismen, gemeinsame Lichtquelle
+	local count = rng:NextInteger(3, 5)
+	local main = nil
+	for i = 1, count do
+		local h = (i == 1 and rng:NextNumber(7, 11) or rng:NextNumber(2.5, 6)) * scale
+		local w = h * rng:NextNumber(0.18, 0.3)
+		local c = Instance.new("Part")
+		c.Size = Vector3.new(w, h, w)
+		c.CFrame = CFrame.new(
+				pos.X + (i == 1 and 0 or rng:NextNumber(-2.2, 2.2) * scale),
+				pos.Y + h * 0.38,
+				pos.Z + (i == 1 and 0 or rng:NextNumber(-2.2, 2.2) * scale))
+			* CFrame.Angles(
+				math.rad(rng:NextNumber(-16, 16)),
+				rng:NextNumber(0, math.pi),
+				math.rad(45 + rng:NextNumber(-16, 16)))
+		c.Material = Enum.Material.Neon
+		c.Color = glowColor:Lerp(Color3.fromRGB(255, 255, 255), rng:NextNumber(0, 0.35))
+		c.Transparency = 0.12
+		c.Anchored = true
+		c.CanCollide = (i == 1)
+		c.Parent = parent
+		if i == 1 then main = c end
+	end
+	if main then
+		local light = Instance.new("PointLight")
+		light.Color = glowColor
+		light.Range = 14 * scale
+		light.Brightness = 0.7
+		light.Parent = main
+	end
+end
+
+local function buildDeadTree(rng, pos, scale, parent)
+	local tH = 8 * scale
+	local trunk = Instance.new("Part")
+	trunk.Shape = Enum.PartType.Cylinder
+	trunk.Size = Vector3.new(tH, 1.1 * scale, 1.1 * scale)
+	trunk.CFrame = CFrame.new(pos.X, pos.Y + tH / 2, pos.Z)
+		* CFrame.Angles(math.rad(rng:NextNumber(-6, 6)), 0, math.rad(90 + rng:NextNumber(-6, 6)))
+	trunk.Material = Enum.Material.Wood
+	trunk.Color = Color3.fromRGB(48, 40, 36)
+	trunk.Anchored = true
+	trunk.Parent = parent
+
+	-- Kahle, verdrehte Äste statt einer Krone
+	for _ = 1, rng:NextInteger(3, 5) do
+		local bL = rng:NextNumber(2.5, 5) * scale
+		local ang = rng:NextNumber(0, math.pi * 2)
+		local branch = Instance.new("Part")
+		branch.Shape = Enum.PartType.Cylinder
+		branch.Size = Vector3.new(bL, 0.45 * scale, 0.45 * scale)
+		branch.CFrame = CFrame.new(
+				pos.X + math.cos(ang) * bL * 0.4,
+				pos.Y + tH * rng:NextNumber(0.55, 0.95),
+				pos.Z + math.sin(ang) * bL * 0.4)
+			* CFrame.Angles(0, -ang, math.rad(rng:NextNumber(15, 55)))
+		branch.Material = Enum.Material.Wood
+		branch.Color = Color3.fromRGB(42, 35, 32)
+		branch.Anchored = true
+		branch.CanCollide = false
+		branch.Parent = parent
+	end
+end
+
+local function buildGlowMushroom(rng, pos, scale, parent, glowColor)
+	local sH = rng:NextNumber(1.2, 2.4) * scale
+	local stem = Instance.new("Part")
+	stem.Shape = Enum.PartType.Cylinder
+	stem.Size = Vector3.new(sH, 0.5 * scale, 0.5 * scale)
+	stem.CFrame = CFrame.new(pos.X, pos.Y + sH / 2, pos.Z)
+		* CFrame.Angles(0, 0, math.rad(90 + rng:NextNumber(-8, 8)))
+	stem.Material = Enum.Material.SmoothPlastic
+	stem.Color = Color3.fromRGB(225, 218, 235)
+	stem.Anchored = true
+	stem.CanCollide = false
+	stem.Parent = parent
+
+	local cap = ellipsoid(
+		Vector3.new(1.7, 1.0, 1.7) * scale,
+		CFrame.new(pos.X, pos.Y + sH + 0.25 * scale, pos.Z),
+		Enum.Material.Neon, glowColor, parent)
+	cap.Transparency = 0.1
+	local light = Instance.new("PointLight")
+	light.Color = glowColor
+	light.Range = 9 * scale
+	light.Brightness = 0.55
+	light.Parent = cap
+end
+
+local function buildCharredSpike(rng, pos, scale, parent)
+	-- Verkohlter Dornbaum: dunkler Kegel + glühender Riss am Fuß
+	local tH = rng:NextNumber(7, 11) * scale
+	local spike = Instance.new("Part")
+	spike.Size = Vector3.new(1.6 * scale, tH, 1.6 * scale)
+	spike.CFrame = CFrame.new(pos.X, pos.Y + tH / 2, pos.Z)
+		* CFrame.Angles(
+			math.rad(rng:NextNumber(-7, 7)),
+			rng:NextNumber(0, math.pi),
+			math.rad(rng:NextNumber(-7, 7)))
+	spike.Material = Enum.Material.Basalt
+	spike.Color = Color3.fromRGB(32, 28, 28)
+	spike.Anchored = true
+	spike.Parent = parent
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Wedge
+	mesh.Scale = Vector3.new(1, 1, 1)
+	mesh.Parent = spike
+
+	local crack = Instance.new("Part")
+	crack.Size = Vector3.new(0.5 * scale, 1.6 * scale, 0.5 * scale)
+	crack.Position = pos + Vector3.new(
+		rng:NextNumber(-0.6, 0.6), 0.6 * scale, rng:NextNumber(-0.6, 0.6))
+	crack.Material = Enum.Material.Neon
+	crack.Color = Color3.fromRGB(255, 110, 30)
+	crack.Anchored = true
+	crack.CanCollide = false
+	crack.CastShadow = false
+	crack.Parent = parent
+end
+
+local function buildBlossomTree(rng, pos, scale, parent, withPetals)
+	local tH = 9 * scale
+	local trunk = Instance.new("Part")
+	trunk.Shape = Enum.PartType.Cylinder
+	trunk.Size = Vector3.new(tH, 1.3 * scale, 1.3 * scale)
+	trunk.CFrame = CFrame.new(pos.X, pos.Y + tH / 2, pos.Z)
+		* CFrame.Angles(math.rad(rng:NextNumber(-5, 5)), 0, math.rad(90 + rng:NextNumber(-5, 5)))
+	trunk.Material = Enum.Material.Wood
+	trunk.Color = Color3.fromRGB(122, 102, 96)
+	trunk.Anchored = true
+	trunk.Parent = parent
+
+	local petalColor = Color3.fromRGB(248, 198, 222)
+	for c = 1, 3 do
+		local w = (7.5 - c * 1.5) * scale
+		local blob = ellipsoid(
+			Vector3.new(w, w * rng:NextNumber(0.5, 0.65), w),
+			CFrame.new(
+					pos.X + rng:NextNumber(-1.8, 1.8),
+					pos.Y + tH - 0.5 + (c - 1) * 1.6 * scale,
+					pos.Z + rng:NextNumber(-1.8, 1.8))
+				* CFrame.Angles(math.rad(rng:NextNumber(-8, 8)), rng:NextNumber(0, math.pi), 0),
+			Enum.Material.Grass,
+			petalColor:Lerp(Color3.fromRGB(255, 246, 250), rng:NextNumber(0, 0.5)),
+			parent)
+
+		-- Fallende Blütenblätter nur an manchen Bäumen (Performance)
+		if withPetals and c == 1 then
+			local pe = Instance.new("ParticleEmitter")
+			pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			pe.Rate = 1.6
+			pe.Lifetime = NumberRange.new(3, 5)
+			pe.Speed = NumberRange.new(0.5, 1.2)
+			pe.SpreadAngle = Vector2.new(35, 35)
+			pe.Acceleration = Vector3.new(0.4, -1.6, 0.2)
+			pe.Size = NumberSequence.new(0.22)
+			pe.Color = ColorSequence.new(petalColor)
+			pe.LightEmission = 0.25
+			pe.Parent = blob
+		end
+	end
+end
+
+local function makeTree(rng, pos, scale, parent, leafColor, theme)
+	-- Prefer a real asset if the user dropped one into ReplicatedStorage/Assets/Trees
+	if spawnTemplate("Trees", rng, pos, scale, parent) then return end
+
+	if theme == "crystal" then
+		buildCrystalCluster(rng, pos, scale, parent, leafColor)
+	elseif theme == "shadow" then
+		if rng:NextNumber() < 0.3 then
+			buildGlowMushroom(rng, pos, scale * 1.4, parent, leafColor)
+		else
+			buildDeadTree(rng, pos, scale, parent)
+		end
+	elseif theme == "lava" then
+		buildCharredSpike(rng, pos, scale, parent)
+	elseif theme == "sky" then
+		buildBlossomTree(rng, pos, scale, parent, rng:NextNumber() < 0.3)
+	else
+		buildLeafTree(rng, pos, scale, parent, leafColor, theme == "gold")
+	end
+end
+
+local THEME_ROCK = {
+	forest  = { material = Enum.Material.Slate,   tint = nil },
+	gold    = { material = Enum.Material.Sandstone, tint = Color3.fromRGB(178, 152, 105) },
+	crystal = { material = Enum.Material.Glacier, tint = Color3.fromRGB(168, 205, 218) },
+	shadow  = { material = Enum.Material.Slate,   tint = Color3.fromRGB(62, 54, 78) },
+	lava    = { material = Enum.Material.Basalt,  tint = Color3.fromRGB(45, 38, 38) },
+	sky     = { material = Enum.Material.Marble,  tint = Color3.fromRGB(212, 222, 238) },
+}
+
+local function makeBoulder(rng, pos, scale, parent, theme)
 	if spawnTemplate("Rocks", rng, pos, scale, parent) then return end
 
+	local style = THEME_ROCK[theme] or THEME_ROCK.forest
 	-- Two overlapping squashed blobs read as one organic rock
 	local g = rng:NextInteger(95, 140)
-	local color = Color3.fromRGB(g, g, g)
+	local color = style.tint
+		and style.tint:Lerp(Color3.fromRGB(g, g, g), 0.3)
+		or Color3.fromRGB(g, g, g)
 	for i = 1, 2 do
 		local sz = Vector3.new(
 			rng:NextNumber(2.2, 4.5),
@@ -234,8 +453,83 @@ local function makeBoulder(rng, pos, scale, parent)
 					pos.Y + sz.Y * 0.3,
 					pos.Z + (i - 1) * rng:NextNumber(-1.4, 1.4))
 				* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(rng:NextNumber(-10, 10))),
-			Enum.Material.Slate, color, parent)
+			style.material, color, parent)
 		blob.CanCollide = (i == 1)   -- main blob blocks movement like before
+	end
+
+	-- Vulkan-Felsen glimmen an einer Stelle
+	if theme == "lava" and rng:NextNumber() < 0.4 then
+		local ember = Instance.new("Part")
+		ember.Size = Vector3.new(0.7, 0.25, 0.7) * scale
+		ember.Position = pos + Vector3.new(rng:NextNumber(-1, 1), 0.4 * scale, rng:NextNumber(-1, 1))
+		ember.Material = Enum.Material.Neon
+		ember.Color = Color3.fromRGB(255, 96, 24)
+		ember.Anchored = true
+		ember.CanCollide = false
+		ember.CastShadow = false
+		ember.Parent = parent
+	end
+end
+
+-- Bodendeko: Grasbüschel/Blumen (forest, gold, sky) bzw. Glutfunken (lava)
+local function makeGroundTuft(rng, pos, parent, leafColor, theme)
+	if theme == "lava" then
+		local ember = Instance.new("Part")
+		ember.Size = Vector3.new(0.35, 0.35, 0.35)
+		ember.Position = pos + Vector3.new(0, 0.2, 0)
+		ember.Material = Enum.Material.Neon
+		ember.Color = Color3.fromRGB(255, 120, 40)
+		ember.Anchored = true
+		ember.CanCollide = false
+		ember.CastShadow = false
+		ember.Parent = parent
+		return
+	end
+	if theme == "crystal" or theme == "shadow" then
+		-- kleine Leucht-Splitter am Boden
+		local shard = Instance.new("Part")
+		shard.Size = Vector3.new(0.3, rng:NextNumber(0.5, 1.1), 0.3)
+		shard.CFrame = CFrame.new(pos + Vector3.new(0, 0.3, 0))
+			* CFrame.Angles(math.rad(rng:NextNumber(-20, 20)), rng:NextNumber(0, math.pi), math.rad(45))
+		shard.Material = Enum.Material.Neon
+		shard.Color = leafColor
+		shard.Transparency = 0.25
+		shard.Anchored = true
+		shard.CanCollide = false
+		shard.CastShadow = false
+		shard.Parent = parent
+		return
+	end
+
+	local tuftH = rng:NextNumber(0.6, 1.4)
+	local tuft = Instance.new("Part")
+	tuft.Shape = Enum.PartType.Cylinder
+	tuft.Size = Vector3.new(tuftH, 0.2, 0.2)
+	tuft.CFrame = CFrame.new(pos + Vector3.new(0, tuftH / 2, 0))
+		* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(90 + rng:NextNumber(-18, 18)))
+	tuft.Material = Enum.Material.Grass
+	tuft.Color = leafColor:Lerp(Color3.fromRGB(48, 130, 38), 0.5)
+	tuft.Anchored = true
+	tuft.CanCollide = false
+	tuft.CastShadow = false
+	tuft.Parent = parent
+
+	-- gelegentlich eine Blüte obendrauf
+	if rng:NextNumber() < 0.3 then
+		local bloom = Instance.new("Part")
+		bloom.Shape = Enum.PartType.Ball
+		bloom.Size = Vector3.new(0.34, 0.34, 0.34)
+		bloom.Position = pos + Vector3.new(0, tuftH + 0.1, 0)
+		bloom.Material = Enum.Material.Neon
+		bloom.Color = ({
+			Color3.fromRGB(255, 120, 160),
+			Color3.fromRGB(255, 214, 70),
+			Color3.fromRGB(160, 160, 255),
+		})[rng:NextInteger(1, 3)]
+		bloom.Anchored = true
+		bloom.CanCollide = false
+		bloom.CastShadow = false
+		bloom.Parent = parent
 	end
 end
 
@@ -325,7 +619,7 @@ local function buildRockFormation(rng, pos, parent)
 	end
 	for _ = 1, 4 do
 		makeBoulder(rng, pos + Vector3.new(
-			rng:NextNumber(-5, 5), 0, rng:NextNumber(-5, 5)), 1.4, parent)
+			rng:NextNumber(-5, 5), 0, rng:NextNumber(-5, 5)), 1.4, parent, "forest")
 	end
 end
 
@@ -445,13 +739,14 @@ function WorldGenerator.generate(cfg)
 		folder)
 
 	-- 5) Decorative scattering (trees + boulders), clustered, varied
+	local theme = cfg.layer and cfg.layer.theme or "forest"
 	local treeSpots = scatterPositions(cfg, heightAt, landmarks, cfg.treeCount or 90, 110, 500)
 	for _, s in ipairs(treeSpots) do
-		makeTree(rng, s.pos, s.scale, folder, leafColor)
+		makeTree(rng, s.pos, s.scale, folder, leafColor, theme)
 	end
 	local boulderSpots = scatterPositions(cfg, heightAt, landmarks, cfg.boulderCount or 30, 90, 900)
 	for _, s in ipairs(boulderSpots) do
-		makeBoulder(rng, s.pos, s.scale, folder)
+		makeBoulder(rng, s.pos, s.scale, folder, theme)
 	end
 
 	-- 6) Interactive spots for WorldService (bamboo clusters + ore)
@@ -619,6 +914,7 @@ function WorldGenerator.populateChunk(cfg, heightAt, ci, cj, folder)
 	end
 
 	-- Trees: separate mask channel so woods and bamboo fields interleave
+	local theme = layer and layer.theme or "forest"
 	for _ = 1, 9 do
 		local x = x0 + rng:NextNumber(3, CHUNK - 3)
 		local z = z0 + rng:NextNumber(3, CHUNK - 3)
@@ -626,7 +922,7 @@ function WorldGenerator.populateChunk(cfg, heightAt, ci, cj, folder)
 		if mask > 0.05 and not nearCenter(x, z, 32) and isFree(x, z, 7) then
 			table.insert(placed, Vector3.new(x, 0, z))
 			makeTree(rng, Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
-				rng:NextNumber(0.85, 1.5), folder, leafColor)
+				rng:NextNumber(0.85, 1.5), folder, leafColor, theme)
 		end
 	end
 
@@ -638,8 +934,20 @@ function WorldGenerator.populateChunk(cfg, heightAt, ci, cj, folder)
 			if not nearCenter(x, z, 30) and isFree(x, z, 5) then
 				table.insert(placed, Vector3.new(x, 0, z))
 				makeBoulder(rng, Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
-					rng:NextNumber(0.9, 1.6), folder)
+					rng:NextNumber(0.9, 1.6), folder, theme)
 			end
+		end
+	end
+
+	-- Bodendeko: Grasbüschel, Blumen, Splitter, Glut — billig, aber macht den
+	-- Boden lebendig (CanCollide/CastShadow aus → kaum Kosten)
+	for _ = 1, 10 do
+		local x = x0 + rng:NextNumber(2, CHUNK - 2)
+		local z = z0 + rng:NextNumber(2, CHUNK - 2)
+		if isFree(x, z, 2) then
+			makeGroundTuft(rng,
+				Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
+				folder, leafColor, theme)
 		end
 	end
 

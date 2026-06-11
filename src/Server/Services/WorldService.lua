@@ -19,12 +19,13 @@ local net         = nil
 
 -- ── Helpers ──────────────────────────────────────────────────────────────────
 
-local function broadcastHit(pos, color, died, combo, damage, sliceInfo)
+-- kind steuert den Treffer-Sound auf dem Client: "bamboo" | "rock" | "monster"
+local function broadcastHit(pos, color, died, combo, damage, sliceInfo, kind)
 	for _, p in ipairs(Players:GetPlayers()) do
 		local char = p.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		if root and (root.Position - pos).Magnitude <= 80 then
-			net.HitEffect:FireClient(p, pos, color, died, combo, damage, sliceInfo)
+			net.HitEffect:FireClient(p, pos, color, died, combo, damage, sliceInfo, kind)
 		end
 	end
 end
@@ -91,12 +92,18 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 
 	local segGroups = {}
 
+	-- Echter Bambus ist unten dunkler/satter und wird nach oben heller —
+	-- der Verlauf + Blattquirle an den Nodes lassen die Stange lebendig wirken
+	local topColor = layer.bambooColor:Lerp(Color3.fromRGB(225, 240, 200), 0.3)
+	local nodeLeafColor = layer.bambooColor:Lerp(Color3.fromRGB(55, 140, 48), 0.45)
+
 	for s = 1, segCount do
 		local group = {}
 		segGroups[s] = group
 
 		-- Stalk tapers toward the top + subtle gloss → reads as a plant, not a pipe
 		local thMul = 1 - (s - 1) / segCount * 0.24
+		local segColor = layer.bambooColor:Lerp(topColor, (s - 1) / math.max(1, segCount - 1))
 		local segY = baseY + (s - 0.5) * segH
 		local seg  = Instance.new("Part")
 		seg.Shape   = Enum.PartType.Cylinder
@@ -104,11 +111,11 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		seg.CFrame  = CFrame.new(bx, segY, bz) * CFrame.Angles(0, 0, math.rad(90))
 		seg.Material = Enum.Material.SmoothPlastic
 		seg.Reflectance = 0.05
-		seg.Color    = layer.bambooColor
+		seg.Color    = segColor
 		seg.Anchored = true
 		seg.CanCollide = false
 		seg.Parent  = model
-		table.insert(group, { part = seg, color = layer.bambooColor })
+		table.insert(group, { part = seg, color = segColor })
 
 		if s < segCount then
 			local ring = Instance.new("Part")
@@ -121,6 +128,26 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 			ring.CanCollide = false
 			ring.Parent  = model
 			table.insert(group, { part = ring, color = layer.nodeColor })
+
+			-- Blattquirl: ab der Mitte trägt jeder zweite Node ein Blattpaar
+			if s >= math.ceil(segCount / 2) and s % 2 == 0 then
+				local baseAng = rng:NextNumber(0, math.pi * 2)
+				for l = 0, 1 do
+					local ang  = baseAng + l * math.pi + rng:NextNumber(-0.4, 0.4)
+					local leaf = Instance.new("Part")
+					leaf.Size  = Vector3.new(1.9, 0.08, 0.6)
+					leaf.CFrame = CFrame.new(bx, baseY + s * segH + 0.15, bz)
+						* CFrame.Angles(0, ang, math.rad(-24))
+						* CFrame.new(1.0, 0, 0)
+					leaf.Material = Enum.Material.Grass
+					leaf.Color    = nodeLeafColor
+					leaf.Anchored = true
+					leaf.CanCollide = false
+					leaf.CastShadow = false
+					leaf.Parent  = model
+					table.insert(group, { part = leaf, color = nodeLeafColor })
+				end
+			end
 		end
 	end
 
@@ -257,7 +284,7 @@ local function registerBamboo(hitbox, layerIdx, segGroups, segH, model, bx, bz, 
 		if cuts < 1 then
 			-- Not through yet — feedback hit without a slice
 			broadcastHit(Vector3.new(bx, baseY + segsLeft * segH, bz),
-				layer.bambooColor, false, combo, damage, nil)
+				layer.bambooColor, false, combo, damage, nil, "bamboo")
 			return
 		end
 		accum -= cuts * segHP
@@ -315,7 +342,7 @@ local function registerBamboo(hitbox, layerIdx, segGroups, segH, model, bx, bz, 
 		end
 		dataService.sendUpdate(player)
 
-		broadcastHit(sliceInfo.slicePos, layer.bambooColor, died, combo, damage, sliceInfo)
+		broadcastHit(sliceInfo.slicePos, layer.bambooColor, died, combo, damage, sliceInfo, "bamboo")
 
 		if died then
 			hitbox:SetAttribute("IsDead", true)
@@ -376,16 +403,21 @@ local function buildRock(layerIdx, rx, rz, zoneFolder, baseY)
 		table.insert(rockParts, { part = chunk, color = chunk.Color })
 	end
 
-	-- Ore sparkles tinted to layer glow
-	for _ = 1, rng:NextInteger(2, 3) do
+	-- Erz-Adern: kleine Kristallprismen statt schwebender Würfel
+	for _ = 1, rng:NextInteger(2, 4) do
 		local sp = Instance.new("Part")
-		sp.Size  = Vector3.new(0.38, 0.38, 0.38)
+		sp.Size  = Vector3.new(0.32, rng:NextNumber(0.7, 1.3), 0.32)
 		sp.CFrame = CFrame.new(
-			rx + rng:NextNumber(-1.6, 1.6),
-			baseY + rng:NextNumber(0.5, 2.4),
-			rz + rng:NextNumber(-1.6, 1.6))
+				rx + rng:NextNumber(-1.6, 1.6),
+				baseY + rng:NextNumber(0.5, 2.4),
+				rz + rng:NextNumber(-1.6, 1.6))
+			* CFrame.Angles(
+				math.rad(rng:NextNumber(-30, 30)),
+				rng:NextNumber(0, math.pi),
+				math.rad(45 + rng:NextNumber(-15, 15)))
 		sp.Material  = Enum.Material.Neon
 		sp.Color     = layer.glowColor
+		sp.Transparency = 0.1
 		sp.Anchored  = true
 		sp.CanCollide = false
 		sp.CastShadow = false
@@ -443,7 +475,7 @@ local function buildRock(layerIdx, rx, rz, zoneFolder, baseY)
 		end
 
 		local died = bambooHP[rock] <= 0
-		broadcastHit(rock.Position, layer.glowColor, died, combo, damage, nil)
+		broadcastHit(rock.Position, layer.glowColor, died, combo, damage, nil, "rock")
 
 		if died then
 			rock:SetAttribute("IsDead", true)

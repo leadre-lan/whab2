@@ -7,22 +7,25 @@ local TweenService     = game:GetService("TweenService")
 local RS               = game:GetService("ReplicatedStorage")
 
 local Layers = require(RS:WaitForChild("Shared"):WaitForChild("Layers"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local player = Players.LocalPlayer
 local mouse  = player:GetMouse()
 
--- Sword tier visual configs (name, bladeColor, gripColor, handleColor, neon on tier>=5, trail on tier>=8)
+-- Sword tier visuals: Tiers 1-4 = klassisches Roblox-Schwert-Mesh, Tiers 5-10 =
+-- Katana-Mesh. `tint` färbt die Textur (VertexColor, >1 = heller als Original).
+-- blade/grip bleiben für Effekte (Slash-Arc, Licht, Trail) erhalten.
 local TIER_SWORD = {
-	[1]  = { name = "Holzschwert",       blade = Color3.fromRGB(180, 130, 70),  grip = Color3.fromRGB(35, 28, 18) },
-	[2]  = { name = "Steinschwert",      blade = Color3.fromRGB(155, 158, 162), grip = Color3.fromRGB(45, 42, 42) },
-	[3]  = { name = "Eisenschwert",      blade = Color3.fromRGB(200, 212, 222), grip = Color3.fromRGB(38, 40, 50) },
-	[4]  = { name = "Goldschwert",       blade = Color3.fromRGB(240, 198, 48),  grip = Color3.fromRGB(50, 40, 15) },
-	[5]  = { name = "Diamantschwert",    blade = Color3.fromRGB(80, 222, 232),  grip = Color3.fromRGB(22, 42, 50) },
-	[6]  = { name = "Rubin Klinge",      blade = Color3.fromRGB(222, 48, 68),   grip = Color3.fromRGB(50, 15, 20) },
-	[7]  = { name = "Smaragdklinge",     blade = Color3.fromRGB(48, 202, 98),   grip = Color3.fromRGB(15, 45, 22) },
-	[8]  = { name = "Mondklinge",        blade = Color3.fromRGB(180, 158, 242), grip = Color3.fromRGB(30, 22, 50) },
-	[9]  = { name = "Sonnenklinge",      blade = Color3.fromRGB(255, 178, 48),  grip = Color3.fromRGB(50, 38, 10) },
-	[10] = { name = "Legendäre Klinge",  blade = Color3.fromRGB(255, 78, 202),  grip = Color3.fromRGB(50, 15, 42) },
+	[1]  = { name = "Holzschwert",       mesh = "ClassicSword", tint = Vector3.new(1.05, 0.75, 0.45), blade = Color3.fromRGB(180, 130, 70),  grip = Color3.fromRGB(35, 28, 18) },
+	[2]  = { name = "Steinschwert",      mesh = "ClassicSword", tint = Vector3.new(0.75, 0.75, 0.78), blade = Color3.fromRGB(155, 158, 162), grip = Color3.fromRGB(45, 42, 42) },
+	[3]  = { name = "Eisenschwert",      mesh = "ClassicSword", tint = Vector3.new(1.1, 1.15, 1.25),  blade = Color3.fromRGB(200, 212, 222), grip = Color3.fromRGB(38, 40, 50) },
+	[4]  = { name = "Goldschwert",       mesh = "ClassicSword", tint = Vector3.new(1.6, 1.25, 0.45),  blade = Color3.fromRGB(240, 198, 48),  grip = Color3.fromRGB(50, 40, 15) },
+	[5]  = { name = "Diamantschwert",    mesh = "Katana",       tint = Vector3.new(0.6, 1.6, 1.75),   blade = Color3.fromRGB(80, 222, 232),  grip = Color3.fromRGB(22, 42, 50) },
+	[6]  = { name = "Rubin Klinge",      mesh = "Katana",       tint = Vector3.new(1.8, 0.45, 0.6),   blade = Color3.fromRGB(222, 48, 68),   grip = Color3.fromRGB(50, 15, 20) },
+	[7]  = { name = "Smaragdklinge",     mesh = "Katana",       tint = Vector3.new(0.45, 1.7, 0.85),  blade = Color3.fromRGB(48, 202, 98),   grip = Color3.fromRGB(15, 45, 22) },
+	[8]  = { name = "Mondklinge",        mesh = "Katana",       tint = Vector3.new(1.3, 1.1, 1.9),    blade = Color3.fromRGB(180, 158, 242), grip = Color3.fromRGB(30, 22, 50) },
+	[9]  = { name = "Sonnenklinge",      mesh = "Katana",       tint = Vector3.new(1.9, 1.3, 0.4),    blade = Color3.fromRGB(255, 178, 48),  grip = Color3.fromRGB(50, 38, 10) },
+	[10] = { name = "Legendäre Klinge",  mesh = "Katana",       tint = Vector3.new(1.9, 0.55, 1.6),   blade = Color3.fromRGB(255, 78, 202),  grip = Color3.fromRGB(50, 15, 42) },
 }
 
 local currentTool = nil
@@ -69,63 +72,42 @@ function InputController.buildSword(tier)
 	tool.GripRight   = Vector3.new(1, 0, 0)
 	tool.GripUp      = Vector3.new(0, 1, 0)
 
-	-- Handle / grip
+	-- Handle / grip (unsichtbar — sichtbar ist nur das Mesh-Schwert)
 	local handle = Instance.new("Part")
 	handle.Name  = "Handle"
 	handle.Size  = Vector3.new(0.25, 1.35, 0.25)
 	handle.Material = Enum.Material.Fabric
 	handle.Color = def.grip
+	handle.Transparency = 1
 	handle.CanCollide = false
 	handle.Parent = tool
 
-	-- Grip accent rings
-	for i = 1, 2 do
-		local ring = Instance.new("Part")
-		ring.Size  = Vector3.new(0.29, 0.09, 0.29)
-		ring.Material = Enum.Material.Fabric
-		ring.Color = def.blade
-		attachPart(handle, ring,
-			CFrame.new(0, -0.44 + (i - 1) * 0.56, 0) * CFrame.Angles(0, 0, math.rad(18)))
-	end
+	-- Klinge: klassisches Roblox-Mesh (sword.mesh / Katana), per VertexColor
+	-- pro Tier eingefärbt. Mesh-Maße stammen aus Shared/Assets.lua (geparst,
+	-- Klinge liegt entlang +Z) — daher die -90°-Drehung: +Z → Handle-+Y.
+	local meshDef   = Assets.MESHES[def.mesh] or Assets.MESHES.ClassicSword
+	local targetLen = 4.3
+	local meshScale = targetLen / meshDef.length
+	local yOff      = -meshDef.handleZ * meshScale - 0.2
 
-	-- Tsuba (guard)
-	local tsuba = Instance.new("Part")
-	tsuba.Shape  = Enum.PartType.Cylinder
-	tsuba.Size   = Vector3.new(0.16, 0.92, 0.92)
-	tsuba.Material = Enum.Material.Metal
-	tsuba.Color  = Color3.fromRGB(210, 172, 52)
-	attachPart(handle, tsuba, CFrame.new(0, 0.74, 0) * CFrame.Angles(0, 0, math.rad(90)))
-
-	-- Blade
-	local bladeColor = Color3.fromRGB(218, 224, 235):Lerp(def.blade, 0.35)
 	local blade = Instance.new("Part")
 	blade.Name  = "Blade"
-	blade.Size  = Vector3.new(0.12, 3.2, 0.48)
+	blade.Size  = Vector3.new(0.4, 0.4, targetLen)
 	blade.Material = Enum.Material.Metal
-	blade.Color = bladeColor
-	attachPart(handle, blade, CFrame.new(0, 2.46, 0) * CFrame.Angles(0, 0, math.rad(4)))
+	blade.Color = def.blade
+	attachPart(handle, blade, CFrame.new(0, yOff, 0) * CFrame.Angles(-math.rad(90), 0, 0))
 
-	local edge = Instance.new("Part")
-	edge.Size  = Vector3.new(0.13, 3.2, 0.11)
-	edge.Material = Enum.Material.Metal
-	edge.Color = Color3.fromRGB(248, 250, 255)
-	attachPart(handle, edge, CFrame.new(0, 2.46, -0.22) * CFrame.Angles(0, 0, math.rad(4)))
+	local mesh = Instance.new("SpecialMesh")
+	mesh.Name = "BladeMesh"
+	mesh.MeshType = Enum.MeshType.FileMesh
+	mesh.MeshId = meshDef.meshId
+	mesh.TextureId = meshDef.textureId
+	mesh.Scale = Vector3.new(meshScale, meshScale, meshScale)
+	mesh.VertexColor = def.tint or Vector3.new(1, 1, 1)
+	mesh.Parent = blade
 
-	local tip = Instance.new("WedgePart")
-	tip.Name  = "Tip"
-	tip.Size  = Vector3.new(0.12, 0.52, 0.48)
-	tip.Material = Enum.Material.Metal
-	tip.Color = bladeColor
-	attachPart(handle, tip, CFrame.new(-0.28, 4.19, 0) * CFrame.Angles(0, 0, math.rad(4)))
-
-	-- Tier >= 5: neon + glow
+	-- Tier >= 5: glow
 	if tier >= 5 then
-		blade.Material = Enum.Material.Neon
-		blade.Color    = def.blade
-		edge.Material  = Enum.Material.Neon
-		edge.Color     = def.blade
-		tip.Material   = Enum.Material.Neon
-		tip.Color      = def.blade
 		local light = Instance.new("PointLight")
 		light.Color  = def.blade
 		light.Range  = 9
@@ -133,19 +115,20 @@ function InputController.buildSword(tier)
 		light.Parent = blade
 	end
 
-	-- Tier >= 8: trail
+	-- Tier >= 8: trail (entlang der Klinge = lokale +Z-Achse des Mesh-Parts)
 	if tier >= 8 then
 		local a0 = Instance.new("Attachment")
 		a0.Name  = "TrailBottom"
-		a0.Position = Vector3.new(0, -1.6, 0)
+		a0.Position = Vector3.new(0, 0, 0.4)
 		a0.Parent = blade
 
 		local a1 = Instance.new("Attachment")
 		a1.Name  = "TrailTop"
-		a1.Position = Vector3.new(0, 1.6, 0)
+		a1.Position = Vector3.new(0, 0, 2.1)
 		a1.Parent = blade
 
 		local trail = Instance.new("Trail")
+		trail.Name           = "SwingTrail"   -- swingSword sucht nach diesem Namen
 		trail.Attachment0    = a0
 		trail.Attachment1    = a1
 		trail.Color          = ColorSequence.new(def.blade)
@@ -156,18 +139,18 @@ function InputController.buildSword(tier)
 		trail.Parent         = blade
 	end
 
-	-- Swing sound
+	-- Swing/Slam-Sounds aus der Asset-Library (Whoosh; Slam tiefer gepitcht)
 	local swingSnd = Instance.new("Sound")
 	swingSnd.Name  = "SwingSound"
-	swingSnd.SoundId = "rbxasset://sounds/swordslash.wav"
-	swingSnd.Volume  = 0.65
+	swingSnd.SoundId = Assets.SFX.Swing
+	swingSnd.Volume  = 0.7
 	swingSnd.Parent  = handle
 
 	local slamSnd = Instance.new("Sound")
 	slamSnd.Name  = "SlamSound"
-	slamSnd.SoundId = "rbxasset://sounds/swordslash.wav"
+	slamSnd.SoundId = Assets.SFX.Swing
 	slamSnd.Volume  = 1.1
-	slamSnd.PlaybackSpeed = 0.5
+	slamSnd.PlaybackSpeed = 0.55
 	slamSnd.Parent  = handle
 
 	currentTool = tool
@@ -305,11 +288,13 @@ local function swingSword(isSlam)
 			task.wait(0.012)
 		end
 		task.wait(0.055)
-		if toolBlade then
-			local oc = toolBlade.Color
-			toolBlade.Color = Color3.fromRGB(255, 255, 255)
+		local bladeMesh = toolBlade and toolBlade:FindFirstChild("BladeMesh")
+		if bladeMesh then
+			-- Weißer Blitz über die Textur (Color am Part greift bei Meshes nicht)
+			local ov = bladeMesh.VertexColor
+			bladeMesh.VertexColor = Vector3.new(2.5, 2.5, 2.5)
 			task.wait(0.016)
-			toolBlade.Color = oc
+			bladeMesh.VertexColor = ov
 		end
 		for s = 5, 0, -1 do
 			tool.Grip = origGrip * CFrame.Angles(math.rad(-155 * s / 6), 0, 0)
@@ -321,11 +306,12 @@ local function swingSword(isSlam)
 			task.wait(0.008)
 		end
 		task.wait(0.015)
-		if toolBlade then
-			local oc = toolBlade.Color
-			toolBlade.Color = Color3.fromRGB(255, 255, 255)
+		local bladeMesh = toolBlade and toolBlade:FindFirstChild("BladeMesh")
+		if bladeMesh then
+			local ov = bladeMesh.VertexColor
+			bladeMesh.VertexColor = Vector3.new(2.5, 2.5, 2.5)
 			task.wait(0.016)
-			toolBlade.Color = oc
+			bladeMesh.VertexColor = ov
 		end
 		for s = 3, 0, -1 do
 			tool.Grip = origGrip * CFrame.Angles(math.rad(-132 * s / 4), 0, 0)
@@ -354,6 +340,8 @@ local function doDash()
 	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if not root or not hum then return end
 	lastDash = now
+
+	Assets.play2D(Assets.SFX.Swing, 0.5, 1.45)   -- Dash-Whoosh
 
 	local dir = hum.MoveDirection
 	if dir.Magnitude < 0.1 then

@@ -7,6 +7,7 @@ local RS      = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
 local Layers = require(RS:WaitForChild("Shared"):WaitForChild("Layers"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 -- Hub is far west of the forest layers (layers start at x=5000)
 local HUB_X = -320
@@ -51,6 +52,7 @@ local function teleportToLayer(player, layerIdx)
 	local WorldService = require(script.Parent:WaitForChild("WorldService"))
 	local spawn = WorldService.getLayerSpawn(layerIdx) or Vector3.new(layer.offsetX, 6, 0)
 	safeTeleport(player, CFrame.new(spawn + Vector3.new(0, 3, 0)))
+	net.PlaySFX:FireClient(player, "Teleport")
 	net.ApplyLayerLighting:FireClient(player, layerIdx)
 	net.Notify:FireClient(player, "🌲 " .. layer.name)
 end
@@ -149,43 +151,107 @@ local function buildHub(hubFolder)
 		color = Color3.fromRGB(85, 170, 220),
 		transparency = 0.35, collide = false,
 	}, hubFolder)
-	local pillar = part({
+	part({
 		size = Vector3.new(1.4, 7, 1.4),
 		pos = Vector3.new(HUB_X, 5, HUB_Z),
 		material = Enum.Material.Marble,
 		color = Color3.fromRGB(205, 200, 192),
 	}, hubFolder)
-	-- "Statue" placeholder (Ranked #1 statue comes with RankedService)
-	part({
-		shape = Enum.PartType.Ball,
-		size = Vector3.new(2.6, 2.6, 2.6),
-		pos = Vector3.new(HUB_X, 9.6, HUB_Z),
-		material = Enum.Material.Neon,
-		color = Color3.fromRGB(255, 215, 80),
-		collide = false,
-	}, hubFolder)
+	-- Katana-Monument: das klassische Roblox-Katana steckt mit der Spitze
+	-- nach unten im Marmorsockel (Mesh + Textur, siehe Shared/Assets.lua)
+	do
+		local katana = Assets.MESHES.Katana
+		local monument = Instance.new("Part")
+		monument.Size = Vector3.new(1, 1, 1)
+		monument.Transparency = 1   -- nur das Mesh ist sichtbar
+		monument.Anchored = true
+		monument.CanCollide = false
+		-- Mesh-Klinge zeigt +Z → um +90° um X gedreht zeigt sie nach unten
+		monument.CFrame = CFrame.new(HUB_X, 11.6, HUB_Z)
+			* CFrame.Angles(math.rad(90), math.rad(35), 0)
+		monument.Parent = hubFolder
+
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.FileMesh
+		mesh.MeshId = katana.meshId
+		mesh.TextureId = katana.textureId
+		mesh.Scale = Vector3.new(2.6, 2.6, 2.6)
+		mesh.Parent = monument
+
+		local glow = Instance.new("PointLight")
+		glow.Color = Color3.fromRGB(255, 215, 120)
+		glow.Range = 16
+		glow.Brightness = 0.9
+		glow.Parent = monument
+	end
 	makeSign(hubFolder, Vector3.new(HUB_X, 3.75, HUB_Z - 12),
 		"🏯 Bamboo Slasher", "Willkommen in der Overworld!",
 		Color3.fromRGB(120, 230, 120))
 
-	-- ── Wald-Portal (north, +Z) — leads to the forest layers ──
+	-- ── Wald-Portal (north, +Z) — ein rotes Torii-Tor zu den Wald-Schichten ──
 	local portalZ = HUB_Z + 60
-	-- Bamboo gate: two thick green pillars + crossbar
+	local TORII_RED  = Color3.fromRGB(186, 48, 38)
+	local TORII_DARK = Color3.fromRGB(40, 34, 32)
 	for side = -1, 1, 2 do
+		-- Steinsockel + roter Pfeiler
 		part({
 			shape = Enum.PartType.Cylinder,
-			size = Vector3.new(16, 2.6, 2.6),
+			size = Vector3.new(1.2, 3.6, 3.6),
+			cframe = CFrame.new(HUB_X + side * 7, 1.6, portalZ) * CFrame.Angles(0, 0, math.rad(90)),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(95, 92, 88),
+		}, hubFolder)
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(14.5, 2.2, 2.2),
 			cframe = CFrame.new(HUB_X + side * 7, 9, portalZ) * CFrame.Angles(0, 0, math.rad(90)),
 			material = Enum.Material.SmoothPlastic,
-			color = Color3.fromRGB(72, 185, 62),
+			color = TORII_RED,
 		}, hubFolder)
 	end
+	-- Nuki (unterer Querbalken, steckt durch die Pfeiler)
 	part({
-		shape = Enum.PartType.Cylinder,
-		size = Vector3.new(18, 2.2, 2.2),
-		cframe = CFrame.new(HUB_X, 16.5, portalZ) * CFrame.Angles(0, math.rad(90), math.rad(90)),
+		size = Vector3.new(19, 1.4, 1.1),
+		pos = Vector3.new(HUB_X, 13.2, portalZ),
 		material = Enum.Material.SmoothPlastic,
-		color = Color3.fromRGB(58, 150, 50),
+		color = TORII_RED,
+	}, hubFolder)
+	-- Shimaki + Kasagi (Doppel-Dachbalken, der obere dunkel und überstehend)
+	part({
+		size = Vector3.new(21, 1.2, 1.6),
+		pos = Vector3.new(HUB_X, 16, portalZ),
+		material = Enum.Material.SmoothPlastic,
+		color = TORII_RED,
+	}, hubFolder)
+	part({
+		size = Vector3.new(24, 1.1, 2.2),
+		pos = Vector3.new(HUB_X, 17.1, portalZ),
+		material = Enum.Material.Slate,
+		color = TORII_DARK,
+	}, hubFolder)
+	-- Geschwungene Dach-Enden (leicht nach oben gekippt)
+	for side = -1, 1, 2 do
+		part({
+			size = Vector3.new(3.4, 1.1, 2.2),
+			cframe = CFrame.new(HUB_X + side * 13.1, 17.55, portalZ)
+				* CFrame.Angles(0, 0, side * math.rad(14)),
+			material = Enum.Material.Slate,
+			color = TORII_DARK,
+		}, hubFolder)
+	end
+	-- Gakuzuka (Mittelstrebe) mit goldener Plakette
+	part({
+		size = Vector3.new(1.2, 2.0, 0.9),
+		pos = Vector3.new(HUB_X, 14.8, portalZ),
+		material = Enum.Material.SmoothPlastic,
+		color = TORII_RED,
+	}, hubFolder)
+	part({
+		size = Vector3.new(1.6, 1.2, 0.3),
+		pos = Vector3.new(HUB_X, 14.8, portalZ - 0.5),
+		material = Enum.Material.Metal,
+		color = Color3.fromRGB(212, 175, 55),
+		collide = false,
 	}, hubFolder)
 	-- Glowing portal plane (color updated per player would need local parts;
 	-- use layer-1 green as the shared base)
@@ -475,26 +541,54 @@ local function buildHub(hubFolder)
 		local reward = 250 * (1 + (pdata.rebirths or 0))
 		pdata.coins = pdata.coins + reward
 		dataService.sendUpdate(player)
+		net.PlaySFX:FireClient(player, "Coin")
 		net.Notify:FireClient(player, "🎁 +" .. reward .. " Bamboos!")
 	end)
 
-	-- Lantern posts around the plaza
+	-- Japanische Laternen rund um den Platz (Sockel, Pfosten, Lichtkasten, Dach)
 	for a = 0, 7 do
 		local ang = a / 8 * math.pi * 2
 		local lx = HUB_X + math.cos(ang) * 38
 		local lz = HUB_Z + math.sin(ang) * 38
-		part({
-			size = Vector3.new(0.5, 7, 0.5),
+		part({  -- Steinsockel
+			size = Vector3.new(1.6, 1, 1.6),
+			pos = Vector3.new(lx, 1.5, lz),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(98, 95, 90),
+		}, hubFolder)
+		part({  -- Holzpfosten
+			size = Vector3.new(0.5, 5.5, 0.5),
 			pos = Vector3.new(lx, 4.5, lz),
 			material = Enum.Material.Wood,
 			color = Color3.fromRGB(70, 50, 32),
 			collide = false,
 		}, hubFolder)
-		local lamp = part({
-			size = Vector3.new(1.1, 1.1, 1.1),
-			pos = Vector3.new(lx, 8.3, lz),
+		part({  -- dunkler Rahmen des Lichtkastens
+			size = Vector3.new(1.5, 1.7, 1.5),
+			pos = Vector3.new(lx, 8.1, lz),
+			material = Enum.Material.Wood,
+			color = Color3.fromRGB(45, 36, 28),
+			collide = false,
+		}, hubFolder)
+		local lamp = part({  -- warmes Licht, leicht aus dem Rahmen tretend
+			size = Vector3.new(1.15, 1.3, 1.15),
+			pos = Vector3.new(lx, 8.1, lz),
 			material = Enum.Material.Neon,
 			color = Color3.fromRGB(255, 205, 120),
+			collide = false,
+		}, hubFolder)
+		part({  -- geschwungenes Dach (zwei Ebenen)
+			size = Vector3.new(2.2, 0.35, 2.2),
+			pos = Vector3.new(lx, 9.15, lz),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(40, 34, 32),
+			collide = false,
+		}, hubFolder)
+		part({
+			size = Vector3.new(1.1, 0.3, 1.1),
+			pos = Vector3.new(lx, 9.5, lz),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(40, 34, 32),
 			collide = false,
 		}, hubFolder)
 		local light = Instance.new("PointLight")
@@ -502,6 +596,87 @@ local function buildHub(hubFolder)
 		light.Range = 16
 		light.Brightness = 0.8
 		light.Parent = lamp
+	end
+
+	-- ── Kirschblütenbaum am Platzrand (mit fallenden Blütenblättern) ──
+	do
+		local tx, tz = HUB_X + 30, HUB_Z - 32
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(11, 1.6, 1.6),
+			cframe = CFrame.new(tx, 6.5, tz) * CFrame.Angles(0, 0, math.rad(86)),
+			material = Enum.Material.Wood,
+			color = Color3.fromRGB(122, 102, 96),
+		}, hubFolder)
+		local petalColor = Color3.fromRGB(248, 198, 222)
+		for c = 1, 3 do
+			local w = 9 - c * 1.8
+			local blob = part({
+				size = Vector3.new(w, w * 0.6, w),
+				pos = Vector3.new(tx + rng:NextNumber(-1.5, 1.5), 11 + c * 1.4, tz + rng:NextNumber(-1.5, 1.5)),
+				material = Enum.Material.Grass,
+				color = petalColor:Lerp(Color3.fromRGB(255, 246, 250), rng:NextNumber(0, 0.45)),
+				collide = false,
+			}, hubFolder)
+			local m = Instance.new("SpecialMesh")
+			m.MeshType = Enum.MeshType.Sphere
+			m.Parent = blob
+			if c == 1 then
+				local pe = Instance.new("ParticleEmitter")
+				pe.Texture = Assets.PARTICLES.Sparkles
+				pe.Rate = 2.5
+				pe.Lifetime = NumberRange.new(3.5, 5.5)
+				pe.Speed = NumberRange.new(0.5, 1.2)
+				pe.SpreadAngle = Vector2.new(40, 40)
+				pe.Acceleration = Vector3.new(0.5, -1.6, 0.2)
+				pe.Size = NumberSequence.new(0.24)
+				pe.Color = ColorSequence.new(petalColor)
+				pe.LightEmission = 0.3
+				pe.Parent = blob
+			end
+		end
+	end
+
+	-- ── Koi-Teich (Nordwesten): Steinring, Wasser, Seerosen-Lichter ──
+	do
+		local px, pz = HUB_X - 32, HUB_Z + 30
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(1.0, 17, 17),
+			cframe = CFrame.new(px, 1.4, pz) * CFrame.Angles(0, 0, math.rad(90)),
+			material = Enum.Material.Slate,
+			color = Color3.fromRGB(105, 102, 96),
+		}, hubFolder)
+		part({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(0.7, 14.5, 14.5),
+			cframe = CFrame.new(px, 1.65, pz) * CFrame.Angles(0, 0, math.rad(90)),
+			material = Enum.Material.Glass,
+			color = Color3.fromRGB(72, 160, 205),
+			transparency = 0.4, collide = false,
+		}, hubFolder)
+		for _ = 1, 4 do
+			local lily = part({
+				shape = Enum.PartType.Cylinder,
+				size = Vector3.new(0.12, rng:NextNumber(1.2, 2.0), rng:NextNumber(1.2, 2.0)),
+				cframe = CFrame.new(px + rng:NextNumber(-5, 5), 2.05, pz + rng:NextNumber(-5, 5))
+					* CFrame.Angles(0, rng:NextNumber(0, math.pi), math.rad(90)),
+				material = Enum.Material.Grass,
+				color = Color3.fromRGB(70, 150, 70),
+				collide = false,
+			}, hubFolder)
+			if rng:NextNumber() < 0.6 then
+				local bloom = part({
+					shape = Enum.PartType.Ball,
+					size = Vector3.new(0.5, 0.5, 0.5),
+					pos = lily.Position + Vector3.new(0, 0.3, 0),
+					material = Enum.Material.Neon,
+					color = Color3.fromRGB(255, 170, 200),
+					collide = false,
+				}, hubFolder)
+				bloom.CastShadow = false
+			end
+		end
 	end
 end
 
@@ -536,6 +711,7 @@ function HubService.init(ds, netRef)
 	-- Teleport back to hub
 	net.TeleportToHub.OnServerEvent:Connect(function(player)
 		safeTeleport(player, CFrame.new(HubService.getSpawnPosition() + Vector3.new(0, 3, 0)))
+		net.PlaySFX:FireClient(player, "Teleport")
 		net.ApplyLayerLighting:FireClient(player, 0)  -- 0 = hub lighting
 	end)
 

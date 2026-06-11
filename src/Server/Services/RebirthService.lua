@@ -34,6 +34,7 @@ function RebirthService.tryRebirth(player)
 		pdata.rebirthTokens = (pdata.rebirthTokens or 0) + Balance.REBIRTH_TOKENS
 
 		dataService.sendUpdate(player)
+		net.PlaySFX:FireClient(player, "Chime")
 		net.RebirthDone:FireClient(player, pdata.rebirths, Balance.rebirthMult(pdata.rebirths))
 
 		-- Move back to hub spawn

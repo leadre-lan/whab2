@@ -13,6 +13,7 @@ local netFolder = RS:WaitForChild("BambooNet")
 local REMOTE_NAMES = {
 	"UpdateData", "HitEffect", "Notify", "LayerUnlocked",
 	"OpenLayerSelect", "ApplyLayerLighting", "OpenForge", "RebirthDone",
+	"PlaySFX",
 	"ChopTarget", "SlamAttack", "UpgradeStat",
 	"AttackEntity", "SetBlocking",
 	"TeleportToLayer", "TeleportToHub",
@@ -25,6 +26,7 @@ end
 
 -- ── Load shared modules ───────────────────────────────────────────────────────
 local Layers = require(RS:WaitForChild("Shared"):WaitForChild("Layers"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 -- ── Load client controllers ───────────────────────────────────────────────────
 local Controllers     = script.Parent:WaitForChild("Controllers")
@@ -43,19 +45,11 @@ InputCtrl.init(net, EffectsCtrl, UICtrl)
 -- known-good ids so every zone always ends up with music.
 local TweenService = game:GetService("TweenService")
 
--- ▼▼ HIER eigene Musik-IDs eintragen (erste ladbare ID gewinnt) ▼▼
-local TRACK_HUB    = {  -- gemütlich/fröhlich
-	"rbxassetid://9043887091", "rbxassetid://9046863017", "rbxassetid://1843463175",
-}
-local TRACK_FOREST = {  -- hell, entspannt (Grüner/Goldener Hain)
-	"rbxassetid://9046896990", "rbxassetid://9045766818", "rbxassetid://1843463175",
-}
-local TRACK_MYSTIC = {  -- geheimnisvoll (Kristall/Schatten)
-	"rbxassetid://9046897116", "rbxassetid://1843463175",
-}
-local TRACK_EPIC   = {  -- treibend (Vulkan/Himmel)
-	"rbxassetid://9046515361", "rbxassetid://1837879082",
-}
+-- Musik-IDs leben in Shared/Assets.lua (alle verifiziert; erste ladbare gewinnt)
+local TRACK_HUB    = Assets.MUSIC.Hub
+local TRACK_FOREST = Assets.MUSIC.Forest
+local TRACK_MYSTIC = Assets.MUSIC.Mystic
+local TRACK_EPIC   = Assets.MUSIC.Epic
 local MUSIC_VOLUME = 0.27
 
 local function zoneTracks(layerIdx)
@@ -113,6 +107,15 @@ local function playZoneMusic(layerIdx)
 end
 
 playZoneMusic(0)  -- start with hub music
+
+-- Meshes, Texturen und SFX im Hintergrund vorladen (kein Ruckeln beim ersten
+-- Schwerthieb / Treffer)
+task.spawn(function()
+	local ContentProvider = game:GetService("ContentProvider")
+	pcall(function()
+		ContentProvider:PreloadAsync(Assets.preloadList())
+	end)
+end)
 
 -- ── Local data cache ──────────────────────────────────────────────────────────
 local localData = { coins = 0, xp = 0, level = 1, totalFelled = 0, totalMined = 0,
@@ -241,7 +244,7 @@ end
 
 net.ApplyLayerLighting.OnClientEvent:Connect(applyZone)
 
-net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage, sliceInfo)
+net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage, sliceInfo, kind)
 	EffectsCtrl.shake(died and 1.25 or 0.38)
 	EffectsCtrl.spawnFragments(hitPos, color, died and 9 or 3)
 
@@ -251,10 +254,23 @@ net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage,
 		EffectsCtrl.playSliceSound(sliceInfo.slicePos or hitPos)
 	end
 
+	-- Treffer-Sound je nach Ziel (Stein, Monster, Spieler-Schaden)
+	if kind and kind ~= "bamboo" then
+		EffectsCtrl.playHitSound(kind, hitPos, died)
+	end
+
 	if combo then UICtrl.showCombo(combo) end
 	if damage then
 		local isCrit = combo and combo >= 5
 		EffectsCtrl.spawnDamageNum(hitPos, damage, isCrit)
+	end
+end)
+
+-- Server-seitig ausgelöste UI-/Welt-Sounds (Schmiede, Portal, Rebirth, Daily)
+net.PlaySFX.OnClientEvent:Connect(function(key, volume, pitch)
+	local id = Assets.SFX[key]
+	if id then
+		Assets.play2D(id, volume or 0.7, pitch)
 	end
 end)
 

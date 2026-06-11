@@ -42,6 +42,7 @@ function ForgeService.init(ds, netRef)
 		dataService.sendUpdate(player)
 
 		-- Craft moment: tell everyone for tier 5+
+		net.PlaySFX:FireClient(player, "Anvil")
 		net.Notify:FireClient(player, "🔨 " .. recipe.name .. " geschmiedet!")
 		if nextTier >= 5 then
 			local Players = game:GetService("Players")

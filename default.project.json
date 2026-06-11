@@ -22,7 +22,8 @@
         "$className": "Folder",
         "Balance":  { "$path": "src/Shared/Balance.lua" },
         "UITheme":  { "$path": "src/Shared/UITheme.lua" },
-        "Layers":   { "$path": "src/Shared/Layers.lua" }
+        "Layers":   { "$path": "src/Shared/Layers.lua" },
+        "Assets":   { "$path": "src/Shared/Assets.lua" }
       }
     },
     "ServerScriptService": {
