@@ -392,7 +392,7 @@ for _, zone in ipairs(Config.ZONES) do
 			growBamboo()
 		end
 
-		local function tryChop(player)
+		local function tryChop(player, damageOverride)
 			local data = playerData[player]
 			if not data then return end
 
@@ -405,16 +405,41 @@ for _, zone in ipairs(Config.ZONES) do
 				return
 			end
 
-			-- Per-player per-bamboo cooldown
+			-- Per-player per-bamboo cooldown (skip for damageOverride/slam)
 			local cdKey = tostring(player.UserId) .. "_" .. tostring(hitbox)
 			local now   = os.clock()
-			local last  = playerCooldowns[cdKey]
-			if last and (now - last) < Config.SWING_DELAY then return end
-			playerCooldowns[cdKey] = now
+			if not damageOverride then
+				local last = playerCooldowns[cdKey]
+				if last and (now - last) < Config.SWING_DELAY then return end
+				playerCooldowns[cdKey] = now
+			end
+
+			-- ── Combo tracking ───────────────────────────────────────────────
+			if not playerCombo[player] then
+				playerCombo[player] = { count = 1, lastHitTime = 0 }
+			end
+			local comboData = playerCombo[player]
+			if (now - comboData.lastHitTime) <= 2 then
+				comboData.count = comboData.count + 1
+			else
+				comboData.count = 1
+			end
+			comboData.lastHitTime = now
+			local combo = comboData.count
+
+			-- Coin multiplier: 1-4 = 1x, 5-9 = 1.5x (rounded up), 10+ = 2x
+			local coinMult
+			if combo >= 10 then
+				coinMult = 2
+			elseif combo >= 5 then
+				coinMult = 1.5
+			else
+				coinMult = 1
+			end
 
 			-- Deal damage
 			local sword  = Config.SWORDS[data.swordLevel]
-			local damage = sword and sword.damage or 1
+			local damage = damageOverride or (sword and sword.damage or 1)
 			bambooHealth[hitbox] = bambooHealth[hitbox] - damage
 			hitSound:Play()
 
@@ -425,14 +450,27 @@ for _, zone in ipairs(Config.ZONES) do
 				v.part.Color = v.color:Lerp(Color3.fromRGB(255, 80, 0), 1 - healthFrac)
 			end
 
+			local died = bambooHealth[hitbox] <= 0
+
+			-- Fire HitEffect to all players within 60 studs
+			local hitPos = hitbox.Position
+			for _, p in ipairs(Players:GetPlayers()) do
+				local char = p.Character
+				local root = char and char:FindFirstChild("HumanoidRootPart")
+				if root and (root.Position - hitPos).Magnitude <= 60 then
+					HitEffect:FireClient(p, hitPos, capturedBambooType.color, died, combo, damage)
+				end
+			end
+
 			-- Check if destroyed
-			if bambooHealth[hitbox] <= 0 then
+			if died then
 				hitbox:SetAttribute("IsDead", true)
 				hitbox.CanCollide = false
 				setAllTransparency(1)
 				breakSound:Play()
 
-				data.coins        = data.coins + capturedBambooType.coins
+				local coinsEarned = math.ceil(capturedBambooType.coins * coinMult)
+				data.coins        = data.coins + coinsEarned
 				data.totalChopped = data.totalChopped + 1
 				sendUpdate(player)
 
@@ -458,6 +496,191 @@ ChopBamboo.OnServerEvent:Connect(function(player, part)
 	if (root.Position - part.Position).Magnitude > 30 then return end
 
 	handler(player)
+end)
+
+-- ─── SlamAttack Handler ───────────────────────────────────────────────────────
+SlamAttack.OnServerEvent:Connect(function(player)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+
+	-- Validate player is actually in the air
+	if root.AssemblyLinearVelocity.Y >= -2 then return end
+
+	local playerPos = root.Position
+	local sword = Config.SWORDS[playerData[player] and playerData[player].swordLevel or 1]
+	local baseDamage = sword and sword.damage or 1
+	local slamDamage = baseDamage * 3
+
+	-- Find all bamboo/rock hitboxes within 10 studs
+	local zonesF = workspace:FindFirstChild("Zones")
+	if not zonesF then return end
+	for _, desc in ipairs(zonesF:GetDescendants()) do
+		if desc:IsA("BasePart")
+			and (desc:GetAttribute("IsBamboo") or desc:GetAttribute("IsRock"))
+			and not desc:GetAttribute("IsDead") then
+			local dist = (desc.Position - playerPos).Magnitude
+			if dist <= 10 then
+				local handler = chopHandlers[desc]
+				if handler then
+					-- Play break sound immediately for feedback
+					local brk = desc:FindFirstChild("BreakSound")
+					if brk then brk:Play() end
+					handler(player, slamDamage)
+				end
+			end
+		end
+	end
+end)
+
+-- ─── Mining Rocks Generation ─────────────────────────────────────────────────
+-- Spawn 4-6 rocks between each pair of zones (offsetX + 65 to offsetX + 110).
+-- Rocks require swordLevel >= zone.requiredLevel + 1 and give 3x that zone's coins.
+-- They have 8 HP and respawn after 20 seconds.
+
+local rockHealth = {}   -- [rockPart] = currentHealth
+
+for _, zone in ipairs(Config.ZONES) do
+	local zoneFolder = zonesFolder:FindFirstChild(zone.name)
+	if not zoneFolder then continue end
+
+	local bambooType = Config.BAMBOO_TYPES[zone.bambooTypeId]
+	local rockCount = rng:NextInteger(4, 6)
+
+	for _ = 1, rockCount do
+		local rx = zone.offsetX + rng:NextNumber(65, 110)
+		local rz = rng:NextNumber(-40, 40)
+
+		local rock = Instance.new("Part")
+		rock.Name = "Rock"
+		rock.Shape = Enum.PartType.Ball
+		rock.Size = Vector3.new(3, 3, 3)
+		rock.Position = Vector3.new(rx, 2.5, rz)
+		rock.Material = Enum.Material.SmoothPlastic
+		rock.Color = Color3.fromRGB(130, 130, 130)
+		rock.Anchored = true
+		rock.CanCollide = true
+		rock:SetAttribute("IsRock", true)
+		rock:SetAttribute("IsDead", false)
+		rock.Parent = zoneFolder
+
+		rockHealth[rock] = 8
+
+		local hitSnd = Instance.new("Sound")
+		hitSnd.Name = "HitSound"
+		hitSnd.SoundId = "rbxasset://sounds/snap.mp3"
+		hitSnd.Volume = 0.9
+		hitSnd.Parent = rock
+
+		local brkSnd = Instance.new("Sound")
+		brkSnd.Name = "BreakSound"
+		brkSnd.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+		brkSnd.Volume = 1
+		brkSnd.Parent = rock
+
+		local clickDet = Instance.new("ClickDetector")
+		clickDet.MaxActivationDistance = 15
+		clickDet.Parent = rock
+
+		local capturedZone = zone
+		local capturedBambooType = bambooType
+
+		local function respawnRock()
+			task.wait(20)
+			if not rock.Parent then return end
+			rockHealth[rock] = 8
+			rock:SetAttribute("IsDead", false)
+			rock.CanCollide = true
+			rock.Transparency = 0
+			rock.Color = Color3.fromRGB(130, 130, 130)
+		end
+
+		local function tryMineRock(player, damageOverride)
+			local data = playerData[player]
+			if not data then return end
+
+			if rock:GetAttribute("IsDead") then return end
+
+			-- Rocks require one level above the zone's required level
+			local reqLevel = capturedZone.requiredLevel + 1
+			if data.swordLevel < reqLevel then
+				Notify:FireClient(player, "⚔ Schwertlevel " .. reqLevel .. " fuer Felsen benoetigt!")
+				return
+			end
+
+			local cdKey = tostring(player.UserId) .. "_rock_" .. tostring(rock)
+			local now = os.clock()
+			if not damageOverride then
+				local last = playerCooldowns[cdKey]
+				if last and (now - last) < Config.SWING_DELAY then return end
+				playerCooldowns[cdKey] = now
+			end
+
+			-- Combo tracking
+			if not playerCombo[player] then
+				playerCombo[player] = { count = 1, lastHitTime = 0 }
+			end
+			local comboData = playerCombo[player]
+			if (now - comboData.lastHitTime) <= 2 then
+				comboData.count = comboData.count + 1
+			else
+				comboData.count = 1
+			end
+			comboData.lastHitTime = now
+			local combo = comboData.count
+
+			local coinMult
+			if combo >= 10 then
+				coinMult = 2
+			elseif combo >= 5 then
+				coinMult = 1.5
+			else
+				coinMult = 1
+			end
+
+			local sword = Config.SWORDS[data.swordLevel]
+			local damage = damageOverride or (sword and sword.damage or 1)
+			rockHealth[rock] = rockHealth[rock] - damage
+			hitSnd:Play()
+
+			local healthFrac = math.max(0, rockHealth[rock]) / 8
+			rock.Color = Color3.fromRGB(130, 130, 130):Lerp(Color3.fromRGB(255, 80, 0), 1 - healthFrac)
+
+			local died = rockHealth[rock] <= 0
+
+			-- Fire HitEffect to nearby players
+			local hitPos = rock.Position
+			for _, p in ipairs(Players:GetPlayers()) do
+				local char = p.Character
+				local rootPart = char and char:FindFirstChild("HumanoidRootPart")
+				if rootPart and (rootPart.Position - hitPos).Magnitude <= 60 then
+					HitEffect:FireClient(p, hitPos, rock.Color, died, combo, damage)
+				end
+			end
+
+			if died then
+				rock:SetAttribute("IsDead", true)
+				rock.CanCollide = false
+				rock.Transparency = 1
+				brkSnd:Play()
+
+				local coinsEarned = math.ceil(capturedBambooType.coins * 3 * coinMult)
+				data.coins = data.coins + coinsEarned
+				data.totalChopped = data.totalChopped + 1
+				sendUpdate(player)
+
+				task.spawn(respawnRock)
+			end
+		end
+
+		chopHandlers[rock] = tryMineRock
+		clickDet.MouseClick:Connect(tryMineRock)
+	end
+end
+
+-- Clean up combo data when players leave
+Players.PlayerRemoving:Connect(function(player)
+	playerCombo[player] = nil
 end)
 
 -- ─── Decorative Forest + Atmosphere ──────────────────────────────────────────
