@@ -2,12 +2,99 @@
 -- Schaden ist IMMER gleich (One-Shot, fixer Cooldown) — Skins sind reine Optik.
 local WeaponService = {}
 
-local Players = game:GetService("Players")
-local RS      = game:GetService("ReplicatedStorage")
+local Players           = game:GetService("Players")
+local RS                = game:GetService("ReplicatedStorage")
+local InsertService     = game:GetService("InsertService")
+local CollectionService = game:GetService("CollectionService")
 
 local Config        = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 local Skins         = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
 local SniperBuilder = require(RS:WaitForChild("Shared"):WaitForChild("SniperBuilder"))
+
+-- ── AWP-Mesh laden + vermessen ────────────────────────────────────────────────
+-- Das Creator-Store-Asset wird einmal geladen; danach wird die Lauf-Achse
+-- bestimmt: längste Achse = Lauf, und per Raycast-Probe (Trefferdichte an
+-- beiden Enden) die Mündungsrichtung — der Schaft ist massiv, der Lauf dünn.
+local AXES = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+
+local function probeEndHits(meshPart, axis, sign, otherA, otherB)
+	local s = meshPart.Size
+	local center = meshPart.Position + axis * ((axis:Dot(s) * 0.4) * sign)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { meshPart }
+	local hits = 0
+	for i = -2, 2 do
+		for j = -2, 2 do
+			local offset = otherA * (otherA:Dot(s) * 0.12 * i) + otherB * (otherB:Dot(s) * 0.12 * j)
+			local origin = center + offset + Vector3.new(0, s.Magnitude, 0)
+			if workspace:Raycast(origin, Vector3.new(0, -s.Magnitude * 2, 0), params) then
+				hits += 1
+			end
+		end
+	end
+	return hits
+end
+
+local function loadWeaponMesh()
+	for _, assetId in ipairs({ Config.WEAPON_MESH_ASSET, Config.WEAPON_ALT_ASSET }) do
+		local ok, asset = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if ok and asset then
+			local mp = asset:FindFirstChildWhichIsA("MeshPart", true)
+			if mp then
+				mp.Parent = nil
+				asset:Destroy()
+
+				-- Achsen nach Größe sortieren: längste = Lauf, zweite = Höhe
+				local s = mp.Size
+				local sorted = table.clone(AXES)
+				table.sort(sorted, function(a, b) return a:Dot(s) > b:Dot(s) end)
+				local barrelAxis, upAxis = sorted[1], sorted[2]
+
+				-- Probe: Modell hoch über der Map platzieren und beide
+				-- Lauf-Enden von oben abtasten — das dünne Ende ist die Mündung
+				mp.Anchored = true
+				mp.CanCollide = false
+				mp.CFrame = CFrame.new(0, 2800, 0)
+				mp.Parent = workspace
+				local hitsPos = probeEndHits(mp, barrelAxis, 1, upAxis, sorted[3])
+				local hitsNeg = probeEndHits(mp, barrelAxis, -1, upAxis, sorted[3])
+				mp.Parent = nil
+
+				local muzzleSign = (hitsPos < hitsNeg) and 1 or -1
+				if Config.WEAPON_FLIP then muzzleSign = -muzzleSign end
+				local forward = barrelAxis * muzzleSign
+				local up = Config.WEAPON_UPSIDE and -upAxis or upAxis
+
+				-- Rotation, die Mesh-Achsen auf Handle-Achsen abbildet
+				-- (Mündung → -Z, Oberseite → +Y)
+				local rot = CFrame.fromMatrix(Vector3.zero, forward:Cross(up), up, -forward):Inverse()
+
+				local length = barrelAxis:Dot(s)
+				local scale = Config.WEAPON_LENGTH / length
+
+				mp.Anchored = false
+				mp.Massless = true
+				mp.CastShadow = false
+
+				SniperBuilder.setMeshInfo({
+					template = mp,
+					rot      = rot,
+					scale    = scale,
+					length   = Config.WEAPON_LENGTH,
+				})
+				print(("[WeaponService] AWP-Mesh %d geladen (%.1f Studs nativ, Mündung %s%s)")
+					:format(assetId, length, muzzleSign > 0 and "+" or "-",
+						barrelAxis.X > 0.5 and "X" or (barrelAxis.Y > 0.5 and "Y" or "Z")))
+				return
+			end
+			asset:Destroy()
+		end
+	end
+	warn("[WeaponService] AWP-Asset nicht ladbar — nutze prozedurales Modell.")
+end
 
 local dataService  = nil
 local arenaService = nil
@@ -87,10 +174,23 @@ local function handleShoot(player, targetPos)
 	-- Treffer-Auswertung (nur im Live-Match, nur gegen den Gegner)
 	local victim = nil
 	local killed = false
+	local hitModel = nil
 	if result then
-		local model = result.Instance:FindFirstAncestorOfClass("Model")
-		victim = model and Players:GetPlayerFromCharacter(model)
+		hitModel = result.Instance:FindFirstAncestorOfClass("Model")
+		victim = hitModel and Players:GetPlayerFromCharacter(hitModel)
 	end
+
+	-- Trainings-Bot getroffen?
+	if hitModel and not victim and inMatch and CollectionService:HasTag(hitModel, "ArenaBot") then
+		if arenaService.tryHitBot(player, hitModel) then
+			killed = true
+			local pdata = dataService.get(player)
+			if pdata then pdata.kills += 1 end
+			dataService.addCredits(player, Config.BOT_KILL_REWARD)
+			net.PlaySFX:FireClient(player, "ChimeSoft", 0.5, 1.6)
+		end
+	end
+
 	if victim and inMatch and arenaService.canDamage(player, victim) then
 		local vChar = victim.Character
 		local vHum  = vChar and vChar:FindFirstChildOfClass("Humanoid")
@@ -113,16 +213,8 @@ local function handleShoot(player, targetPos)
 		end
 	end
 
-	-- Sound am Handle: spielt 3D für alle in Hörweite (Tier bestimmt den Klang)
-	local handle = tool:FindFirstChild("Handle")
-	local shotSnd = handle and handle:FindFirstChild("ShotSound")
-	if shotSnd then shotSnd:Play() end
-	task.delay(0.35, function()
-		local boltSnd = handle and handle:FindFirstChild("BoltSound")
-		if boltSnd and handle.Parent then boltSnd:Play() end
-	end)
-
-	-- Tracer-Replikation (Clients rendern den Beam in Skin-Farbe)
+	-- Tracer + Sound rendern die CLIENTS über ShotFired (AWP-Sound mit
+	-- Fallback-Kette, Tier-Pitch, Distanz-Filter)
 	local muzzle = tool:FindFirstChild("Muzzle")
 	local beamFrom = muzzle and muzzle.Position or origin
 	net.ShotFired:FireAllClients(beamFrom, hitPos, tool:GetAttribute("SkinId"), killed)
@@ -132,6 +224,18 @@ end
 function WeaponService.init(ds, netRef)
 	dataService = ds
 	net         = netRef
+
+	-- AWP-Mesh asynchron laden; danach bekommen alle ihre Waffe neu (upgraded)
+	task.spawn(function()
+		loadWeaponMesh()
+		if SniperBuilder.hasMesh() then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if dataService.get(p) then
+					WeaponService.giveWeapon(p)
+				end
+			end
+		end
+	end)
 
 	net.Shoot.OnServerEvent:Connect(handleShoot)
 

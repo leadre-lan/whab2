@@ -188,15 +188,29 @@ local function buildLobby(folder)
 	billboard(pad, Vector3.new(0, 6, 0), "⚔ 1v1 SNIPER-ARENA", "Drauftreten: Queue (rein/raus)", Color3.fromRGB(255, 90, 100))
 
 	local padCooldown = {}
-	pad.Touched:Connect(function(hit)
-		local char = hit and hit.Parent
-		local player = char and Players:GetPlayerFromCharacter(char)
-		if not player then return end
-		local last = padCooldown[player] or 0
-		if os.clock() - last < 1.5 then return end
-		padCooldown[player] = os.clock()
+	local function padTouch(callback)
+		return function(hit)
+			local char = hit and hit.Parent
+			local player = char and Players:GetPlayerFromCharacter(char)
+			if not player then return end
+			local last = padCooldown[player] or 0
+			if os.clock() - last < 1.5 then return end
+			padCooldown[player] = os.clock()
+			callback(player)
+		end
+	end
+	pad.Touched:Connect(padTouch(function(player)
 		arenaService.toggleQueue(player)
-	end)
+	end))
+
+	-- ── Bot-Pad (Training gegen den Bot, reduzierte Rewards) ──
+	local botPad = part({ size = Vector3.new(10, 0.5, 10), pos = Vector3.new(55, 0.25, -22),
+		material = Enum.Material.Neon, color = CYAN, transparency = 0.25,
+		name = "BotPad" }, folder)
+	billboard(botPad, Vector3.new(0, 6, 0), "🤖 1v1 VS BOT", "Drauftreten: Training starten", CYAN)
+	botPad.Touched:Connect(padTouch(function(player)
+		arenaService.startBotMatch(player)
+	end))
 
 	-- ── Daily-Terminal ──
 	local terminal = part({ size = Vector3.new(3, 6, 1.6), pos = Vector3.new(-55, 3, 0),

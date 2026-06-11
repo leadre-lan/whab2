@@ -33,8 +33,8 @@
 local Assets = {}
 
 Assets.SFX = {
-	Shot      = "rbxassetid://9126213373",  -- Whip Crack (Hall) → Sniper-Knall
-	Bolt      = "rbxassetid://9114004212",  -- Crossbow Latch → Bolt-Action-Klack
+	Shot      = "rbxassetid://9126213373",  -- Fallback: Whip Crack (verifiziert)
+	Bolt      = "rbxassetid://9114004212",  -- Fallback: Crossbow Latch
 	Magazine  = "rbxassetid://9113104176",  -- Ammo Magazine (Equip-Sound)
 	EggCrack  = "rbxassetid://9113959337",  -- Crack Egg Crunchy 10
 	EggCrack2 = "rbxassetid://9113959539",  -- Crack Egg Crunchy 12
@@ -44,6 +44,43 @@ Assets.SFX = {
 	Coin      = "rbxassetid://9113848490",  -- Coin Bounce (Credits)
 	Teleport  = "rbxassetid://9116394545",  -- Magic Glow (Arena-Teleport)
 }
+
+-- Echte AWP-Sounds (CS-Ports aus dem Creator-Marketplace). User-Audio lässt
+-- sich von außen nicht download-verifizieren — deshalb probiert der Client sie
+-- per PreloadAsync und fällt bei Lade-Fehlern auf die verifizierten
+-- Assets.SFX-IDs oben zurück (Assets.resolveSfx).
+Assets.SFX_PREFERRED = {
+	Shot = {
+		"rbxassetid://138705939667182",  -- Awp_Fire (CS:GO-Port)
+		"rbxassetid://131254751896361",  -- awp fire 1.6
+	},
+	Bolt = {
+		"rbxassetid://133852631085337",  -- Awp_BoltPull (CS CZ:DS)
+		"rbxassetid://140632128823885",  -- awp_boltforward
+	},
+}
+
+-- Client-seitig: bevorzugte IDs testen, erste ladbare gewinnt (sonst Fallback)
+function Assets.resolveSfx()
+	local ContentProvider = game:GetService("ContentProvider")
+	for key, candidates in pairs(Assets.SFX_PREFERRED) do
+		task.spawn(function()
+			for _, id in ipairs(candidates) do
+				local status = nil
+				pcall(function()
+					ContentProvider:PreloadAsync({ id }, function(_, fetchStatus)
+						status = fetchStatus
+					end)
+				end)
+				if status == Enum.AssetFetchStatus.Success then
+					Assets.SFX[key] = id
+					return
+				end
+			end
+			-- nichts ladbar → verifizierter Fallback bleibt aktiv
+		end)
+	end
+end
 
 Assets.MUSIC = {
 	Lobby = {   -- Synthwave-Lounge
@@ -142,6 +179,25 @@ Config.SHOT_COOLDOWN   = 1.4         -- Bolt-Action-Takt
 Config.SHOT_RANGE      = 800
 Config.LOBBY_SHOOTING  = true        -- in der Lobby knallt's, aber ohne Schaden
 
+-- Echtes AWP-Modell aus dem Creator Store (frei; per Thumbnail geprüft).
+-- Der Server lädt es einmal via InsertService, vermisst Lauf-Achse/-Richtung
+-- per Raycast-Probe und nutzt es als Basis für alle Skins. Schlägt das Laden
+-- fehl (z.B. offline), greift automatisch der prozedurale Part-Build.
+Config.WEAPON_MESH_ASSET = 13638913296   -- "AWP sniper"
+Config.WEAPON_ALT_ASSET  = 504829517     -- "[L4D2] AWP" (Fallback-Modell)
+Config.WEAPON_LENGTH     = 4.8           -- Ziel-Länge in Studs
+Config.WEAPON_FLIP       = false         -- true, falls der Lauf nach hinten zeigt
+Config.WEAPON_UPSIDE     = false         -- true, falls das Modell kopfüber hängt
+
+-- ── Bot-1v1 (Training) ────────────────────────────────────────────────────────
+Config.BOT_NAME        = "🤖 Trainings-Bot"
+Config.BOT_ACCURACY    = 0.40        -- Trefferchance pro Bot-Schuss
+Config.BOT_REACTION    = { 0.7, 1.4 }-- Ziel-Zeit nach Sichtkontakt (Sekunden)
+Config.BOT_SHOT_CD     = 1.9         -- Bot schießt etwas langsamer als Spieler
+Config.BOT_MOVE_EVERY  = { 2.5, 5 }  -- Sekunden zwischen Positionswechseln
+Config.BOT_KILL_REWARD = 10          -- reduzierte Rewards im Training
+Config.BOT_WIN_REWARD  = 40
+
 -- ── Eier ──────────────────────────────────────────────────────────────────────
 -- Ein massives Omega-Ei in der Lobby-Mitte; weitere Eier einfach ergänzen
 -- (EggService + UI sind komplett config-getrieben).
@@ -196,7 +252,8 @@ Skins.TIERS = {
 -- material überschreibt das Tier-Standard-Material (optional).
 Skins.CATALOG = {
 	-- ── Common ──
-	{ id = "standard",  name = "Standard",      tier = "Common", body = Color3.fromRGB(95, 98, 105),   accent = Color3.fromRGB(60, 62, 68) },
+	-- keepTexture: behält die Original-AWP-Textur des Mesh-Modells
+	{ id = "standard",  name = "Klassik-Tarn",  tier = "Common", body = Color3.fromRGB(95, 98, 105),   accent = Color3.fromRGB(120, 130, 80), keepTexture = true },
 	{ id = "holz",      name = "Holz",          tier = "Common", body = Color3.fromRGB(130, 95, 60),   accent = Color3.fromRGB(90, 64, 40),  material = Enum.Material.Wood },
 	{ id = "beton",     name = "Beton",         tier = "Common", body = Color3.fromRGB(140, 140, 135), accent = Color3.fromRGB(110, 110, 105), material = Enum.Material.Concrete },
 	{ id = "khaki",     name = "Khaki",         tier = "Common", body = Color3.fromRGB(125, 125, 90),  accent = Color3.fromRGB(90, 92, 60) },
@@ -302,15 +359,32 @@ return Skins
           <string name="Source"><![CDATA[-- SniperBuilder.lua — Baut das Sniper-Modell für einen Skin (server-seitig,
 -- damit JEDER den Skin sieht — der Flex ist der Kern des Spiels).
 --
--- Aufbau entlang Handle-lokal -Z (= Schussrichtung beim Halten):
--- Stock hinten (+Z), Receiver = Handle, Lauf + Mündung vorne (-Z),
--- Scope oben, Bolt rechts, Magazin/Griff unten.
+-- Zwei Bau-Pfade:
+--  1) Mesh-Pfad: echtes AWP-Modell aus dem Creator Store. WeaponService lädt
+--     und vermisst es beim Server-Start (setMeshInfo). Der Standard-Skin
+--     behält die Original-Textur, alle anderen färben das Modell pro Tier.
+--  2) Prozeduraler Fallback (Parts) — falls das Asset nicht laden konnte.
+--
+-- Konvention: Schussrichtung = Handle-lokal -Z.
 local SniperBuilder = {}
 
 local CollectionService = game:GetService("CollectionService")
 
 local Skins  = require(script.Parent:WaitForChild("Skins"))
 local Assets = require(script.Parent:WaitForChild("Assets"))
+
+-- Vom WeaponService nach der Vermessung gesetzt:
+-- { template = MeshPart, rot = CFrame (Mesh→Handle-Achsen), scale = number,
+--   length = number (Studs nach Skalierung) }
+local meshInfo = nil
+
+function SniperBuilder.setMeshInfo(info)
+	meshInfo = info
+end
+
+function SniperBuilder.hasMesh()
+	return meshInfo ~= nil
+end
 
 local function weldTo(handle, part, offset)
 	part.Anchored = false
@@ -347,43 +421,37 @@ local function tagPulse(part, baseColor, rainbow)
 	CollectionService:AddTag(part, "PulseFX")
 end
 
--- Baut das fertige Tool. mountTo = Backpack/Character übernimmt der Aufrufer.
-function SniperBuilder.buildTool(skin)
-	local fx = Skins.fxFor(skin.tier)
+-- ── Bau-Pfad 1: echtes AWP-Mesh ───────────────────────────────────────────────
+local function buildMeshBody(handle, skin, fx)
+	local body = meshInfo.template:Clone()
+	body.Name = "Body"
+	body.Size = meshInfo.template.Size * meshInfo.scale
+
+	if not skin.keepTexture then
+		body.TextureID = ""
+		body.Color = skin.body
+		body.Material = skin.material
+			or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
+		body.Reflectance = (fx.metallic and not fx.neon) and 0.3 or 0
+	end
+
+	-- Mesh-Mitte etwas vor/über den Griffpunkt (Handle hält am hinteren Drittel)
+	weldTo(handle, body, CFrame.new(0, 0.12, -0.45) * meshInfo.rot)
+	return -meshInfo.length / 2 - 0.55   -- Mündungs-Z (handle-lokal)
+end
+
+-- ── Bau-Pfad 2: prozeduraler Fallback (Parts) ─────────────────────────────────
+local function buildProceduralBody(handle, skin, fx, accent)
 	local bodyMat   = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
 	local accentMat = fx.neon and Enum.Material.Neon or bodyMat
-	local refl      = (fx.metallic and not fx.neon) and 0.25 or 0
 
-	local tool = Instance.new("Tool")
-	tool.Name = "Sniper"
-	tool.RequiresHandle = true
-	tool.CanBeDropped = false
-	tool.ToolTip = skin.name .. " [" .. skin.tier .. "]"
-	tool.GripPos     = Vector3.new(0, -0.1, 0.5)
-	tool.GripForward = Vector3.new(0, 0, -1)
-	tool.GripRight   = Vector3.new(1, 0, 0)
-	tool.GripUp      = Vector3.new(0, 1, 0)
-	tool:SetAttribute("SkinId", skin.id)
-	tool:SetAttribute("SkinTier", skin.tier)
-
-	-- Receiver = Handle
-	local handle = mkPart({ size = Vector3.new(0.34, 0.5, 2.2), color = skin.body, material = bodyMat, name = "Handle" })
-	handle.Reflectance = refl
-	handle.CanCollide = false
-	handle.Parent = tool
-
-	local accentParts = {}
-	local function accent(part)
-		part.Reflectance = refl
-		if fx.pulse then tagPulse(part, skin.accent, fx.rainbow) end
-		table.insert(accentParts, part)
-		return part
-	end
+	handle.Transparency = 0
+	handle.Color = skin.body
+	handle.Material = bodyMat
 
 	-- Stock (hinten, leicht abfallend)
 	weldTo(handle, mkPart({ size = Vector3.new(0.3, 0.52, 1.15), color = skin.body, material = bodyMat }),
 		CFrame.new(0, -0.08, 1.62) * CFrame.Angles(math.rad(-4), 0, 0))
-	-- Schulterkappe (Akzent)
 	accent(weldTo(handle, mkPart({ size = Vector3.new(0.32, 0.5, 0.14), color = skin.accent, material = accentMat }),
 		CFrame.new(0, -0.12, 2.2)))
 
@@ -391,20 +459,11 @@ function SniperBuilder.buildTool(skin)
 	accent(weldTo(handle, mkPart({ size = Vector3.new(2.5, 0.16, 0.16), color = skin.accent, material = accentMat, shape = Enum.PartType.Cylinder }),
 		CFrame.new(0, 0.08, -2.25) * CFrame.Angles(0, math.rad(90), 0)))
 
-	-- Mündung (Shot-Origin: trägt Attachment für Partikel/Tracer)
-	local muzzle = weldTo(handle, mkPart({ size = Vector3.new(0.3, 0.24, 0.24), color = skin.accent, material = accentMat, shape = Enum.PartType.Cylinder, name = "Muzzle" }),
-		CFrame.new(0, 0.08, -3.55) * CFrame.Angles(0, math.rad(90), 0))
-	accent(muzzle)
-	local muzzleAtt = Instance.new("Attachment")
-	muzzleAtt.Name = "MuzzleAtt"
-	muzzleAtt.Parent = muzzle
-
-	-- Scope (Rohr + Neon-Linse vorne)
+	-- Scope (Rohr + Linse)
 	weldTo(handle, mkPart({ size = Vector3.new(1.15, 0.2, 0.2), color = skin.body, material = bodyMat, shape = Enum.PartType.Cylinder }),
 		CFrame.new(0, 0.45, -0.35) * CFrame.Angles(0, math.rad(90), 0))
 	accent(weldTo(handle, mkPart({ size = Vector3.new(0.05, 0.18, 0.18), color = skin.accent, material = fx.neon and Enum.Material.Neon or Enum.Material.Glass, shape = Enum.PartType.Cylinder, name = "Lens" }),
 		CFrame.new(0, 0.45, -0.95) * CFrame.Angles(0, math.rad(90), 0)))
-	-- Scope-Füße
 	for _, z in ipairs({ -0.7, 0.05 }) do
 		weldTo(handle, mkPart({ size = Vector3.new(0.1, 0.18, 0.12), color = skin.body, material = bodyMat }),
 			CFrame.new(0, 0.32, z))
@@ -425,6 +484,60 @@ function SniperBuilder.buildTool(skin)
 		accent(weldTo(handle, mkPart({ size = Vector3.new(0.04, 0.1, 1.4), color = skin.accent, material = accentMat }),
 			CFrame.new(side * 0.2, 0.12, -0.2)))
 	end
+
+	return -3.55   -- Mündungs-Z (handle-lokal)
+end
+
+-- Baut das fertige Tool. mountTo = Backpack/Character übernimmt der Aufrufer.
+function SniperBuilder.buildTool(skin)
+	local fx = Skins.fxFor(skin.tier)
+	local accentMat = fx.neon and Enum.Material.Neon or Enum.Material.Metal
+
+	local tool = Instance.new("Tool")
+	tool.Name = "Sniper"
+	tool.RequiresHandle = true
+	tool.CanBeDropped = false
+	tool.ToolTip = skin.name .. " [" .. skin.tier .. "]"
+	tool.GripPos     = Vector3.new(0, -0.1, 0.5)
+	tool.GripForward = Vector3.new(0, 0, -1)
+	tool.GripRight   = Vector3.new(1, 0, 0)
+	tool.GripUp      = Vector3.new(0, 1, 0)
+	tool:SetAttribute("SkinId", skin.id)
+	tool:SetAttribute("SkinTier", skin.tier)
+
+	-- Handle: unsichtbarer Griffpunkt (im Fallback-Pfad wird er zum Receiver)
+	local handle = mkPart({ size = Vector3.new(0.34, 0.5, 2.2), color = skin.body, name = "Handle" })
+	handle.Transparency = 1
+	handle.CanCollide = false
+	handle.Parent = tool
+
+	local function accent(part)
+		if fx.pulse then tagPulse(part, skin.accent, fx.rainbow) end
+		return part
+	end
+
+	local muzzleZ
+	if meshInfo then
+		muzzleZ = buildMeshBody(handle, skin, fx)
+	else
+		muzzleZ = buildProceduralBody(handle, skin, fx, accent)
+	end
+
+	-- Mündungs-Marker: Shot-Origin für Tracer + Träger für Partikel/Licht.
+	-- Bei Legendary+ als sichtbarer Glow-Ring um den Lauf.
+	local muzzle = mkPart({
+		size = Vector3.new(0.12, 0.3, 0.3),
+		color = skin.accent,
+		material = accentMat,
+		shape = Enum.PartType.Cylinder,
+		name = "Muzzle",
+	})
+	muzzle.Transparency = fx.neon and 0.1 or 1
+	accent(muzzle)
+	weldTo(handle, muzzle, CFrame.new(0, 0.1, muzzleZ + 0.3) * CFrame.Angles(0, math.rad(90), 0))
+	local muzzleAtt = Instance.new("Attachment")
+	muzzleAtt.Name = "MuzzleAtt"
+	muzzleAtt.Parent = muzzle
 
 	-- ── Tier-Effekte ──
 	if fx.particles then
@@ -451,10 +564,10 @@ function SniperBuilder.buildTool(skin)
 	if fx.trail then
 		-- Lichtspur beim Laufen: Trail über die Lauflänge, immer aktiv
 		local a0 = Instance.new("Attachment")
-		a0.Position = Vector3.new(0, 0.08, -3.4)
+		a0.Position = Vector3.new(0, 0.08, muzzleZ + 0.2)
 		a0.Parent = handle
 		local a1 = Instance.new("Attachment")
-		a1.Position = Vector3.new(0, 0.08, -1.0)
+		a1.Position = Vector3.new(0, 0.08, muzzleZ + 2.4)
 		a1.Parent = handle
 		local trail = Instance.new("Trail")
 		trail.Attachment0 = a0
@@ -467,22 +580,8 @@ function SniperBuilder.buildTool(skin)
 		trail.Parent = handle
 	end
 
-	-- Sounds am Handle (Tier bestimmt den Klang: Common dumpf, oben knackig)
-	local order = Skins.TIERS[skin.tier].order
-	local shot = Instance.new("Sound")
-	shot.Name = "ShotSound"
-	shot.SoundId = Assets.SFX.Shot
-	shot.Volume = 0.45 + order * 0.12
-	shot.PlaybackSpeed = 0.7 + order * 0.12
-	shot.RollOffMaxDistance = 350
-	shot.Parent = handle
-
-	local bolt = Instance.new("Sound")
-	bolt.Name = "BoltSound"
-	bolt.SoundId = Assets.SFX.Bolt
-	bolt.Volume = 0.5
-	bolt.Parent = handle
-
+	-- Schuss-/Bolt-Sounds spielt der CLIENT über das ShotFired-Event ab
+	-- (AWP-Sound mit Fallback-Kette, siehe Assets.resolveSfx). Hier nur Equip:
 	local equip = Instance.new("Sound")
 	equip.Name = "EquipSound"
 	equip.SoundId = Assets.SFX.Magazine
@@ -573,7 +672,7 @@ local REMOTE_NAMES = {
 	"TradeUpdate",
 	-- Client → Server
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin",
+	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 }
 
@@ -592,6 +691,7 @@ local DataService   = require(Services:WaitForChild("DataService"))
 local EggService    = require(Services:WaitForChild("EggService"))
 local WeaponService = require(Services:WaitForChild("WeaponService"))
 local ArenaService  = require(Services:WaitForChild("ArenaService"))
+local BotService    = require(Services:WaitForChild("BotService"))
 local LobbyService  = require(Services:WaitForChild("LobbyService"))
 local TradeService  = require(Services:WaitForChild("TradeService"))
 
@@ -606,11 +706,13 @@ end
 safeInit("DataService",   DataService.init, net)
 safeInit("WeaponService", WeaponService.init, DataService, net)
 safeInit("ArenaService",  ArenaService.init, DataService, WeaponService, net)
+safeInit("BotService",    BotService.init, net)
 safeInit("EggService",    EggService.init, DataService, net)
 safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, net)
 safeInit("TradeService",  TradeService.init, DataService, WeaponService, net)
 
 WeaponService.setArenaService(ArenaService)
+ArenaService.setBotService(BotService)
 
 -- ── Player-Lifecycle ──────────────────────────────────────────────────────────
 local function onPlayerAdded(player)
@@ -652,12 +754,18 @@ local RS      = game:GetService("ReplicatedStorage")
 local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 
 local dataService = nil
+local botService  = nil   -- via setBotService (Server-Wiring)
 local net         = nil
 
-local queue       = {}    -- Array von Playern
-local playerMatch = {}    -- [player] = match
-local arenaFree   = {}    -- [idx] = true/false
-local arenaSpawns = {}    -- [idx] = { CFrame, CFrame }
+local queue          = {}    -- Array von Playern
+local playerMatch    = {}    -- [player] = match
+local arenaFree      = {}    -- [idx] = true/false
+local arenaSpawns    = {}    -- [idx] = { CFrame, CFrame }
+local arenaWaypoints = {}    -- [idx] = { Vector3 } (Deckungen auf der Bot-Hälfte)
+
+function ArenaService.setBotService(svc)
+	botService = svc
+end
 
 -- ── Arena-Geometrie ───────────────────────────────────────────────────────────
 local function part(props, parent)
@@ -703,6 +811,7 @@ local function buildArena(idx, folder)
 	-- Symmetrische Deckung: Kisten + niedrige Mauern + Mittel-Pylon
 	-- (beide Seiten identisch → fair)
 	local coverColor = Color3.fromRGB(52, 56, 80)
+	arenaWaypoints[idx] = {}
 	for _, side in ipairs({ -1, 1 }) do
 		for _, c in ipairs({
 			{ x = -18, z = 28, s = Vector3.new(6, 5, 6) },
@@ -714,8 +823,14 @@ local function buildArena(idx, folder)
 			part({ size = c.s,
 				pos = Vector3.new(cx + c.x * side, c.s.Y / 2, c.z * side),
 				material = Enum.Material.Metal, color = coverColor }, folder)
+			-- Bot-Wegpunkte: jeweils HINTER der Deckung der +Z-Hälfte
+			if side == 1 then
+				table.insert(arenaWaypoints[idx],
+					Vector3.new(cx + c.x, 1, c.z + c.s.Z / 2 + 3.5))
+			end
 		end
 	end
+	table.insert(arenaWaypoints[idx], Vector3.new(cx, 1, 55))
 	part({ size = Vector3.new(4, 9, 4), pos = Vector3.new(cx, 4.5, 0),
 		material = Enum.Material.Metal, color = coverColor }, folder)
 	part({ size = Vector3.new(4.4, 0.4, 4.4), pos = Vector3.new(cx, 9.2, 0),
@@ -909,6 +1024,185 @@ local function tryStartMatches()
 end
 tryStartMatchesRef = tryStartMatches
 
+-- ── Bot-1v1 (Training) ────────────────────────────────────────────────────────
+local function sendBotState(match, state, extra)
+	local p = match.players[1]
+	if not p.Parent then return end
+	local payload = {
+		state    = state,
+		opponent = Config.BOT_NAME,
+		score    = { you = match.score, enemy = match.botScore },
+		timeLeft = math.max(0, math.ceil(match.endTime - os.clock())),
+	}
+	if extra then
+		for k, v in pairs(extra) do payload[k] = v end
+	end
+	net.MatchState:FireClient(p, payload)
+end
+
+local function endBotMatch(match, playerWon)
+	if match.ended then return end
+	match.ended = true
+	match.live = false
+
+	local p = match.players[1]
+	playerMatch[p] = nil
+	arenaFree[match.arenaIdx] = true
+	if match.bot then match.bot.destroy() end
+
+	if p.Parent then
+		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		if root then root.Anchored = false end
+
+		if playerWon then
+			dataService.addCredits(p, Config.BOT_WIN_REWARD)
+			net.PlaySFX:FireClient(p, "Chime", 0.7)
+			net.Notify:FireClient(p, "🏆 Trainings-Sieg! +" .. Config.BOT_WIN_REWARD .. " " .. Config.CURRENCY_NAME)
+		else
+			net.PlaySFX:FireClient(p, "ChimeSoft", 0.6)
+			net.Notify:FireClient(p, "🤖 Der Bot gewinnt — nochmal!")
+		end
+		net.MatchState:FireClient(p, {
+			state = "ended",
+			winner = playerWon and p.Name or Config.BOT_NAME,
+			youWon = playerWon == true,
+		})
+		teleport(p, lobbyCFrame())
+	end
+
+	task.defer(tryStartMatchesRef)
+end
+
+local function spawnBotForMatch(match)
+	if match.ended or not botService then return end
+	local p = match.players[1]
+	match.bot = botService.spawn({
+		spawnCF   = arenaSpawns[match.arenaIdx][2],
+		waypoints = arenaWaypoints[match.arenaIdx] or {},
+		getTarget = function()
+			return p.Parent and p or nil
+		end,
+		shouldAct = function()
+			return match.live and not match.ended
+		end,
+		onHitPlayer = function(victim)
+			if match.ended or not match.live or victim ~= p then return end
+			local char = victim.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			if not hum or hum.Health <= 0 then return end
+			hum.Health = 0
+			match.botScore += 1
+			sendBotState(match, "live", { killBy = Config.BOT_NAME })
+
+			if match.botScore >= Config.KILLS_TO_WIN then
+				endBotMatch(match, false)
+				return
+			end
+			task.delay(Config.RESPAWN_DELAY, function()
+				if victim.Parent and playerMatch[victim] == match and not match.ended then
+					victim:LoadCharacter()
+				end
+			end)
+		end,
+	})
+end
+
+function ArenaService.startBotMatch(player)
+	if playerMatch[player] then return end
+	if not botService then
+		net.Notify:FireClient(player, "Bot-Service nicht verfügbar.")
+		return
+	end
+	-- aus der PvP-Queue nehmen
+	for i, p in ipairs(queue) do
+		if p == player then
+			table.remove(queue, i)
+			net.QueueState:FireClient(player, false)
+			break
+		end
+	end
+
+	local arenaIdx = nil
+	for i = 1, Config.ARENA_COUNT do
+		if arenaFree[i] then
+			arenaIdx = i
+			break
+		end
+	end
+	if not arenaIdx then
+		net.Notify:FireClient(player, "Alle Arenen belegt — gleich nochmal versuchen!")
+		return
+	end
+	arenaFree[arenaIdx] = false
+
+	local match = {
+		botMode  = true,
+		arenaIdx = arenaIdx,
+		players  = { player },
+		score    = 0,
+		botScore = 0,
+		live     = false,
+		ended    = false,
+		endTime  = os.clock() + Config.MATCH_TIME + Config.COUNTDOWN,
+	}
+	playerMatch[player] = match
+
+	task.spawn(function()
+		teleport(player, arenaSpawns[arenaIdx][1])
+		net.PlaySFX:FireClient(player, "Teleport", 0.6)
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root then root.Anchored = true end
+
+		spawnBotForMatch(match)
+
+		for n = Config.COUNTDOWN, 1, -1 do
+			sendBotState(match, "countdown", { countdown = n })
+			task.wait(1)
+			if match.ended then return end
+		end
+
+		local root2 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root2 then root2.Anchored = false end
+		match.live = true
+		match.endTime = os.clock() + Config.MATCH_TIME
+		sendBotState(match, "live")
+
+		while not match.ended do
+			task.wait(1)
+			if match.ended then break end
+			if not player.Parent then
+				endBotMatch(match, false)
+			elseif os.clock() >= match.endTime then
+				endBotMatch(match, match.score > match.botScore)
+			else
+				sendBotState(match, "live")
+			end
+		end
+	end)
+end
+
+-- WeaponService meldet Bot-Treffer hierher (true = Kill zählt)
+function ArenaService.tryHitBot(shooter, botModel)
+	local match = playerMatch[shooter]
+	if not match or not match.botMode or not match.live or match.ended then return false end
+	if not match.bot or match.bot.model ~= botModel or not match.bot.alive then return false end
+
+	match.bot.kill()
+	match.score += 1
+	sendBotState(match, "live", { killBy = shooter.Name })
+
+	if match.score >= Config.KILLS_TO_WIN then
+		endBotMatch(match, true)
+		return true
+	end
+	task.delay(Config.RESPAWN_DELAY, function()
+		if not match.ended then
+			spawnBotForMatch(match)
+		end
+	end)
+	return true
+end
+
 -- ── Public API (für WeaponService / LobbyService) ─────────────────────────────
 function ArenaService.isInLiveMatch(player)
 	local match = playerMatch[player]
@@ -972,6 +1266,10 @@ function ArenaService.init(ds, _ws, netRef)
 		ArenaService.toggleQueue(player)
 	end)
 
+	net.QueueBot.OnServerEvent:Connect(function(player)
+		ArenaService.startBotMatch(player)
+	end)
+
 	-- Respawn während eines Matches → zurück in die Arena (statt Lobby)
 	local function hookRespawn(player)
 		player.CharacterAdded:Connect(function()
@@ -997,8 +1295,12 @@ function ArenaService.init(ds, _ws, netRef)
 		end
 		local match = playerMatch[player]
 		if match and not match.ended then
-			local opponent = (player == match.players[1]) and match.players[2] or match.players[1]
-			endMatch(match, opponent.Parent and opponent or nil)
+			if match.botMode then
+				endBotMatch(match, false)
+			else
+				local opponent = (player == match.players[1]) and match.players[2] or match.players[1]
+				endMatch(match, opponent.Parent and opponent or nil)
+			end
 		end
 	end)
 
@@ -1010,6 +1312,249 @@ return ArenaService
         </Properties>
       </Item>
       <Item class="ModuleScript" referent="12">
+        <Properties>
+          <string name="Name">BotService</string>
+          <string name="Source"><![CDATA[-- BotService.lua — Trainings-Bot für 1v1: R6-Rig, Sniper, simple Duell-KI.
+-- Die KI ist bewusst fair lesbar: Sichtkontakt → Ziel-Zeit (Reaktion) → Schuss
+-- mit fester Trefferchance; dazwischen Positionswechsel zwischen Deckungen.
+local BotService = {}
+
+local RS                = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
+local TweenService      = game:GetService("TweenService")
+local Debris            = game:GetService("Debris")
+
+local Config        = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
+local Skins         = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
+local SniperBuilder = require(RS:WaitForChild("Shared"):WaitForChild("SniperBuilder"))
+
+local net = nil
+local rng = Random.new()
+
+-- ── R6-Rig ────────────────────────────────────────────────────────────────────
+local BODY  = Color3.fromRGB(38, 40, 56)
+local VISOR = Color3.fromRGB(255, 70, 90)
+
+local function bodyPart(name, size, color, parent)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = Enum.Material.Metal
+	p.CanCollide = false
+	p.Parent = parent
+	return p
+end
+
+local function motor(name, p0, p1, c0, c1, parent)
+	local m = Instance.new("Motor6D")
+	m.Name = name
+	m.Part0 = p0
+	m.Part1 = p1
+	m.C0 = c0
+	m.C1 = c1
+	m.Parent = parent
+end
+
+local function buildRig(spawnCF)
+	local model = Instance.new("Model")
+	model.Name = Config.BOT_NAME
+
+	local hrp = bodyPart("HumanoidRootPart", Vector3.new(2, 2, 1), BODY, model)
+	hrp.Transparency = 1
+	hrp.CanCollide = false
+
+	local torso = bodyPart("Torso", Vector3.new(2, 2, 1), BODY, model)
+	local head  = bodyPart("Head", Vector3.new(1.6, 1.2, 1.2), BODY:Lerp(Color3.new(1, 1, 1), 0.08), model)
+	-- Neon-Visier (liest sich sofort als "Bot") — erst positionieren, DANN
+	-- welden, sonst übernimmt der Weld den falschen Versatz
+	local visor = bodyPart("Visor", Vector3.new(1.2, 0.32, 0.2), VISOR, model)
+	visor.Material = Enum.Material.Neon
+	visor.CFrame = head.CFrame * CFrame.new(0, 0.05, -0.55)
+	local visorWeld = Instance.new("WeldConstraint")
+	visorWeld.Part0 = head
+	visorWeld.Part1 = visor
+	visorWeld.Parent = visor
+
+	local lArm = bodyPart("Left Arm",  Vector3.new(1, 2, 1), BODY:Lerp(Color3.new(0, 0, 0), 0.2), model)
+	local rArm = bodyPart("Right Arm", Vector3.new(1, 2, 1), BODY:Lerp(Color3.new(0, 0, 0), 0.2), model)
+	local lLeg = bodyPart("Left Leg",  Vector3.new(1, 2, 1), BODY:Lerp(Color3.new(0, 0, 0), 0.35), model)
+	local rLeg = bodyPart("Right Leg", Vector3.new(1, 2, 1), BODY:Lerp(Color3.new(0, 0, 0), 0.35), model)
+	lLeg.CanCollide = true
+	rLeg.CanCollide = true
+	torso.CanCollide = true
+
+	motor("RootJoint", hrp, torso, CFrame.new(), CFrame.new(), hrp)
+	motor("Neck", torso, head, CFrame.new(0, 1, 0), CFrame.new(0, -0.6, 0), torso)
+	motor("Left Shoulder",  torso, lArm, CFrame.new(-1, 0.5, 0),  CFrame.new(0.5, 0.5, 0), torso)
+	motor("Right Shoulder", torso, rArm, CFrame.new(1, 0.5, 0),   CFrame.new(-0.5, 0.5, 0), torso)
+	motor("Left Hip",  torso, lLeg, CFrame.new(-0.5, -1, 0), CFrame.new(0, 1, 0), torso)
+	motor("Right Hip", torso, rLeg, CFrame.new(0.5, -1, 0),  CFrame.new(0, 1, 0), torso)
+
+	local hum = Instance.new("Humanoid")
+	hum.RigType = Enum.HumanoidRigType.R6
+	hum.MaxHealth = 100
+	hum.Health = 100
+	hum.WalkSpeed = 13
+	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	hum.Parent = model
+
+	-- Name + HP-frei: eigener Tag über dem Kopf
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 130, 0, 26)
+	bb.StudsOffset = Vector3.new(0, 2.2, 0)
+	bb.MaxDistance = 200
+	bb.Parent = head
+	local tl = Instance.new("TextLabel")
+	tl.Size = UDim2.new(1, 0, 1, 0)
+	tl.BackgroundTransparency = 1
+	tl.TextColor3 = VISOR
+	tl.TextStrokeTransparency = 0.2
+	tl.TextScaled = true
+	tl.Font = Enum.Font.GothamBold
+	tl.Text = Config.BOT_NAME
+	tl.Parent = bb
+
+	CollectionService:AddTag(model, "ArenaBot")
+	model.PrimaryPart = hrp
+	model:PivotTo(spawnCF)
+	return model, hum, head
+end
+
+-- ── Public: Bot spawnen ───────────────────────────────────────────────────────
+-- opts = {
+--   spawnCF    = CFrame,
+--   waypoints  = { Vector3, ... },        -- Deckungen auf der Bot-Hälfte
+--   getTarget  = function() -> Player?,   -- wen der Bot bekämpft
+--   shouldAct  = function() -> bool,      -- Match live?
+--   onHitPlayer = function(victim),       -- Bot hat getroffen (Arena wertet)
+-- }
+function BotService.spawn(opts)
+	local model, hum, head = buildRig(opts.spawnCF)
+	model.Parent = workspace
+
+	-- Sniper in die Hand (Standard-Skin — der Bot flext nicht)
+	local tool = SniperBuilder.buildTool(Skins.BY_ID.standard)
+	tool.Parent = model
+	hum:EquipTool(tool)
+
+	local bot = { model = model, alive = true }
+
+	-- Tod: Joints lösen, Teile verstreuen, Modell entsorgen
+	function bot.kill()
+		if not bot.alive then return end
+		bot.alive = false
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("Motor6D") or d:IsA("WeldConstraint") then
+				d:Destroy()
+			elseif d:IsA("BasePart") then
+				d.CanCollide = true
+				d.AssemblyLinearVelocity = Vector3.new(rng:NextNumber(-12, 12), rng:NextNumber(8, 20), rng:NextNumber(-12, 12))
+				TweenService:Create(d, TweenInfo.new(1.2), { Transparency = 1 }):Play()
+			end
+		end
+		Debris:AddItem(model, 1.4)
+	end
+
+	function bot.destroy()
+		bot.alive = false
+		model:Destroy()
+	end
+
+	-- ── KI-Loop ──
+	task.spawn(function()
+		local aimTime   = 0
+		local reaction  = rng:NextNumber(Config.BOT_REACTION[1], Config.BOT_REACTION[2])
+		local lastShot  = 0
+		local nextMove  = 0
+		local TICK      = 0.15
+
+		local losParams = RaycastParams.new()
+		losParams.FilterType = Enum.RaycastFilterType.Exclude
+
+		while bot.alive and model.Parent do
+			task.wait(TICK)
+			if not opts.shouldAct() then
+				aimTime = 0
+				continue
+			end
+
+			local target = opts.getTarget()
+			local tChar = target and target.Character
+			local tHead = tChar and tChar:FindFirstChild("Head")
+			local tHum  = tChar and tChar:FindFirstChildOfClass("Humanoid")
+			if not tHead or not tHum or tHum.Health <= 0 or not head.Parent then
+				aimTime = 0
+				continue
+			end
+
+			-- Positionswechsel zwischen Deckungen
+			local now = os.clock()
+			if now >= nextMove and #opts.waypoints > 0 then
+				nextMove = now + rng:NextNumber(Config.BOT_MOVE_EVERY[1], Config.BOT_MOVE_EVERY[2])
+				hum:MoveTo(opts.waypoints[rng:NextInteger(1, #opts.waypoints)])
+			end
+
+			-- Sichtkontakt?
+			losParams.FilterDescendantsInstances = { model }
+			local toTarget = tHead.Position - head.Position
+			local hit = workspace:Raycast(head.Position, toTarget, losParams)
+			local sees = hit ~= nil
+				and hit.Instance:FindFirstAncestorOfClass("Model") == tChar
+
+			-- Zum Ziel drehen, sobald es sichtbar ist
+			if sees then
+				local hrp = model.PrimaryPart
+				if hrp then
+					local flat = Vector3.new(toTarget.X, 0, toTarget.Z)
+					if flat.Magnitude > 0.5 then
+						hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
+					end
+				end
+				aimTime += TICK
+			else
+				aimTime = math.max(0, aimTime - TICK * 2)
+			end
+
+			-- Schuss
+			if sees and aimTime >= reaction and now - lastShot >= Config.BOT_SHOT_CD then
+				lastShot = now
+				reaction = rng:NextNumber(Config.BOT_REACTION[1], Config.BOT_REACTION[2])
+				aimTime = 0
+
+				local hits = rng:NextNumber() < Config.BOT_ACCURACY
+				local muzzle = tool:FindFirstChild("Muzzle")
+				local fromPos = muzzle and muzzle.Position or head.Position
+				local toPos
+				if hits then
+					toPos = tHead.Position
+				else
+					-- Fehlschuss: sichtbar knapp daneben
+					toPos = tHead.Position + Vector3.new(
+						rng:NextNumber(-4, 4), rng:NextNumber(-1, 3), rng:NextNumber(-4, 4))
+				end
+
+				net.ShotFired:FireAllClients(fromPos, toPos, "standard", hits)
+				if hits then
+					opts.onHitPlayer(target)
+				end
+			end
+		end
+	end)
+
+	return bot
+end
+
+function BotService.init(netRef)
+	net = netRef
+	print("[BotService] bereit.")
+end
+
+return BotService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="13">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- DataService.lua — Laden/Speichern/Replizieren der Spielerdaten
@@ -1145,7 +1690,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">EggService</string>
           <string name="Source"><![CDATA[-- EggService.lua — Hatch-Logik, Luck Potion (Dev-Product), Daily Reward
@@ -1270,7 +1815,7 @@ return EggService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">LobbyService</string>
           <string name="Source"><![CDATA[-- LobbyService.lua — Cyber-Lobby: Omega-Ei in der Mitte, Queue-Pad, Daily-Terminal
@@ -1463,15 +2008,29 @@ local function buildLobby(folder)
 	billboard(pad, Vector3.new(0, 6, 0), "⚔ 1v1 SNIPER-ARENA", "Drauftreten: Queue (rein/raus)", Color3.fromRGB(255, 90, 100))
 
 	local padCooldown = {}
-	pad.Touched:Connect(function(hit)
-		local char = hit and hit.Parent
-		local player = char and Players:GetPlayerFromCharacter(char)
-		if not player then return end
-		local last = padCooldown[player] or 0
-		if os.clock() - last < 1.5 then return end
-		padCooldown[player] = os.clock()
+	local function padTouch(callback)
+		return function(hit)
+			local char = hit and hit.Parent
+			local player = char and Players:GetPlayerFromCharacter(char)
+			if not player then return end
+			local last = padCooldown[player] or 0
+			if os.clock() - last < 1.5 then return end
+			padCooldown[player] = os.clock()
+			callback(player)
+		end
+	end
+	pad.Touched:Connect(padTouch(function(player)
 		arenaService.toggleQueue(player)
-	end)
+	end))
+
+	-- ── Bot-Pad (Training gegen den Bot, reduzierte Rewards) ──
+	local botPad = part({ size = Vector3.new(10, 0.5, 10), pos = Vector3.new(55, 0.25, -22),
+		material = Enum.Material.Neon, color = CYAN, transparency = 0.25,
+		name = "BotPad" }, folder)
+	billboard(botPad, Vector3.new(0, 6, 0), "🤖 1v1 VS BOT", "Drauftreten: Training starten", CYAN)
+	botPad.Touched:Connect(padTouch(function(player)
+		arenaService.startBotMatch(player)
+	end))
 
 	-- ── Daily-Terminal ──
 	local terminal = part({ size = Vector3.new(3, 6, 1.6), pos = Vector3.new(-55, 3, 0),
@@ -1514,7 +2073,7 @@ return LobbyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- TradeService.lua — Skin-Trading zwischen Spielern.
@@ -1718,19 +2277,106 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- WeaponService.lua — Server-autoritatives Schießen + Skin-Equip.
 -- Schaden ist IMMER gleich (One-Shot, fixer Cooldown) — Skins sind reine Optik.
 local WeaponService = {}
 
-local Players = game:GetService("Players")
-local RS      = game:GetService("ReplicatedStorage")
+local Players           = game:GetService("Players")
+local RS                = game:GetService("ReplicatedStorage")
+local InsertService     = game:GetService("InsertService")
+local CollectionService = game:GetService("CollectionService")
 
 local Config        = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 local Skins         = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
 local SniperBuilder = require(RS:WaitForChild("Shared"):WaitForChild("SniperBuilder"))
+
+-- ── AWP-Mesh laden + vermessen ────────────────────────────────────────────────
+-- Das Creator-Store-Asset wird einmal geladen; danach wird die Lauf-Achse
+-- bestimmt: längste Achse = Lauf, und per Raycast-Probe (Trefferdichte an
+-- beiden Enden) die Mündungsrichtung — der Schaft ist massiv, der Lauf dünn.
+local AXES = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+
+local function probeEndHits(meshPart, axis, sign, otherA, otherB)
+	local s = meshPart.Size
+	local center = meshPart.Position + axis * ((axis:Dot(s) * 0.4) * sign)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { meshPart }
+	local hits = 0
+	for i = -2, 2 do
+		for j = -2, 2 do
+			local offset = otherA * (otherA:Dot(s) * 0.12 * i) + otherB * (otherB:Dot(s) * 0.12 * j)
+			local origin = center + offset + Vector3.new(0, s.Magnitude, 0)
+			if workspace:Raycast(origin, Vector3.new(0, -s.Magnitude * 2, 0), params) then
+				hits += 1
+			end
+		end
+	end
+	return hits
+end
+
+local function loadWeaponMesh()
+	for _, assetId in ipairs({ Config.WEAPON_MESH_ASSET, Config.WEAPON_ALT_ASSET }) do
+		local ok, asset = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if ok and asset then
+			local mp = asset:FindFirstChildWhichIsA("MeshPart", true)
+			if mp then
+				mp.Parent = nil
+				asset:Destroy()
+
+				-- Achsen nach Größe sortieren: längste = Lauf, zweite = Höhe
+				local s = mp.Size
+				local sorted = table.clone(AXES)
+				table.sort(sorted, function(a, b) return a:Dot(s) > b:Dot(s) end)
+				local barrelAxis, upAxis = sorted[1], sorted[2]
+
+				-- Probe: Modell hoch über der Map platzieren und beide
+				-- Lauf-Enden von oben abtasten — das dünne Ende ist die Mündung
+				mp.Anchored = true
+				mp.CanCollide = false
+				mp.CFrame = CFrame.new(0, 2800, 0)
+				mp.Parent = workspace
+				local hitsPos = probeEndHits(mp, barrelAxis, 1, upAxis, sorted[3])
+				local hitsNeg = probeEndHits(mp, barrelAxis, -1, upAxis, sorted[3])
+				mp.Parent = nil
+
+				local muzzleSign = (hitsPos < hitsNeg) and 1 or -1
+				if Config.WEAPON_FLIP then muzzleSign = -muzzleSign end
+				local forward = barrelAxis * muzzleSign
+				local up = Config.WEAPON_UPSIDE and -upAxis or upAxis
+
+				-- Rotation, die Mesh-Achsen auf Handle-Achsen abbildet
+				-- (Mündung → -Z, Oberseite → +Y)
+				local rot = CFrame.fromMatrix(Vector3.zero, forward:Cross(up), up, -forward):Inverse()
+
+				local length = barrelAxis:Dot(s)
+				local scale = Config.WEAPON_LENGTH / length
+
+				mp.Anchored = false
+				mp.Massless = true
+				mp.CastShadow = false
+
+				SniperBuilder.setMeshInfo({
+					template = mp,
+					rot      = rot,
+					scale    = scale,
+					length   = Config.WEAPON_LENGTH,
+				})
+				print(("[WeaponService] AWP-Mesh %d geladen (%.1f Studs nativ, Mündung %s%s)")
+					:format(assetId, length, muzzleSign > 0 and "+" or "-",
+						barrelAxis.X > 0.5 and "X" or (barrelAxis.Y > 0.5 and "Y" or "Z")))
+				return
+			end
+			asset:Destroy()
+		end
+	end
+	warn("[WeaponService] AWP-Asset nicht ladbar — nutze prozedurales Modell.")
+end
 
 local dataService  = nil
 local arenaService = nil
@@ -1810,10 +2456,23 @@ local function handleShoot(player, targetPos)
 	-- Treffer-Auswertung (nur im Live-Match, nur gegen den Gegner)
 	local victim = nil
 	local killed = false
+	local hitModel = nil
 	if result then
-		local model = result.Instance:FindFirstAncestorOfClass("Model")
-		victim = model and Players:GetPlayerFromCharacter(model)
+		hitModel = result.Instance:FindFirstAncestorOfClass("Model")
+		victim = hitModel and Players:GetPlayerFromCharacter(hitModel)
 	end
+
+	-- Trainings-Bot getroffen?
+	if hitModel and not victim and inMatch and CollectionService:HasTag(hitModel, "ArenaBot") then
+		if arenaService.tryHitBot(player, hitModel) then
+			killed = true
+			local pdata = dataService.get(player)
+			if pdata then pdata.kills += 1 end
+			dataService.addCredits(player, Config.BOT_KILL_REWARD)
+			net.PlaySFX:FireClient(player, "ChimeSoft", 0.5, 1.6)
+		end
+	end
+
 	if victim and inMatch and arenaService.canDamage(player, victim) then
 		local vChar = victim.Character
 		local vHum  = vChar and vChar:FindFirstChildOfClass("Humanoid")
@@ -1836,16 +2495,8 @@ local function handleShoot(player, targetPos)
 		end
 	end
 
-	-- Sound am Handle: spielt 3D für alle in Hörweite (Tier bestimmt den Klang)
-	local handle = tool:FindFirstChild("Handle")
-	local shotSnd = handle and handle:FindFirstChild("ShotSound")
-	if shotSnd then shotSnd:Play() end
-	task.delay(0.35, function()
-		local boltSnd = handle and handle:FindFirstChild("BoltSound")
-		if boltSnd and handle.Parent then boltSnd:Play() end
-	end)
-
-	-- Tracer-Replikation (Clients rendern den Beam in Skin-Farbe)
+	-- Tracer + Sound rendern die CLIENTS über ShotFired (AWP-Sound mit
+	-- Fallback-Kette, Tier-Pitch, Distanz-Filter)
 	local muzzle = tool:FindFirstChild("Muzzle")
 	local beamFrom = muzzle and muzzle.Position or origin
 	net.ShotFired:FireAllClients(beamFrom, hitPos, tool:GetAttribute("SkinId"), killed)
@@ -1855,6 +2506,18 @@ end
 function WeaponService.init(ds, netRef)
 	dataService = ds
 	net         = netRef
+
+	-- AWP-Mesh asynchron laden; danach bekommen alle ihre Waffe neu (upgraded)
+	task.spawn(function()
+		loadWeaponMesh()
+		if SniperBuilder.hasMesh() then
+			for _, p in ipairs(Players:GetPlayers()) do
+				if dataService.get(p) then
+					WeaponService.giveWeapon(p)
+				end
+			end
+		end
+	end)
 
 	net.Shoot.OnServerEvent:Connect(handleShoot)
 
@@ -1886,15 +2549,15 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="17">
+  <Item class="StarterPlayer" referent="18">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="18">
+    <Item class="StarterPlayerScripts" referent="19">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="19">
+      <Item class="LocalScript" referent="20">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[-- Client.client.lua — Hatch Snipers: Entry Point, Musik, Lighting, Event-Routing
@@ -1911,7 +2574,7 @@ local REMOTE_NAMES = {
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin",
+	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 }
 local net = {}
@@ -2015,6 +2678,9 @@ task.spawn(function()
 	end)
 end)
 
+-- AWP-Sounds testen: erste ladbare ID gewinnt, sonst verifizierter Fallback
+Assets.resolveSfx()
+
 -- ── Server → Client Events ────────────────────────────────────────────────────
 net.UpdateData.OnClientEvent:Connect(function(data)
 	UICtrl.refresh(data)
@@ -2041,6 +2707,7 @@ end)
 
 net.ShotFired.OnClientEvent:Connect(function(fromPos, toPos, skinId, didKill)
 	EffectsCtrl.spawnTracer(fromPos, toPos, skinId, didKill)
+	EffectsCtrl.playShotSound(fromPos, skinId)
 end)
 
 net.ScreenFlash.OnClientEvent:Connect(function(color)
@@ -2083,11 +2750,11 @@ print("[HatchSnipers] Client bereit.")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="20">
+      <Item class="Folder" referent="21">
         <Properties>
           <string name="Name">Controllers</string>
         </Properties>
-        <Item class="ModuleScript" referent="21">
+        <Item class="ModuleScript" referent="22">
           <Properties>
             <string name="Name">EffectsController</string>
             <string name="Source"><![CDATA[-- EffectsController.lua — Tracer, Screenflash, Godly-Puls, Ei-Schweben, Juice
@@ -2100,6 +2767,7 @@ local CollectionService = game:GetService("CollectionService")
 local RS                = game:GetService("ReplicatedStorage")
 
 local Skins  = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local shakeAmt = 0
 
@@ -2159,6 +2827,23 @@ function EffectsController.spawnTracer(fromPos, toPos, skinId, didKill)
 	TweenService:Create(hitFx, TweenInfo.new(0.3),
 		{ Transparency = 1, Size = Vector3.new(2.4, 2.4, 2.4) }):Play()
 	Debris:AddItem(hitFx, 0.35)
+end
+
+-- ── Schuss-Sound (AWP mit Fallback, Tier bestimmt den Charakter) ──────────────
+-- Common klingt dumpf/billig, hohe Tiers knackig-hell — Audio-Flex inklusive.
+function EffectsController.playShotSound(fromPos, skinId)
+	local camera = workspace.CurrentCamera
+	if not camera or (camera.CFrame.Position - fromPos).Magnitude > 500 then return end
+
+	local skin = Skins.BY_ID[skinId] or Skins.BY_ID.standard
+	local order = Skins.TIERS[skin.tier].order
+	Assets.playAt(fromPos, Assets.SFX.Shot,
+		0.55 + order * 0.09,
+		0.78 + order * 0.07, 0.84 + order * 0.07)
+	-- Bolt-Klack kurz danach
+	task.delay(0.45, function()
+		Assets.playAt(fromPos, Assets.SFX.Bolt, 0.45, 0.95, 1.05)
+	end)
 end
 
 -- ── Screenflash (Godly-Treffer "verändert den Bildschirm des Gegners") ────────
@@ -2234,7 +2919,7 @@ return EffectsController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="23">
           <Properties>
             <string name="Name">UIController</string>
             <string name="Source"><![CDATA[-- UIController.lua — HUD, Ei-/Inventar-UI (mit offengelegten Odds), Hatch-
@@ -2834,8 +3519,8 @@ end
 
 -- ── Bottom-Right Buttons ──────────────────────────────────────────────────────
 local btnBar = Instance.new("Frame")
-btnBar.Size = UDim2.new(0, 64, 0, 240)
-btnBar.Position = UDim2.new(1, -76, 1, -252)
+btnBar.Size = UDim2.new(0, 64, 0, 310)
+btnBar.Position = UDim2.new(1, -76, 1, -322)
 btnBar.BackgroundTransparency = 1
 btnBar.Parent = screenGui
 
@@ -2869,8 +3554,11 @@ end)
 barButton("🎁", "Daily Reward", 3, function()
 	net.ClaimDaily:FireServer()
 end)
-barButton("⚔", "1v1-Queue (oder Pad in der Lobby)", 4, function()
+barButton("⚔", "1v1-Queue (oder rotes Pad)", 4, function()
 	net.QueueJoin:FireServer()
+end)
+barButton("🤖", "1v1 gegen den Bot (oder blaues Pad)", 5, function()
+	net.QueueBot:FireServer()
 end)
 
 -- ── Refresh ───────────────────────────────────────────────────────────────────
@@ -2904,7 +3592,7 @@ return UIController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="23">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">WeaponController</string>
             <string name="Source"><![CDATA[-- WeaponController.lua — Schießen (Klick), Scope-Zoom (Rechtsklick), Cooldown-UI

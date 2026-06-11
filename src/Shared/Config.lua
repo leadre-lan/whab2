@@ -26,6 +26,25 @@ Config.SHOT_COOLDOWN   = 1.4         -- Bolt-Action-Takt
 Config.SHOT_RANGE      = 800
 Config.LOBBY_SHOOTING  = true        -- in der Lobby knallt's, aber ohne Schaden
 
+-- Echtes AWP-Modell aus dem Creator Store (frei; per Thumbnail geprüft).
+-- Der Server lädt es einmal via InsertService, vermisst Lauf-Achse/-Richtung
+-- per Raycast-Probe und nutzt es als Basis für alle Skins. Schlägt das Laden
+-- fehl (z.B. offline), greift automatisch der prozedurale Part-Build.
+Config.WEAPON_MESH_ASSET = 13638913296   -- "AWP sniper"
+Config.WEAPON_ALT_ASSET  = 504829517     -- "[L4D2] AWP" (Fallback-Modell)
+Config.WEAPON_LENGTH     = 4.8           -- Ziel-Länge in Studs
+Config.WEAPON_FLIP       = false         -- true, falls der Lauf nach hinten zeigt
+Config.WEAPON_UPSIDE     = false         -- true, falls das Modell kopfüber hängt
+
+-- ── Bot-1v1 (Training) ────────────────────────────────────────────────────────
+Config.BOT_NAME        = "🤖 Trainings-Bot"
+Config.BOT_ACCURACY    = 0.40        -- Trefferchance pro Bot-Schuss
+Config.BOT_REACTION    = { 0.7, 1.4 }-- Ziel-Zeit nach Sichtkontakt (Sekunden)
+Config.BOT_SHOT_CD     = 1.9         -- Bot schießt etwas langsamer als Spieler
+Config.BOT_MOVE_EVERY  = { 2.5, 5 }  -- Sekunden zwischen Positionswechseln
+Config.BOT_KILL_REWARD = 10          -- reduzierte Rewards im Training
+Config.BOT_WIN_REWARD  = 40
+
 -- ── Eier ──────────────────────────────────────────────────────────────────────
 -- Ein massives Omega-Ei in der Lobby-Mitte; weitere Eier einfach ergänzen
 -- (EggService + UI sind komplett config-getrieben).

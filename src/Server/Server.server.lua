@@ -18,7 +18,7 @@ local REMOTE_NAMES = {
 	"TradeUpdate",
 	-- Client → Server
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin",
+	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 }
 
@@ -37,6 +37,7 @@ local DataService   = require(Services:WaitForChild("DataService"))
 local EggService    = require(Services:WaitForChild("EggService"))
 local WeaponService = require(Services:WaitForChild("WeaponService"))
 local ArenaService  = require(Services:WaitForChild("ArenaService"))
+local BotService    = require(Services:WaitForChild("BotService"))
 local LobbyService  = require(Services:WaitForChild("LobbyService"))
 local TradeService  = require(Services:WaitForChild("TradeService"))
 
@@ -51,11 +52,13 @@ end
 safeInit("DataService",   DataService.init, net)
 safeInit("WeaponService", WeaponService.init, DataService, net)
 safeInit("ArenaService",  ArenaService.init, DataService, WeaponService, net)
+safeInit("BotService",    BotService.init, net)
 safeInit("EggService",    EggService.init, DataService, net)
 safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, net)
 safeInit("TradeService",  TradeService.init, DataService, WeaponService, net)
 
 WeaponService.setArenaService(ArenaService)
+ArenaService.setBotService(BotService)
 
 -- ── Player-Lifecycle ──────────────────────────────────────────────────────────
 local function onPlayerAdded(player)

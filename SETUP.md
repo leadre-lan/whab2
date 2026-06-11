@@ -16,8 +16,8 @@ unter `src/`, Lobby und Arenen werden zur Laufzeit generiert.
    (sonst speichert der DataStore in Studio nichts — zum Testen ok).
 3. **Play** (F5). Du spawnst in der Neon-Lobby mit 1000 Credits → reicht direkt
    für den ersten Pull am Omega-Ei (E drücken).
-4. 1v1 testen: *Test → Clients and Servers → 2 Players* starten und beide auf
-   das rote Queue-Pad stellen.
+4. 1v1 testen: **blaues Pad = sofort gegen den Trainings-Bot** (geht solo!),
+   rotes Pad = PvP-Queue (*Test → Clients and Servers → 2 Players*, beide aufs Pad).
 
 ## Entwicklung mit Rojo
 
@@ -32,7 +32,19 @@ rojo serve                          # oder live in Studio syncen
 - **Klick**: Schießen (One-Shot, Bolt-Action-Cooldown)
 - **Rechtsklick halten**: Scope (Zoom, langsamer laufen)
 - **E**: Interagieren (Omega-Ei, Daily-Terminal)
-- **Rotes Pad**: 1v1-Queue rein/raus
+- **Rotes Pad**: 1v1-PvP-Queue rein/raus
+- **Blaues Pad**: 1v1 gegen den Trainings-Bot (reduzierte Rewards)
+
+## Das Waffen-Modell
+
+Der Server lädt beim Start ein echtes **AWP-Modell aus dem Creator Store**
+(`Config.WEAPON_MESH_ASSET`, per Thumbnail geprüft), vermisst Lauf-Achse und
+Mündungsrichtung automatisch per Raycast-Probe und baut daraus alle Skins:
+der **Klassik-Tarn** (Standard) behält die originale AWP-Textur, alle anderen
+Skins färben das Modell nach Tier (matt → Metallic → Neon-Akzente → Puls).
+Zeigt der Lauf wider Erwarten nach hinten/unten: `Config.WEAPON_FLIP` bzw.
+`Config.WEAPON_UPSIDE` auf `true` setzen. Kann das Asset nicht geladen werden
+(z.B. offline), baut das Spiel automatisch das prozedurale Part-Modell.
 
 ## Projektstruktur
 

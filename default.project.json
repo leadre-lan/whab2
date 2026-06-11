@@ -32,6 +32,7 @@
         "EggService":    { "$path": "src/Server/Services/EggService.lua" },
         "WeaponService": { "$path": "src/Server/Services/WeaponService.lua" },
         "ArenaService":  { "$path": "src/Server/Services/ArenaService.lua" },
+        "BotService":    { "$path": "src/Server/Services/BotService.lua" },
         "LobbyService":  { "$path": "src/Server/Services/LobbyService.lua" },
         "TradeService":  { "$path": "src/Server/Services/TradeService.lua" }
       }

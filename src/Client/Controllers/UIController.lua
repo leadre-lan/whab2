@@ -595,8 +595,8 @@ end
 
 -- ── Bottom-Right Buttons ──────────────────────────────────────────────────────
 local btnBar = Instance.new("Frame")
-btnBar.Size = UDim2.new(0, 64, 0, 240)
-btnBar.Position = UDim2.new(1, -76, 1, -252)
+btnBar.Size = UDim2.new(0, 64, 0, 310)
+btnBar.Position = UDim2.new(1, -76, 1, -322)
 btnBar.BackgroundTransparency = 1
 btnBar.Parent = screenGui
 
@@ -630,8 +630,11 @@ end)
 barButton("🎁", "Daily Reward", 3, function()
 	net.ClaimDaily:FireServer()
 end)
-barButton("⚔", "1v1-Queue (oder Pad in der Lobby)", 4, function()
+barButton("⚔", "1v1-Queue (oder rotes Pad)", 4, function()
 	net.QueueJoin:FireServer()
+end)
+barButton("🤖", "1v1 gegen den Bot (oder blaues Pad)", 5, function()
+	net.QueueBot:FireServer()
 end)
 
 -- ── Refresh ───────────────────────────────────────────────────────────────────

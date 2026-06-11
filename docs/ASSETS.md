@@ -1,16 +1,28 @@
 # Asset-Register (Hatch Snipers)
 
-Alle externen Roblox-Assets leben in **`src/Shared/Assets.lua`**. Jede ID wurde
-am 2026-06-11 über die Roblox-APIs verifiziert (Typ korrekt + öffentlich
-abrufbar). Waffen-Modelle sind bewusst prozedural (Parts), damit Skins frei
-einfärbbar sind und nichts an Moderation/Privacy scheitern kann.
+Alle externen Roblox-Assets leben in **`src/Shared/Assets.lua`** bzw.
+`Config.lua` (Waffen-Mesh). Jede ID wurde am 2026-06-11 über die Roblox-APIs
+geprüft.
+
+## Waffen-Modell (Creator Store, per Thumbnail-Render geprüft)
+
+| ID | Asset | Einsatz |
+|---|---|---|
+| 13638913296 | "AWP sniper" (CS-Style, Olive-Textur, Scope+Bipod) | Basis aller Skins |
+| 504829517 | "[L4D2] AWP" | Fallback-Modell |
+
+Geladen via `InsertService:LoadAsset` beim Server-Start; Lauf-Achse und
+Mündungsrichtung werden zur Laufzeit per Raycast-Probe bestimmt (das dünne
+Ende ist der Lauf). Schlägt alles fehl → prozedurales Part-Modell.
 
 ## Sound-Effekte (ProSoundEffects / APM = offizielle Roblox-Libraries)
 
 | Key | ID | Einsatz |
 |---|---|---|
-| `Shot` | 9126213373 | Schuss (Whip-Crack mit Hall; pro Tier gepitcht: Common dumpf → Mythical knackig) |
-| `Bolt` | 9114004212 | Bolt-Action-Klack nach dem Schuss |
+| `Shot` (bevorzugt) | 138705939667182, 131254751896361 | Echte AWP-Fire-Sounds (CS-Ports); Client testet Ladbarkeit via PreloadAsync |
+| `Shot` (Fallback) | 9126213373 | Whip-Crack mit Hall (verifiziert); pro Tier gepitcht: Common dumpf → Mythical knackig |
+| `Bolt` (bevorzugt) | 133852631085337, 140632128823885 | AWP Bolt-Pull/-Forward |
+| `Bolt` (Fallback) | 9114004212 | Crossbow-Latch (verifiziert) |
 | `Magazine` | 9113104176 | Skin-Equip |
 | `EggCrack` / `EggCrack2` | 9113959337 / 9113959539 | Hatch-Animation |
 | `DrumRoll` | 1846418712 | Hatch-Spannung |

@@ -8,6 +8,7 @@ local CollectionService = game:GetService("CollectionService")
 local RS                = game:GetService("ReplicatedStorage")
 
 local Skins  = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local shakeAmt = 0
 
@@ -67,6 +68,23 @@ function EffectsController.spawnTracer(fromPos, toPos, skinId, didKill)
 	TweenService:Create(hitFx, TweenInfo.new(0.3),
 		{ Transparency = 1, Size = Vector3.new(2.4, 2.4, 2.4) }):Play()
 	Debris:AddItem(hitFx, 0.35)
+end
+
+-- ── Schuss-Sound (AWP mit Fallback, Tier bestimmt den Charakter) ──────────────
+-- Common klingt dumpf/billig, hohe Tiers knackig-hell — Audio-Flex inklusive.
+function EffectsController.playShotSound(fromPos, skinId)
+	local camera = workspace.CurrentCamera
+	if not camera or (camera.CFrame.Position - fromPos).Magnitude > 500 then return end
+
+	local skin = Skins.BY_ID[skinId] or Skins.BY_ID.standard
+	local order = Skins.TIERS[skin.tier].order
+	Assets.playAt(fromPos, Assets.SFX.Shot,
+		0.55 + order * 0.09,
+		0.78 + order * 0.07, 0.84 + order * 0.07)
+	-- Bolt-Klack kurz danach
+	task.delay(0.45, function()
+		Assets.playAt(fromPos, Assets.SFX.Bolt, 0.45, 0.95, 1.05)
+	end)
 end
 
 -- ── Screenflash (Godly-Treffer "verändert den Bildschirm des Gegners") ────────

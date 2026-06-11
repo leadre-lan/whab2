@@ -12,7 +12,7 @@ local REMOTE_NAMES = {
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin",
+	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 }
 local net = {}
@@ -116,6 +116,9 @@ task.spawn(function()
 	end)
 end)
 
+-- AWP-Sounds testen: erste ladbare ID gewinnt, sonst verifizierter Fallback
+Assets.resolveSfx()
+
 -- ── Server → Client Events ────────────────────────────────────────────────────
 net.UpdateData.OnClientEvent:Connect(function(data)
 	UICtrl.refresh(data)
@@ -142,6 +145,7 @@ end)
 
 net.ShotFired.OnClientEvent:Connect(function(fromPos, toPos, skinId, didKill)
 	EffectsCtrl.spawnTracer(fromPos, toPos, skinId, didKill)
+	EffectsCtrl.playShotSound(fromPos, skinId)
 end)
 
 net.ScreenFlash.OnClientEvent:Connect(function(color)

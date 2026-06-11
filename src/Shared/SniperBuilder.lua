@@ -1,15 +1,32 @@
 -- SniperBuilder.lua — Baut das Sniper-Modell für einen Skin (server-seitig,
 -- damit JEDER den Skin sieht — der Flex ist der Kern des Spiels).
 --
--- Aufbau entlang Handle-lokal -Z (= Schussrichtung beim Halten):
--- Stock hinten (+Z), Receiver = Handle, Lauf + Mündung vorne (-Z),
--- Scope oben, Bolt rechts, Magazin/Griff unten.
+-- Zwei Bau-Pfade:
+--  1) Mesh-Pfad: echtes AWP-Modell aus dem Creator Store. WeaponService lädt
+--     und vermisst es beim Server-Start (setMeshInfo). Der Standard-Skin
+--     behält die Original-Textur, alle anderen färben das Modell pro Tier.
+--  2) Prozeduraler Fallback (Parts) — falls das Asset nicht laden konnte.
+--
+-- Konvention: Schussrichtung = Handle-lokal -Z.
 local SniperBuilder = {}
 
 local CollectionService = game:GetService("CollectionService")
 
 local Skins  = require(script.Parent:WaitForChild("Skins"))
 local Assets = require(script.Parent:WaitForChild("Assets"))
+
+-- Vom WeaponService nach der Vermessung gesetzt:
+-- { template = MeshPart, rot = CFrame (Mesh→Handle-Achsen), scale = number,
+--   length = number (Studs nach Skalierung) }
+local meshInfo = nil
+
+function SniperBuilder.setMeshInfo(info)
+	meshInfo = info
+end
+
+function SniperBuilder.hasMesh()
+	return meshInfo ~= nil
+end
 
 local function weldTo(handle, part, offset)
 	part.Anchored = false
@@ -46,43 +63,37 @@ local function tagPulse(part, baseColor, rainbow)
 	CollectionService:AddTag(part, "PulseFX")
 end
 
--- Baut das fertige Tool. mountTo = Backpack/Character übernimmt der Aufrufer.
-function SniperBuilder.buildTool(skin)
-	local fx = Skins.fxFor(skin.tier)
+-- ── Bau-Pfad 1: echtes AWP-Mesh ───────────────────────────────────────────────
+local function buildMeshBody(handle, skin, fx)
+	local body = meshInfo.template:Clone()
+	body.Name = "Body"
+	body.Size = meshInfo.template.Size * meshInfo.scale
+
+	if not skin.keepTexture then
+		body.TextureID = ""
+		body.Color = skin.body
+		body.Material = skin.material
+			or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
+		body.Reflectance = (fx.metallic and not fx.neon) and 0.3 or 0
+	end
+
+	-- Mesh-Mitte etwas vor/über den Griffpunkt (Handle hält am hinteren Drittel)
+	weldTo(handle, body, CFrame.new(0, 0.12, -0.45) * meshInfo.rot)
+	return -meshInfo.length / 2 - 0.55   -- Mündungs-Z (handle-lokal)
+end
+
+-- ── Bau-Pfad 2: prozeduraler Fallback (Parts) ─────────────────────────────────
+local function buildProceduralBody(handle, skin, fx, accent)
 	local bodyMat   = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
 	local accentMat = fx.neon and Enum.Material.Neon or bodyMat
-	local refl      = (fx.metallic and not fx.neon) and 0.25 or 0
 
-	local tool = Instance.new("Tool")
-	tool.Name = "Sniper"
-	tool.RequiresHandle = true
-	tool.CanBeDropped = false
-	tool.ToolTip = skin.name .. " [" .. skin.tier .. "]"
-	tool.GripPos     = Vector3.new(0, -0.1, 0.5)
-	tool.GripForward = Vector3.new(0, 0, -1)
-	tool.GripRight   = Vector3.new(1, 0, 0)
-	tool.GripUp      = Vector3.new(0, 1, 0)
-	tool:SetAttribute("SkinId", skin.id)
-	tool:SetAttribute("SkinTier", skin.tier)
-
-	-- Receiver = Handle
-	local handle = mkPart({ size = Vector3.new(0.34, 0.5, 2.2), color = skin.body, material = bodyMat, name = "Handle" })
-	handle.Reflectance = refl
-	handle.CanCollide = false
-	handle.Parent = tool
-
-	local accentParts = {}
-	local function accent(part)
-		part.Reflectance = refl
-		if fx.pulse then tagPulse(part, skin.accent, fx.rainbow) end
-		table.insert(accentParts, part)
-		return part
-	end
+	handle.Transparency = 0
+	handle.Color = skin.body
+	handle.Material = bodyMat
 
 	-- Stock (hinten, leicht abfallend)
 	weldTo(handle, mkPart({ size = Vector3.new(0.3, 0.52, 1.15), color = skin.body, material = bodyMat }),
 		CFrame.new(0, -0.08, 1.62) * CFrame.Angles(math.rad(-4), 0, 0))
-	-- Schulterkappe (Akzent)
 	accent(weldTo(handle, mkPart({ size = Vector3.new(0.32, 0.5, 0.14), color = skin.accent, material = accentMat }),
 		CFrame.new(0, -0.12, 2.2)))
 
@@ -90,20 +101,11 @@ function SniperBuilder.buildTool(skin)
 	accent(weldTo(handle, mkPart({ size = Vector3.new(2.5, 0.16, 0.16), color = skin.accent, material = accentMat, shape = Enum.PartType.Cylinder }),
 		CFrame.new(0, 0.08, -2.25) * CFrame.Angles(0, math.rad(90), 0)))
 
-	-- Mündung (Shot-Origin: trägt Attachment für Partikel/Tracer)
-	local muzzle = weldTo(handle, mkPart({ size = Vector3.new(0.3, 0.24, 0.24), color = skin.accent, material = accentMat, shape = Enum.PartType.Cylinder, name = "Muzzle" }),
-		CFrame.new(0, 0.08, -3.55) * CFrame.Angles(0, math.rad(90), 0))
-	accent(muzzle)
-	local muzzleAtt = Instance.new("Attachment")
-	muzzleAtt.Name = "MuzzleAtt"
-	muzzleAtt.Parent = muzzle
-
-	-- Scope (Rohr + Neon-Linse vorne)
+	-- Scope (Rohr + Linse)
 	weldTo(handle, mkPart({ size = Vector3.new(1.15, 0.2, 0.2), color = skin.body, material = bodyMat, shape = Enum.PartType.Cylinder }),
 		CFrame.new(0, 0.45, -0.35) * CFrame.Angles(0, math.rad(90), 0))
 	accent(weldTo(handle, mkPart({ size = Vector3.new(0.05, 0.18, 0.18), color = skin.accent, material = fx.neon and Enum.Material.Neon or Enum.Material.Glass, shape = Enum.PartType.Cylinder, name = "Lens" }),
 		CFrame.new(0, 0.45, -0.95) * CFrame.Angles(0, math.rad(90), 0)))
-	-- Scope-Füße
 	for _, z in ipairs({ -0.7, 0.05 }) do
 		weldTo(handle, mkPart({ size = Vector3.new(0.1, 0.18, 0.12), color = skin.body, material = bodyMat }),
 			CFrame.new(0, 0.32, z))
@@ -124,6 +126,60 @@ function SniperBuilder.buildTool(skin)
 		accent(weldTo(handle, mkPart({ size = Vector3.new(0.04, 0.1, 1.4), color = skin.accent, material = accentMat }),
 			CFrame.new(side * 0.2, 0.12, -0.2)))
 	end
+
+	return -3.55   -- Mündungs-Z (handle-lokal)
+end
+
+-- Baut das fertige Tool. mountTo = Backpack/Character übernimmt der Aufrufer.
+function SniperBuilder.buildTool(skin)
+	local fx = Skins.fxFor(skin.tier)
+	local accentMat = fx.neon and Enum.Material.Neon or Enum.Material.Metal
+
+	local tool = Instance.new("Tool")
+	tool.Name = "Sniper"
+	tool.RequiresHandle = true
+	tool.CanBeDropped = false
+	tool.ToolTip = skin.name .. " [" .. skin.tier .. "]"
+	tool.GripPos     = Vector3.new(0, -0.1, 0.5)
+	tool.GripForward = Vector3.new(0, 0, -1)
+	tool.GripRight   = Vector3.new(1, 0, 0)
+	tool.GripUp      = Vector3.new(0, 1, 0)
+	tool:SetAttribute("SkinId", skin.id)
+	tool:SetAttribute("SkinTier", skin.tier)
+
+	-- Handle: unsichtbarer Griffpunkt (im Fallback-Pfad wird er zum Receiver)
+	local handle = mkPart({ size = Vector3.new(0.34, 0.5, 2.2), color = skin.body, name = "Handle" })
+	handle.Transparency = 1
+	handle.CanCollide = false
+	handle.Parent = tool
+
+	local function accent(part)
+		if fx.pulse then tagPulse(part, skin.accent, fx.rainbow) end
+		return part
+	end
+
+	local muzzleZ
+	if meshInfo then
+		muzzleZ = buildMeshBody(handle, skin, fx)
+	else
+		muzzleZ = buildProceduralBody(handle, skin, fx, accent)
+	end
+
+	-- Mündungs-Marker: Shot-Origin für Tracer + Träger für Partikel/Licht.
+	-- Bei Legendary+ als sichtbarer Glow-Ring um den Lauf.
+	local muzzle = mkPart({
+		size = Vector3.new(0.12, 0.3, 0.3),
+		color = skin.accent,
+		material = accentMat,
+		shape = Enum.PartType.Cylinder,
+		name = "Muzzle",
+	})
+	muzzle.Transparency = fx.neon and 0.1 or 1
+	accent(muzzle)
+	weldTo(handle, muzzle, CFrame.new(0, 0.1, muzzleZ + 0.3) * CFrame.Angles(0, math.rad(90), 0))
+	local muzzleAtt = Instance.new("Attachment")
+	muzzleAtt.Name = "MuzzleAtt"
+	muzzleAtt.Parent = muzzle
 
 	-- ── Tier-Effekte ──
 	if fx.particles then
@@ -150,10 +206,10 @@ function SniperBuilder.buildTool(skin)
 	if fx.trail then
 		-- Lichtspur beim Laufen: Trail über die Lauflänge, immer aktiv
 		local a0 = Instance.new("Attachment")
-		a0.Position = Vector3.new(0, 0.08, -3.4)
+		a0.Position = Vector3.new(0, 0.08, muzzleZ + 0.2)
 		a0.Parent = handle
 		local a1 = Instance.new("Attachment")
-		a1.Position = Vector3.new(0, 0.08, -1.0)
+		a1.Position = Vector3.new(0, 0.08, muzzleZ + 2.4)
 		a1.Parent = handle
 		local trail = Instance.new("Trail")
 		trail.Attachment0 = a0
@@ -166,22 +222,8 @@ function SniperBuilder.buildTool(skin)
 		trail.Parent = handle
 	end
 
-	-- Sounds am Handle (Tier bestimmt den Klang: Common dumpf, oben knackig)
-	local order = Skins.TIERS[skin.tier].order
-	local shot = Instance.new("Sound")
-	shot.Name = "ShotSound"
-	shot.SoundId = Assets.SFX.Shot
-	shot.Volume = 0.45 + order * 0.12
-	shot.PlaybackSpeed = 0.7 + order * 0.12
-	shot.RollOffMaxDistance = 350
-	shot.Parent = handle
-
-	local bolt = Instance.new("Sound")
-	bolt.Name = "BoltSound"
-	bolt.SoundId = Assets.SFX.Bolt
-	bolt.Volume = 0.5
-	bolt.Parent = handle
-
+	-- Schuss-/Bolt-Sounds spielt der CLIENT über das ShotFired-Event ab
+	-- (AWP-Sound mit Fallback-Kette, siehe Assets.resolveSfx). Hier nur Equip:
 	local equip = Instance.new("Sound")
 	equip.Name = "EquipSound"
 	equip.SoundId = Assets.SFX.Magazine

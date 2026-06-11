@@ -11,8 +11,8 @@
 local Assets = {}
 
 Assets.SFX = {
-	Shot      = "rbxassetid://9126213373",  -- Whip Crack (Hall) → Sniper-Knall
-	Bolt      = "rbxassetid://9114004212",  -- Crossbow Latch → Bolt-Action-Klack
+	Shot      = "rbxassetid://9126213373",  -- Fallback: Whip Crack (verifiziert)
+	Bolt      = "rbxassetid://9114004212",  -- Fallback: Crossbow Latch
 	Magazine  = "rbxassetid://9113104176",  -- Ammo Magazine (Equip-Sound)
 	EggCrack  = "rbxassetid://9113959337",  -- Crack Egg Crunchy 10
 	EggCrack2 = "rbxassetid://9113959539",  -- Crack Egg Crunchy 12
@@ -22,6 +22,43 @@ Assets.SFX = {
 	Coin      = "rbxassetid://9113848490",  -- Coin Bounce (Credits)
 	Teleport  = "rbxassetid://9116394545",  -- Magic Glow (Arena-Teleport)
 }
+
+-- Echte AWP-Sounds (CS-Ports aus dem Creator-Marketplace). User-Audio lässt
+-- sich von außen nicht download-verifizieren — deshalb probiert der Client sie
+-- per PreloadAsync und fällt bei Lade-Fehlern auf die verifizierten
+-- Assets.SFX-IDs oben zurück (Assets.resolveSfx).
+Assets.SFX_PREFERRED = {
+	Shot = {
+		"rbxassetid://138705939667182",  -- Awp_Fire (CS:GO-Port)
+		"rbxassetid://131254751896361",  -- awp fire 1.6
+	},
+	Bolt = {
+		"rbxassetid://133852631085337",  -- Awp_BoltPull (CS CZ:DS)
+		"rbxassetid://140632128823885",  -- awp_boltforward
+	},
+}
+
+-- Client-seitig: bevorzugte IDs testen, erste ladbare gewinnt (sonst Fallback)
+function Assets.resolveSfx()
+	local ContentProvider = game:GetService("ContentProvider")
+	for key, candidates in pairs(Assets.SFX_PREFERRED) do
+		task.spawn(function()
+			for _, id in ipairs(candidates) do
+				local status = nil
+				pcall(function()
+					ContentProvider:PreloadAsync({ id }, function(_, fetchStatus)
+						status = fetchStatus
+					end)
+				end)
+				if status == Enum.AssetFetchStatus.Success then
+					Assets.SFX[key] = id
+					return
+				end
+			end
+			-- nichts ladbar → verifizierter Fallback bleibt aktiv
+		end)
+	end
+end
 
 Assets.MUSIC = {
 	Lobby = {   -- Synthwave-Lounge
