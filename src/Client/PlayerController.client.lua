@@ -46,17 +46,11 @@ local function buildSword(swordLevel)
 	-- Handle (the visible blade part)
 	local handle           = Instance.new("Part")
 	handle.Name            = "Handle"
-	handle.Size            = Vector3.new(0.3, 3, 0.3)
+	handle.Size            = Vector3.new(0.2, 2.5, 0.1)
 	handle.BrickColor      = BrickColor.new("Bright yellow")
 	handle.Material        = Enum.Material.SmoothPlastic
 	handle.CanCollide      = false
 	handle.Parent          = tool
-
-	-- Simple blade mesh
-	local mesh             = Instance.new("SpecialMesh")
-	mesh.MeshType          = Enum.MeshType.Wedge
-	mesh.Scale             = Vector3.new(0.8, 3, 0.5)
-	mesh.Parent            = handle
 
 	return tool
 end

@@ -1,0 +1,39 @@
+{
+  "name": "BambooSlasher",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Config": {
+        "$path": "src/Shared/Config.lua"
+      }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "RemoteSetup": {
+        "$path": "src/Server/RemoteSetup.server.lua"
+      },
+      "BambooWorld": {
+        "$path": "src/Server/BambooWorld.server.lua"
+      },
+      "GameManager": {
+        "$path": "src/Server/GameManager.server.lua"
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "PlayerController": {
+          "$path": "src/Client/PlayerController.client.lua"
+        },
+        "UIController": {
+          "$path": "src/Client/UIController.client.lua"
+        }
+      }
+    }
+  }
+}

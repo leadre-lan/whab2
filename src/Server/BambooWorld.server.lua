@@ -120,12 +120,9 @@ local function createBambooStalk(bambooType, position, bambooTypeId)
 	part.Material         = Enum.Material.SmoothPlastic
 	part.CastShadow       = true
 
-	-- Slightly round it with a SpecialMesh (cylinder)
+	-- CylinderMesh is vertical by default in Roblox (Y-axis aligned)
 	local mesh            = Instance.new("SpecialMesh")
 	mesh.MeshType         = Enum.MeshType.Cylinder
-	-- Cylinder mesh in Roblox is oriented along the X axis by default;
-	-- rotate the part so it stands vertically.
-	part.CFrame           = CFrame.new(part.Position) * CFrame.Angles(0, 0, math.rad(90))
 	mesh.Scale            = Vector3.new(1, 1, 1)
 	mesh.Parent           = part
 
