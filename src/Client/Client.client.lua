@@ -16,6 +16,9 @@ local remotesFolder = ReplicatedStorage:WaitForChild("BambooRemotes")
 local UpdateData    = remotesFolder:WaitForChild("UpdateData")
 local BuyUpgrade    = remotesFolder:WaitForChild("BuyUpgrade")
 local Notify        = remotesFolder:WaitForChild("Notify")
+local ChopBamboo    = remotesFolder:WaitForChild("ChopBamboo")
+
+local mouse = player:GetMouse()
 
 -- Local copy of player data
 local localData = {
@@ -178,6 +181,32 @@ local function swingSword()
 	local handle = tool:FindFirstChild("Handle")
 	local swingSound = handle and handle:FindFirstChild("SwingSound")
 	if swingSound then swingSound:Play() end
+
+	-- Find the bamboo to chop: mouse target first, nearest stalk as fallback
+	local targetHitbox = nil
+	local mouseTarget = mouse.Target
+	if mouseTarget and mouseTarget:GetAttribute("IsBamboo") then
+		targetHitbox = mouseTarget
+	else
+		local root = character:FindFirstChild("HumanoidRootPart")
+		local zonesFolder = workspace:FindFirstChild("Zones")
+		if root and zonesFolder then
+			local closestDist = 14
+			for _, desc in ipairs(zonesFolder:GetDescendants()) do
+				if desc:IsA("BasePart") and desc:GetAttribute("IsBamboo")
+					and not desc:GetAttribute("IsDead") then
+					local dist = (desc.Position - root.Position).Magnitude
+					if dist < closestDist then
+						closestDist = dist
+						targetHitbox = desc
+					end
+				end
+			end
+		end
+	end
+	if targetHitbox then
+		ChopBamboo:FireServer(targetHitbox)
+	end
 
 	local originalGrip = tool.Grip
 	local steps = 5

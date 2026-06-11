@@ -32,6 +32,13 @@ local Notify = Instance.new("RemoteEvent")
 Notify.Name = "Notify"
 Notify.Parent = remotesFolder
 
+-- Client fires this with the bamboo hitbox it aimed at.
+-- (ClickDetectors do not receive clicks while a Tool is equipped,
+-- so chopping goes through this remote instead.)
+local ChopBamboo = Instance.new("RemoteEvent")
+ChopBamboo.Name = "ChopBamboo"
+ChopBamboo.Parent = remotesFolder
+
 -- ─── World Setup ──────────────────────────────────────────────────────────────
 workspace.Terrain:Clear()
 
@@ -169,6 +176,7 @@ end)
 local rng             = Random.new(42)
 local bambooHealth    = {}   -- [part] = currentHealth number
 local playerCooldowns = {}   -- ["userId_partInstance"] = lastSwingTime (os.clock)
+local chopHandlers    = {}   -- [hitboxPart] = function(player) chop logic
 
 local zonesFolder = Instance.new("Folder")
 zonesFolder.Name = "Zones"
@@ -373,7 +381,7 @@ for _, zone in ipairs(Config.ZONES) do
 			growBamboo()
 		end
 
-		clickDetector.MouseClick:Connect(function(player)
+		local function tryChop(player)
 			local data = playerData[player]
 			if not data then return end
 
@@ -420,7 +428,83 @@ for _, zone in ipairs(Config.ZONES) do
 				-- Schedule respawn (with grow animation)
 				task.spawn(respawnThis)
 			end
-		end)
+		end
+
+		chopHandlers[hitbox] = tryChop
+		clickDetector.MouseClick:Connect(tryChop)
+	end
+end
+
+-- Remote chop entry point (validated server-side)
+ChopBamboo.OnServerEvent:Connect(function(player, part)
+	if typeof(part) ~= "Instance" then return end
+	local handler = chopHandlers[part]
+	if not handler then return end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	if (root.Position - part.Position).Magnitude > 30 then return end
+
+	handler(player)
+end)
+
+-- ─── Decorative Forest + Atmosphere ──────────────────────────────────────────
+-- Surround the play area with simple trees so nothing looks empty,
+-- and add fog so the horizon disappears into green.
+local Lighting = game:GetService("Lighting")
+Lighting.FogStart = 90
+Lighting.FogEnd = 280
+Lighting.FogColor = Color3.fromRGB(150, 180, 140)
+Lighting.OutdoorAmbient = Color3.fromRGB(130, 150, 120)
+
+local forestFolder = Instance.new("Folder")
+forestFolder.Name = "Forest"
+forestFolder.Parent = workspace
+
+local function makeTree(x, z)
+	local scale = rng:NextNumber(0.8, 1.6)
+	local trunkH = 9 * scale
+
+	local trunk = Instance.new("Part")
+	trunk.Name = "Trunk"
+	trunk.Shape = Enum.PartType.Cylinder
+	trunk.Size = Vector3.new(trunkH, 1.6 * scale, 1.6 * scale)
+	trunk.CFrame = CFrame.new(x, trunkH / 2, z) * CFrame.Angles(0, 0, math.rad(90))
+	trunk.Material = Enum.Material.Wood
+	trunk.Color = Color3.fromRGB(95, 65, 40)
+	trunk.Anchored = true
+	trunk.CanCollide = true
+	trunk.Parent = forestFolder
+
+	for c = 1, 2 do
+		local canopy = Instance.new("Part")
+		canopy.Name = "Canopy"
+		canopy.Shape = Enum.PartType.Ball
+		local size = (7 - c * 1.5) * scale
+		canopy.Size = Vector3.new(size, size, size)
+		canopy.Position = Vector3.new(
+			x + rng:NextNumber(-1, 1),
+			trunkH + (c - 1) * 2.2 * scale,
+			z + rng:NextNumber(-1, 1))
+		canopy.Material = Enum.Material.Grass
+		canopy.Color = Color3.fromRGB(46 + rng:NextInteger(0, 25), 110 + rng:NextInteger(0, 30), 40)
+		canopy.Anchored = true
+		canopy.CanCollide = false
+		canopy.Parent = forestFolder
+	end
+end
+
+-- Scatter trees everywhere EXCEPT on the zone platforms
+-- (platforms occupy x in [-55, 575], z in [-55, 55])
+local treeCount = 0
+while treeCount < 220 do
+	local x = rng:NextNumber(-250, 770)
+	local z = rng:NextNumber(-300, 300)
+	local onPlatforms = (x > -65 and x < 585 and z > -65 and z < 65)
+	if not onPlatforms then
+		makeTree(x, z)
+		treeCount += 1
 	end
 end
 
