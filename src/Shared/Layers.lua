@@ -21,10 +21,10 @@ Layers.DATA = {
 			seed         = 20260611,    -- fixed seed → reproducible world
 			size         = 900,         -- studs (min. 800x800)
 			material     = Enum.Material.LeafyGrass,
-			bambooCount  = 110,
-			oreCount     = 16,
-			treeCount    = 95,
-			boulderCount = 32,
+			bambooCount  = 260,         -- dense forest — the map must not feel empty
+			oreCount     = 22,
+			treeCount    = 160,
+			boulderCount = 48,
 		},
 	},
 	[2] = {

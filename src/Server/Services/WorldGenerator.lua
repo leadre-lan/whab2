@@ -316,9 +316,9 @@ local function scatterPositions(cfg, heightAt, landmarks, count, clusterScale, s
 		-- Keep the spawn pad clear
 		if math.sqrt((x - cx) ^ 2 + (z - cz) ^ 2) < 30 then continue end
 
-		-- Min spacing to other spots of the same kind
+		-- Min spacing to other spots of the same kind (tight → dense clusters)
 		for _, s in ipairs(spots) do
-			if (Vector3.new(x, 0, z) - Vector3.new(s.pos.X, 0, s.pos.Z)).Magnitude < 6 then
+			if (Vector3.new(x, 0, z) - Vector3.new(s.pos.X, 0, s.pos.Z)).Magnitude < 4.5 then
 				tooClose = true
 				break
 			end

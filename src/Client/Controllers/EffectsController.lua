@@ -105,37 +105,64 @@ function EffectsController.spawnSlashArc(rootCFrame, color)
 end
 
 -- ── Falling Cut-Top Pieces ────────────────────────────────────────────────────
+-- The felled stalk breaks into ALL of its segments — every swing shows a real
+-- multi-cut, like slicing through with a sharp knife.
 function EffectsController.spawnFallingTops(sliceInfo)
 	if not sliceInfo then return end
 	local pos   = sliceInfo.slicePos
 	local color = sliceInfo.color or Color3.fromRGB(100, 180, 80)
 	local th    = sliceInfo.thickness or 1.5
+	local topH  = sliceInfo.topHeight or 10
 
-	for _ = 1, 2 do
+	-- White slice flash at the cut plane
+	local flash = Instance.new("Part")
+	flash.Size = Vector3.new(th * 3.5, 0.08, th * 3.5)
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(255, 255, 255)
+	flash.Transparency = 0.1
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.CastShadow = false
+	flash.CFrame = CFrame.new(pos) * CFrame.Angles(0, math.random() * math.pi, math.rad(math.random(-12, 12)))
+	flash.Parent = workspace
+	TweenService:Create(flash, TweenInfo.new(0.16, Enum.EasingStyle.Quad),
+		{ Transparency = 1, Size = flash.Size * 1.6 }):Play()
+	Debris:AddItem(flash, 0.2)
+
+	-- Stalk segments fly apart (top pieces get flung further)
+	local pieces = math.clamp(math.floor(topH / 3 + 0.5), 3, 7)
+	local segLen = topH / pieces
+	local baseY  = pos.Y - topH / 2
+	for i = 1, pieces do
 		local piece = Instance.new("Part")
 		piece.Shape = Enum.PartType.Cylinder
-		piece.Size  = Vector3.new(4, th, th)
+		piece.Size  = Vector3.new(math.max(1, segLen - 0.15), th, th)
 		piece.Material = Enum.Material.SmoothPlastic
 		piece.Color    = color
 		piece.Anchored = false
 		piece.CanCollide = false
 		piece.CastShadow = false
 		piece.CFrame = CFrame.new(
-				pos + Vector3.new((math.random() - 0.5) * 1.5, 3 + math.random() * 2, (math.random() - 0.5) * 1.5))
+				pos.X + (math.random() - 0.5) * 0.8,
+				baseY + (i - 0.5) * segLen,
+				pos.Z + (math.random() - 0.5) * 0.8)
 			* CFrame.Angles(0, math.random() * math.pi, math.rad(90))
-		local ang = math.random() * math.pi * 2
+		local ang  = math.random() * math.pi * 2
+		local kick = 8 + i * 2.5   -- higher pieces fly harder
 		piece.AssemblyLinearVelocity = Vector3.new(
-			math.cos(ang) * 14, 5 + math.random() * 5, math.sin(ang) * 14)
+			math.cos(ang) * kick,
+			6 + i * 2 + math.random() * 4,
+			math.sin(ang) * kick)
 		piece.AssemblyAngularVelocity = Vector3.new(
-			(math.random() - 0.5) * 18,
-			(math.random() - 0.5) * 18,
-			(math.random() - 0.5) * 18)
+			(math.random() - 0.5) * 24,
+			(math.random() - 0.5) * 24,
+			(math.random() - 0.5) * 24)
 		piece.Parent = workspace
 
 		TweenService:Create(piece,
-			TweenInfo.new(1.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 			{ Transparency = 1 }):Play()
-		Debris:AddItem(piece, 1.4)
+		Debris:AddItem(piece, 1.3)
 	end
 end
 

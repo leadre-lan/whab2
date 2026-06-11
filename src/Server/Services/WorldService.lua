@@ -51,7 +51,10 @@ local function computeDamage(player, damageOverride)
 	if not d then return 1 end
 	local sharpness = d.stats.sharpness or 0
 	local tier      = d.swordTier or 1
-	local base = (1 + sharpness * Balance.SHARPNESS_MULT) * (Balance.TIER_MULT[tier] or 1)
+	-- Level scaling: every level the sword cuts faster — high level slices
+	-- low-layer bamboo in one clean swing, like a sharp knife.
+	local base = (1 + sharpness * Balance.SHARPNESS_MULT + ((d.level or 1) - 1) * Balance.LEVEL_DMG)
+		* (Balance.TIER_MULT[tier] or 1)
 	local dmg  = math.ceil(base)
 	-- Crit
 	local luck = d.stats.luck or 0
@@ -641,7 +644,7 @@ function WorldService.init(ds, netRef)
 			WorldService.layerSpawns[li] = Vector3.new(layer.offsetX, 5, 0)
 
 			-- Grass tufts
-			for _ = 1, rng:NextInteger(10, 18) do
+			for _ = 1, rng:NextInteger(30, 50) do
 				local tx  = layer.offsetX + rng:NextNumber(-80, 80)
 				local tz  = rng:NextNumber(-80, 80)
 				local tft = Instance.new("Part")
@@ -719,6 +722,31 @@ function WorldService.handleChop(player, part)
 
 	if (root.Position - part.Position).Magnitude > maxDist then return end
 	handler(player)
+
+	-- Cleave: one swing slices EVERY bamboo around the target — mowing through
+	-- a dense field like a knife. Player-global cooldown so the cleave can't
+	-- fire faster than the swing rate.
+	if not (pdata and part:GetAttribute("IsBamboo")) then return end
+	local speed = pdata.stats.speed or 0
+	local delay = math.max(0.15, Balance.SWING_DELAY - speed * Balance.SPEED_REDUCTION)
+	local key   = player.UserId .. "_cleave"
+	local now   = os.clock()
+	if playerCooldowns[key] and (now - playerCooldowns[key]) < delay then return end
+	playerCooldowns[key] = now
+
+	local zonesF = workspace:FindFirstChild("Zones")
+	if not zonesF then return end
+	local dmg = computeDamage(player)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { zonesF }
+	local radius = Balance.CLEAVE_RADIUS + range * 0.5
+	for _, p in ipairs(workspace:GetPartBoundsInRadius(part.Position, radius, params)) do
+		if p ~= part and p:GetAttribute("IsBamboo") and not p:GetAttribute("IsDead") then
+			local h = chopHandlers[p]
+			if h then h(player, dmg) end
+		end
+	end
 end
 
 -- ── Public: handle slam ───────────────────────────────────────────────────────

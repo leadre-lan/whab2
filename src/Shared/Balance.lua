@@ -17,7 +17,7 @@ end
 
 function Balance.xpPerFell(layer)     return scaled(5, layer) end
 function Balance.coinsPerFell(layer)  return scaled(1.5, layer) end
-function Balance.bambooHP(layer)      return scaled(3, layer) end
+function Balance.bambooHP(layer)      return scaled(2, layer) end
 function Balance.coinsPerMine(layer)  return scaled(4, layer) end
 function Balance.rockHP(layer)        return scaled(5, layer) end
 
@@ -27,11 +27,14 @@ Balance.BAMBOO_COUNT   = {}
 for l = 1, LAYER_COUNT do
 	Balance.BAMBOO_RESPAWN[l] = math.min(40, 3 + l * 3)
 	Balance.ROCK_RESPAWN[l]   = math.min(70, 12 + l * 8)
-	Balance.BAMBOO_COUNT[l]   = math.max(12, 24 - l)
+	Balance.BAMBOO_COUNT[l]   = math.max(45, 65 - l * 2)
 end
 
 -- ── Combat / Stats ────────────────────────────────────────────────────────────
-Balance.SWING_DELAY      = 0.5
+Balance.SWING_DELAY      = 0.35
+Balance.LEVEL_DMG        = 0.12   -- +12% damage per player level — higher level
+                                  -- = the sword cuts bamboo like a sharp knife
+Balance.CLEAVE_RADIUS    = 8      -- one swing slices ALL bamboo around the target
 Balance.SHARPNESS_MULT   = 0.15   -- +15% damage per Schärfe level
 Balance.SPEED_REDUCTION  = 0.025  -- -0.025s swing delay per level (min 0.15)
 Balance.LUCK_CRIT_CHANCE = 0.03   -- +3% crit per level (cap 60%)

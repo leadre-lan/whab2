@@ -29,7 +29,7 @@ end
 
 function Balance.xpPerFell(layer)     return scaled(5, layer) end
 function Balance.coinsPerFell(layer)  return scaled(1.5, layer) end
-function Balance.bambooHP(layer)      return scaled(3, layer) end
+function Balance.bambooHP(layer)      return scaled(2, layer) end
 function Balance.coinsPerMine(layer)  return scaled(4, layer) end
 function Balance.rockHP(layer)        return scaled(5, layer) end
 
@@ -39,11 +39,14 @@ Balance.BAMBOO_COUNT   = {}
 for l = 1, LAYER_COUNT do
 	Balance.BAMBOO_RESPAWN[l] = math.min(40, 3 + l * 3)
 	Balance.ROCK_RESPAWN[l]   = math.min(70, 12 + l * 8)
-	Balance.BAMBOO_COUNT[l]   = math.max(12, 24 - l)
+	Balance.BAMBOO_COUNT[l]   = math.max(45, 65 - l * 2)
 end
 
 -- ── Combat / Stats ────────────────────────────────────────────────────────────
-Balance.SWING_DELAY      = 0.5
+Balance.SWING_DELAY      = 0.35
+Balance.LEVEL_DMG        = 0.12   -- +12% damage per player level — higher level
+                                  -- = the sword cuts bamboo like a sharp knife
+Balance.CLEAVE_RADIUS    = 8      -- one swing slices ALL bamboo around the target
 Balance.SHARPNESS_MULT   = 0.15   -- +15% damage per Schärfe level
 Balance.SPEED_REDUCTION  = 0.025  -- -0.025s swing delay per level (min 0.15)
 Balance.LUCK_CRIT_CHANCE = 0.03   -- +3% crit per level (cap 60%)
@@ -159,10 +162,10 @@ Layers.DATA = {
 			seed         = 20260611,    -- fixed seed → reproducible world
 			size         = 900,         -- studs (min. 800x800)
 			material     = Enum.Material.LeafyGrass,
-			bambooCount  = 110,
-			oreCount     = 16,
-			treeCount    = 95,
-			boulderCount = 32,
+			bambooCount  = 260,         -- dense forest — the map must not feel empty
+			oreCount     = 22,
+			treeCount    = 160,
+			boulderCount = 48,
 		},
 	},
 	[2] = {
@@ -2711,9 +2714,9 @@ local function scatterPositions(cfg, heightAt, landmarks, count, clusterScale, s
 		-- Keep the spawn pad clear
 		if math.sqrt((x - cx) ^ 2 + (z - cz) ^ 2) < 30 then continue end
 
-		-- Min spacing to other spots of the same kind
+		-- Min spacing to other spots of the same kind (tight → dense clusters)
 		for _, s in ipairs(spots) do
-			if (Vector3.new(x, 0, z) - Vector3.new(s.pos.X, 0, s.pos.Z)).Magnitude < 6 then
+			if (Vector3.new(x, 0, z) - Vector3.new(s.pos.X, 0, s.pos.Z)).Magnitude < 4.5 then
 				tooClose = true
 				break
 			end
@@ -2902,7 +2905,10 @@ local function computeDamage(player, damageOverride)
 	if not d then return 1 end
 	local sharpness = d.stats.sharpness or 0
 	local tier      = d.swordTier or 1
-	local base = (1 + sharpness * Balance.SHARPNESS_MULT) * (Balance.TIER_MULT[tier] or 1)
+	-- Level scaling: every level the sword cuts faster — high level slices
+	-- low-layer bamboo in one clean swing, like a sharp knife.
+	local base = (1 + sharpness * Balance.SHARPNESS_MULT + ((d.level or 1) - 1) * Balance.LEVEL_DMG)
+		* (Balance.TIER_MULT[tier] or 1)
 	local dmg  = math.ceil(base)
 	-- Crit
 	local luck = d.stats.luck or 0
@@ -3492,7 +3498,7 @@ function WorldService.init(ds, netRef)
 			WorldService.layerSpawns[li] = Vector3.new(layer.offsetX, 5, 0)
 
 			-- Grass tufts
-			for _ = 1, rng:NextInteger(10, 18) do
+			for _ = 1, rng:NextInteger(30, 50) do
 				local tx  = layer.offsetX + rng:NextNumber(-80, 80)
 				local tz  = rng:NextNumber(-80, 80)
 				local tft = Instance.new("Part")
@@ -3570,6 +3576,31 @@ function WorldService.handleChop(player, part)
 
 	if (root.Position - part.Position).Magnitude > maxDist then return end
 	handler(player)
+
+	-- Cleave: one swing slices EVERY bamboo around the target — mowing through
+	-- a dense field like a knife. Player-global cooldown so the cleave can't
+	-- fire faster than the swing rate.
+	if not (pdata and part:GetAttribute("IsBamboo")) then return end
+	local speed = pdata.stats.speed or 0
+	local delay = math.max(0.15, Balance.SWING_DELAY - speed * Balance.SPEED_REDUCTION)
+	local key   = player.UserId .. "_cleave"
+	local now   = os.clock()
+	if playerCooldowns[key] and (now - playerCooldowns[key]) < delay then return end
+	playerCooldowns[key] = now
+
+	local zonesF = workspace:FindFirstChild("Zones")
+	if not zonesF then return end
+	local dmg = computeDamage(player)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { zonesF }
+	local radius = Balance.CLEAVE_RADIUS + range * 0.5
+	for _, p in ipairs(workspace:GetPartBoundsInRadius(part.Position, radius, params)) do
+		if p ~= part and p:GetAttribute("IsBamboo") and not p:GetAttribute("IsDead") then
+			local h = chopHandlers[p]
+			if h then h(player, dmg) end
+		end
+	end
 end
 
 -- ── Public: handle slam ───────────────────────────────────────────────────────
@@ -3661,35 +3692,71 @@ UICtrl.wireButtons(net)
 -- Wire input to remotes + other controllers
 InputCtrl.init(net, EffectsCtrl, UICtrl)
 
--- ── Background Music ──────────────────────────────────────────────────────────
-local MUSIC_IDS = {
-	"rbxassetid://1841647093",
-	"rbxassetid://1843463175",
-	"rbxassetid://9046897116",
-	"rbxassetid://1837879082",
-}
+-- ── Background Music (per biome) ─────────────────────────────────────────────
+-- Each candidate list is tried in order until one loads; the last entries are
+-- known-good ids so every zone always ends up with music.
+local TweenService = game:GetService("TweenService")
 
-task.spawn(function()
-	for _, id in ipairs(MUSIC_IDS) do
-		local music = Instance.new("Sound")
-		music.SoundId = id
-		music.Looped  = true
-		music.Volume  = 0.35
-		music.Parent  = SoundService
+local TRACK_HUB    = { "rbxassetid://1841647093" }                          -- ruhig
+local TRACK_FOREST = { "rbxassetid://1843463175", "rbxassetid://1841647093" } -- Grün/Gold
+local TRACK_MYSTIC = { "rbxassetid://9046897116", "rbxassetid://1843463175" } -- Kristall/Schatten
+local TRACK_EPIC   = { "rbxassetid://1837879082", "rbxassetid://9046897116" } -- Vulkan/Himmel
 
-		local waited = 0
-		while not music.IsLoaded and waited < 3 do
-			task.wait(0.2)
-			waited += 0.2
-		end
+local function zoneTracks(layerIdx)
+	if not layerIdx or layerIdx == 0 then return TRACK_HUB end
+	if layerIdx <= 2 then return TRACK_FOREST end
+	if layerIdx <= 4 then return TRACK_MYSTIC end
+	if layerIdx <= 6 then return TRACK_EPIC end
+	return ({ TRACK_FOREST, TRACK_MYSTIC, TRACK_EPIC })[(layerIdx % 3) + 1]
+end
 
-		if music.IsLoaded and music.TimeLength > 0 then
-			music:Play()
-			return
-		end
-		music:Destroy()
+local currentMusic     = nil
+local currentTrackList = nil
+
+local function playZoneMusic(layerIdx)
+	local list = zoneTracks(layerIdx)
+	if list == currentTrackList then return end  -- same biome group → keep playing
+	currentTrackList = list
+
+	-- Crossfade: fade the old track out…
+	if currentMusic then
+		local old = currentMusic
+		currentMusic = nil
+		TweenService:Create(old, TweenInfo.new(1.2), { Volume = 0 }):Play()
+		task.delay(1.3, function() old:Destroy() end)
 	end
-end)
+
+	-- …and the new one in (skipping ids that fail to load)
+	task.spawn(function()
+		for _, id in ipairs(list) do
+			local music = Instance.new("Sound")
+			music.SoundId = id
+			music.Looped  = true
+			music.Volume  = 0
+			music.Parent  = SoundService
+
+			local waited = 0
+			while not music.IsLoaded and waited < 3 do
+				task.wait(0.2)
+				waited += 0.2
+			end
+
+			if music.IsLoaded and music.TimeLength > 0 then
+				if list ~= currentTrackList then  -- zone changed while loading
+					music:Destroy()
+					return
+				end
+				currentMusic = music
+				music:Play()
+				TweenService:Create(music, TweenInfo.new(1.2), { Volume = 0.35 }):Play()
+				return
+			end
+			music:Destroy()
+		end
+	end)
+end
+
+playZoneMusic(0)  -- start with hub music
 
 -- ── Local data cache ──────────────────────────────────────────────────────────
 local localData = { coins = 0, xp = 0, level = 1, totalFelled = 0, totalMined = 0,
@@ -3726,7 +3793,6 @@ end)
 
 -- Per-player layer lighting (0 = hub)
 local Lighting = game:GetService("Lighting")
-local TweenService = game:GetService("TweenService")
 
 -- Atmosphere instance: density per layer so the view ends BEFORE the world
 -- border — the player must never see the edge.
@@ -3736,7 +3802,7 @@ if not atmosphere then
 	atmosphere.Parent = Lighting
 end
 
-net.ApplyLayerLighting.OnClientEvent:Connect(function(layerIdx)
+local function applyZone(layerIdx)
 	local ld = Layers.DATA[layerIdx]
 	local fog, ambient, preset
 	if ld then
@@ -3759,7 +3825,12 @@ net.ApplyLayerLighting.OnClientEvent:Connect(function(layerIdx)
 		Color   = (preset and preset.atmoColor) or fog.color,
 		Haze    = 2,
 	}):Play()
-end)
+
+	-- Music follows the biome
+	playZoneMusic(layerIdx)
+end
+
+net.ApplyLayerLighting.OnClientEvent:Connect(applyZone)
 
 net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage, sliceInfo)
 	EffectsCtrl.shake(died and 1.25 or 0.38)
@@ -3791,6 +3862,9 @@ end)
 
 -- ── Character lifecycle ───────────────────────────────────────────────────────
 player.CharacterAdded:Connect(function()
+	-- Respawn always happens at the hub → reset fog + music (previously the
+	-- layer lighting/music stuck around after dying in a layer)
+	applyZone(0)
 	task.wait(0.5)
 	InputCtrl.buildSword(localData.swordTier or 1)
 	task.wait(0.2)
@@ -3943,37 +4017,64 @@ function EffectsController.spawnSlashArc(rootCFrame, color)
 end
 
 -- ── Falling Cut-Top Pieces ────────────────────────────────────────────────────
+-- The felled stalk breaks into ALL of its segments — every swing shows a real
+-- multi-cut, like slicing through with a sharp knife.
 function EffectsController.spawnFallingTops(sliceInfo)
 	if not sliceInfo then return end
 	local pos   = sliceInfo.slicePos
 	local color = sliceInfo.color or Color3.fromRGB(100, 180, 80)
 	local th    = sliceInfo.thickness or 1.5
+	local topH  = sliceInfo.topHeight or 10
 
-	for _ = 1, 2 do
+	-- White slice flash at the cut plane
+	local flash = Instance.new("Part")
+	flash.Size = Vector3.new(th * 3.5, 0.08, th * 3.5)
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(255, 255, 255)
+	flash.Transparency = 0.1
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.CastShadow = false
+	flash.CFrame = CFrame.new(pos) * CFrame.Angles(0, math.random() * math.pi, math.rad(math.random(-12, 12)))
+	flash.Parent = workspace
+	TweenService:Create(flash, TweenInfo.new(0.16, Enum.EasingStyle.Quad),
+		{ Transparency = 1, Size = flash.Size * 1.6 }):Play()
+	Debris:AddItem(flash, 0.2)
+
+	-- Stalk segments fly apart (top pieces get flung further)
+	local pieces = math.clamp(math.floor(topH / 3 + 0.5), 3, 7)
+	local segLen = topH / pieces
+	local baseY  = pos.Y - topH / 2
+	for i = 1, pieces do
 		local piece = Instance.new("Part")
 		piece.Shape = Enum.PartType.Cylinder
-		piece.Size  = Vector3.new(4, th, th)
+		piece.Size  = Vector3.new(math.max(1, segLen - 0.15), th, th)
 		piece.Material = Enum.Material.SmoothPlastic
 		piece.Color    = color
 		piece.Anchored = false
 		piece.CanCollide = false
 		piece.CastShadow = false
 		piece.CFrame = CFrame.new(
-				pos + Vector3.new((math.random() - 0.5) * 1.5, 3 + math.random() * 2, (math.random() - 0.5) * 1.5))
+				pos.X + (math.random() - 0.5) * 0.8,
+				baseY + (i - 0.5) * segLen,
+				pos.Z + (math.random() - 0.5) * 0.8)
 			* CFrame.Angles(0, math.random() * math.pi, math.rad(90))
-		local ang = math.random() * math.pi * 2
+		local ang  = math.random() * math.pi * 2
+		local kick = 8 + i * 2.5   -- higher pieces fly harder
 		piece.AssemblyLinearVelocity = Vector3.new(
-			math.cos(ang) * 14, 5 + math.random() * 5, math.sin(ang) * 14)
+			math.cos(ang) * kick,
+			6 + i * 2 + math.random() * 4,
+			math.sin(ang) * kick)
 		piece.AssemblyAngularVelocity = Vector3.new(
-			(math.random() - 0.5) * 18,
-			(math.random() - 0.5) * 18,
-			(math.random() - 0.5) * 18)
+			(math.random() - 0.5) * 24,
+			(math.random() - 0.5) * 24,
+			(math.random() - 0.5) * 24)
 		piece.Parent = workspace
 
 		TweenService:Create(piece,
-			TweenInfo.new(1.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 			{ Transparency = 1 }):Play()
-		Debris:AddItem(piece, 1.4)
+		Debris:AddItem(piece, 1.3)
 	end
 end
 
