@@ -1,5 +1,72 @@
 <?xml version="1.0" encoding="utf-8"?>
-<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta><Item class="DataModel" referent="RBX40D06D04"><Properties><string name="Name">Game</string></Properties><Item class="Workspace" referent="RBX889D324C"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">false</bool></Properties><Item class="Part" referent="RBX6D6BAAF1"><Properties><string name="Name">Baseplate</string><bool name="Anchored">true</bool><token name="shape">0</token><CoordinateFrame name="CFrame">&lt;X&gt;0&lt;/X&gt;&lt;Y&gt;-10&lt;/Y&gt;&lt;Z&gt;0&lt;/Z&gt;&lt;R00&gt;1&lt;/R00&gt;&lt;R01&gt;0&lt;/R01&gt;&lt;R02&gt;0&lt;/R02&gt;&lt;R10&gt;0&lt;/R10&gt;&lt;R11&gt;1&lt;/R11&gt;&lt;R12&gt;0&lt;/R12&gt;&lt;R20&gt;0&lt;/R20&gt;&lt;R21&gt;0&lt;/R21&gt;&lt;R22&gt;1&lt;/R22&gt;</CoordinateFrame><Vector3 name="size">&lt;X&gt;2048&lt;/X&gt;&lt;Y&gt;20&lt;/Y&gt;&lt;Z&gt;2048&lt;/Z&gt;</Vector3><BrickColor name="BrickColor">141</BrickColor><token name="Material">256</token></Properties></Item></Item><Item class="ReplicatedStorage" referent="RBX1554BA7A"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="ModuleScript" referent="RBX52971BAE"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- Config.lua
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4">
+  <Meta name="ExplicitAutoJoints">true</Meta>
+  <External>null</External>
+  <External>nil</External>
+  <Item class="DataModel" referent="RBX6BB3D57E">
+    <Properties>
+      <string name="Name">BambooSlasher</string>
+    </Properties>
+
+    <!-- ======= Workspace ======= -->
+    <Item class="Workspace" referent="RBX6BA17421">
+      <Properties>
+        <string name="Name">Workspace</string>
+        <bool name="StreamingEnabled">false</bool>
+        <float name="Gravity">196.2</float>
+      </Properties>
+
+      <!-- Baseplate -->
+      <Item class="Part" referent="RBX27A0E05D">
+        <Properties>
+          <string name="Name">Baseplate</string>
+          <bool name="Anchored">true</bool>
+          <BrickColor name="BrickColor">141</BrickColor>
+          <token name="Material">256</token>
+          <CoordinateFrame name="CFrame">
+            <X>240</X><Y>-10</Y><Z>0</Z>
+            <R00>1</R00><R01>0</R01><R02>0</R02>
+            <R10>0</R10><R11>1</R11><R12>0</R12>
+            <R20>0</R20><R21>0</R21><R22>1</R22>
+          </CoordinateFrame>
+          <Vector3 name="size">
+            <X>2048</X><Y>20</Y><Z>2048</Z>
+          </Vector3>
+          <bool name="CastShadow">false</bool>
+        </Properties>
+      </Item>
+
+      <!-- SpawnLocation -->
+      <Item class="SpawnLocation" referent="RBX0991A5C8">
+        <Properties>
+          <string name="Name">SpawnLocation</string>
+          <bool name="Anchored">true</bool>
+          <CoordinateFrame name="CFrame">
+            <X>0</X><Y>0.5</Y><Z>0</Z>
+            <R00>1</R00><R01>0</R01><R02>0</R02>
+            <R10>0</R10><R11>1</R11><R12>0</R12>
+            <R20>0</R20><R21>0</R21><R22>1</R22>
+          </CoordinateFrame>
+          <Vector3 name="size">
+            <X>6</X><Y>1</Y><Z>6</Z>
+          </Vector3>
+          <bool name="Neutral">true</bool>
+          <bool name="AllowTeamChangeOnTouch">false</bool>
+        </Properties>
+      </Item>
+
+    </Item>
+
+    <!-- ======= ReplicatedStorage ======= -->
+    <Item class="ReplicatedStorage" referent="RBX8121F6CD">
+      <Properties>
+        <string name="Name">ReplicatedStorage</string>
+      </Properties>
+      
+    <Item class="ModuleScript" referent="RBX2A477686">
+      <Properties>
+        <string name="Name">Config</string>
+        <ProtectedString name="Source"><![CDATA[-- Config.lua
 -- Place as a ModuleScript in ReplicatedStorage
 -- Shared configuration for Bamboo Slasher Simulator
 
@@ -121,7 +188,21 @@ Config.ZONES = {
 }
 
 return Config
-]]></ProtectedString></Properties></Item></Item><Item class="ServerScriptService" referent="RBXCAD13B70"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX05F95CF6"><Properties><string name="Name">RemoteSetup</string><ProtectedString name="Source"><![CDATA[-- RemoteSetup.server.lua
+]]></ProtectedString>
+      </Properties>
+    </Item>
+    </Item>
+
+    <!-- ======= ServerScriptService ======= -->
+    <Item class="ServerScriptService" referent="RBX1DD723C9">
+      <Properties>
+        <string name="Name">ServerScriptService</string>
+      </Properties>
+      
+    <Item class="Script" referent="RBXF3D58423">
+      <Properties>
+        <string name="Name">RemoteSetup</string>
+        <ProtectedString name="Source"><![CDATA[-- RemoteSetup.server.lua
 -- Place as a Script in ServerScriptService.
 -- This script MUST run before BambooWorld and GameManager so that
 -- RemoteEvents exist when the other scripts require them.
@@ -153,7 +234,15 @@ makeEvent("BuyUpgrade")
 makeEvent("UpdateData")
 
 print("[RemoteSetup] BambooRemotes folder created with 3 RemoteEvents.")
-]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item><Item class="Script" referent="RBXA3021B4A"><Properties><string name="Name">BambooWorld</string><ProtectedString name="Source"><![CDATA[-- BambooWorld.server.lua
+]]></ProtectedString>
+        <bool name="Disabled">false</bool>
+      </Properties>
+    </Item>
+      
+    <Item class="Script" referent="RBX766EA8A3">
+      <Properties>
+        <string name="Name">BambooWorld</string>
+        <ProtectedString name="Source"><![CDATA[-- BambooWorld.server.lua
 -- Place as a Script in ServerScriptService.
 -- Procedurally generates the bamboo world at runtime.
 
@@ -307,7 +396,15 @@ for zoneIndex, zone in ipairs(Config.ZONES) do
 end
 
 print("[BambooWorld] World generation complete.")
-]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item><Item class="Script" referent="RBX6F6144C1"><Properties><string name="Name">GameManager</string><ProtectedString name="Source"><![CDATA[-- GameManager.server.lua
+]]></ProtectedString>
+        <bool name="Disabled">false</bool>
+      </Properties>
+    </Item>
+      
+    <Item class="Script" referent="RBX64D99995">
+      <Properties>
+        <string name="Name">GameManager</string>
+        <ProtectedString name="Source"><![CDATA[-- GameManager.server.lua
 -- Place as a Script in ServerScriptService.
 -- Handles all game logic: data persistence, chopping, upgrades.
 
@@ -445,7 +542,7 @@ chopEvent.OnServerEvent:Connect(function(player, bambooPart)
 	if not bambooType then return end
 
 	-- Check player sword level
-	if data.swordLevel &lt; bambooType.requiredSwordLevel then
+	if data.swordLevel < bambooType.requiredSwordLevel then
 		-- Silently reject; client should show a warning
 		return
 	end
@@ -455,7 +552,7 @@ chopEvent.OnServerEvent:Connect(function(player, bambooPart)
 	if not character then return end
 	local rootPart  = character:FindFirstChild("HumanoidRootPart")
 	if not rootPart then return end
-	if (rootPart.Position - bambooPart.Position).Magnitude &gt; 25 then return end
+	if (rootPart.Position - bambooPart.Position).Magnitude > 25 then return end
 
 	-- Lazy-init health
 	if not bambooHealth[bambooPart] then
@@ -471,7 +568,7 @@ chopEvent.OnServerEvent:Connect(function(player, bambooPart)
 	local healthFraction = math.clamp(bambooHealth[bambooPart] / bambooType.health, 0, 1)
 	updateBambooColor(bambooPart, bambooType, healthFraction)
 
-	if bambooHealth[bambooPart] &lt;= 0 then
+	if bambooHealth[bambooPart] <= 0 then
 		-- Kill the bamboo
 		bambooPart:SetAttribute("IsDead", true)
 		bambooPart.Transparency = 1
@@ -499,7 +596,7 @@ upgradeEvent.OnServerEvent:Connect(function(player)
 	local nextSword = Config.SWORDS[nextLevel]
 	if not nextSword then return end  -- already at max
 
-	if data.coins &lt; nextSword.cost then return end
+	if data.coins < nextSword.cost then return end
 
 	data.coins     = data.coins - nextSword.cost
 	data.swordLevel = nextLevel
@@ -556,8 +653,27 @@ task.spawn(function()
 end)
 
 print("[GameManager] Server logic ready.")
-]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item></Item><Item class="StarterPlayer" referent="RBX0D9F29C1"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX64BCDA8C"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX3BBC0AF0"><Properties><string name="Name">PlayerController</string><ProtectedString name="Source"><![CDATA[-- PlayerController.client.lua
--- Place as a LocalScript in StarterPlayer &gt; StarterPlayerScripts.
+]]></ProtectedString>
+        <bool name="Disabled">false</bool>
+      </Properties>
+    </Item>
+    </Item>
+
+    <!-- ======= StarterPlayer ======= -->
+    <Item class="StarterPlayer" referent="RBX4E6636D0">
+      <Properties>
+        <string name="Name">StarterPlayer</string>
+      </Properties>
+      <Item class="StarterPlayerScripts" referent="RBX7D594C05">
+        <Properties>
+          <string name="Name">StarterPlayerScripts</string>
+        </Properties>
+        
+    <Item class="LocalScript" referent="RBX5B7C2C27">
+      <Properties>
+        <string name="Name">PlayerController</string>
+        <ProtectedString name="Source"><![CDATA[-- PlayerController.client.lua
+-- Place as a LocalScript in StarterPlayer > StarterPlayerScripts.
 -- Manages the sword Tool, swing raycasting, chop firing, and
 -- local cooldown enforcement.
 
@@ -627,7 +743,7 @@ local lastSwingTime = 0
 local function canSwing()
 	local swordConfig  = Config.SWORDS[localData.swordLevel] or Config.SWORDS[1]
 	local delay        = swordConfig.swingDelay
-	return (tick() - lastSwingTime) &gt;= delay
+	return (tick() - lastSwingTime) >= delay
 end
 
 -- ============================================================
@@ -678,7 +794,7 @@ local function findBamboo()
 					and not stalk:GetAttribute("IsDead")
 				then
 					local dist = (stalk.Position - origin).Magnitude
-					if dist &lt; closestDist then
+					if dist < closestDist then
 						closestDist = dist
 						closest     = stalk
 					end
@@ -790,8 +906,16 @@ end)
 -- ============================================================
 task.wait(0.2)
 equipSword()
-]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item><Item class="LocalScript" referent="RBX48AB18F8"><Properties><string name="Name">UIController</string><ProtectedString name="Source"><![CDATA[-- UIController.client.lua
--- Place as a LocalScript in StarterPlayer &gt; StarterPlayerScripts.
+]]></ProtectedString>
+        <bool name="Disabled">false</bool>
+      </Properties>
+    </Item>
+        
+    <Item class="LocalScript" referent="RBX7F7FC872">
+      <Properties>
+        <string name="Name">UIController</string>
+        <ProtectedString name="Source"><![CDATA[-- UIController.client.lua
+-- Place as a LocalScript in StarterPlayer > StarterPlayerScripts.
 -- Builds and manages the HUD: coin counter, sword display, upgrade button.
 
 local Players           = game:GetService("Players")
@@ -996,7 +1120,7 @@ local function refreshHUD()
 		upgradeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
 		upgradeButton.Active   = false
 	else
-		local canAfford = coins &gt;= nextSword.cost
+		local canAfford = coins >= nextSword.cost
 		upgradeTitle.Text  = nextSword.name
 		upgradeButton.Text = "UPGRADE  💰 " .. formatNumber(nextSword.cost)
 
@@ -1030,7 +1154,7 @@ upgradeButton.MouseButton1Click:Connect(function()
 	local nextLevel = swordLv + 1
 	local nextSword = Config.SWORDS[nextLevel]
 	if not nextSword then return end
-	if localData.coins &lt; nextSword.cost then return end
+	if localData.coins < nextSword.cost then return end
 
 	-- Optimistic UI flicker
 	upgradeButton.Text = "..."
@@ -1041,4 +1165,27 @@ end)
 -- Initial render
 -- ============================================================
 refreshHUD()
-]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item></Item></Item><Item class="Lighting" referent="RBXB400D29E"><Properties><string name="Name">Lighting</string><float name="Brightness">2</float><Color3uint8 name="Ambient">4283848224</Color3uint8><bool name="GlobalShadows">true</bool></Properties></Item></Item></roblox>
+]]></ProtectedString>
+        <bool name="Disabled">false</bool>
+      </Properties>
+    </Item>
+      </Item>
+    </Item>
+
+    <!-- ======= Lighting ======= -->
+    <Item class="Lighting" referent="RBXF8689144">
+      <Properties>
+        <string name="Name">Lighting</string>
+        <float name="Brightness">2</float>
+        <bool name="GlobalShadows">true</bool>
+        <Color3 name="Ambient">
+          <R>0.5</R><G>0.5</G><B>0.5</B>
+        </Color3>
+        <Color3 name="OutdoorAmbient">
+          <R>0.5</R><G>0.5</G><B>0.5</B>
+        </Color3>
+      </Properties>
+    </Item>
+
+  </Item>
+</roblox>
