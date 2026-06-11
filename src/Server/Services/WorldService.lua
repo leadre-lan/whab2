@@ -578,6 +578,7 @@ function WorldService.init(ds, netRef)
 		zf.Name   = "L" .. li .. "_" .. layer.name
 		zf.Parent = zonesFolder
 
+		local genResult = nil
 		if layer.gen then
 			-- ── Generated layer: Terrain + organic scattering (GAME_DESIGN 6.5) ──
 			local genCfg = {
@@ -591,7 +592,19 @@ function WorldService.init(ds, netRef)
 				treeCount    = layer.gen.treeCount,
 				boulderCount = layer.gen.boulderCount,
 			}
-			local result = WorldGenerator.generate(genCfg)
+			-- Never let a generator bug take down the whole server init —
+			-- fall back to the part-based island instead.
+			local ok, resultOrErr = pcall(WorldGenerator.generate, genCfg)
+			if ok then
+				genResult = resultOrErr
+			else
+				warn("[WorldService] WorldGenerator für '" .. layer.name .. "' fehlgeschlagen: "
+					.. tostring(resultOrErr) .. " — nutze Part-Insel als Fallback.")
+			end
+		end
+
+		if genResult then
+			local result = genResult
 			WorldService.layerSpawns[li] = result.spawnPoint
 			WorldService.layerCamps = WorldService.layerCamps or {}
 			WorldService.layerCamps[li] = result.camps

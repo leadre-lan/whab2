@@ -44,15 +44,24 @@ local ForgeService   = require(Services:WaitForChild("ForgeService"))
 local RebirthService = require(Services:WaitForChild("RebirthService"))
 local ArenaService   = require(Services:WaitForChild("ArenaService"))
 
-DataService.init(net)
-WorldService.init(DataService, net)
-HubService.init(DataService, net)
-MonsterService.init(DataService, net)
-CombatService.init(DataService, MonsterService, net)
-StatService.init(DataService, net)
-ForgeService.init(DataService, net)
-RebirthService.init(DataService, net)
-ArenaService.init(DataService, net)
+-- One failing service must never take down the whole game: every init is
+-- isolated, errors land in the output instead of killing the script.
+local function safeInit(name, fn, ...)
+	local ok, err = pcall(fn, ...)
+	if not ok then
+		warn("[BambooSlasher] " .. name .. ".init FEHLER: " .. tostring(err))
+	end
+end
+
+safeInit("DataService",    DataService.init, net)
+safeInit("WorldService",   WorldService.init, DataService, net)
+safeInit("HubService",     HubService.init, DataService, net)
+safeInit("MonsterService", MonsterService.init, DataService, net)
+safeInit("CombatService",  CombatService.init, DataService, MonsterService, net)
+safeInit("StatService",    StatService.init, DataService, net)
+safeInit("ForgeService",   ForgeService.init, DataService, net)
+safeInit("RebirthService", RebirthService.init, DataService, net)
+safeInit("ArenaService",   ArenaService.init, DataService, net)
 
 -- Cross-service wiring
 CombatService.setArenaService(ArenaService)

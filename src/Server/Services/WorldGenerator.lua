@@ -78,19 +78,28 @@ local function writeTerrain(cfg, heightAt)
 	local cx, cz   = cfg.center.X, cfg.center.Z
 	local half     = cfg.size / 2
 
-	local CHUNK = 80                       -- studs per WriteVoxels call
+	local CHUNK = 80                       -- studs per WriteVoxels call (multiple of 4)
 	local yMin, yMax = -16, 144            -- vertical voxel range (covers cliffs)
 	local ySize = (yMax - yMin) / VOXEL
 
-	for chunkX = cx - half, cx + half - CHUNK, CHUNK do
-		for chunkZ = cz - half, cz + half - CHUNK, CHUNK do
+	-- WriteVoxels regions MUST be voxel-grid-aligned, otherwise the array
+	-- dimensions won't match the region and the call errors. Snap the whole
+	-- area to multiples of 4 first.
+	local x0 = math.floor((cx - half) / VOXEL) * VOXEL
+	local x1 = math.ceil((cx + half) / VOXEL) * VOXEL
+	local z0 = math.floor((cz - half) / VOXEL) * VOXEL
+	local z1 = math.ceil((cz + half) / VOXEL) * VOXEL
+
+	for chunkX = x0, x1 - 1, CHUNK do
+		local xEnd = math.min(chunkX + CHUNK, x1)
+		for chunkZ = z0, z1 - 1, CHUNK do
+			local zEnd = math.min(chunkZ + CHUNK, z1)
 			local region = Region3.new(
 				Vector3.new(chunkX, yMin, chunkZ),
-				Vector3.new(chunkX + CHUNK, yMax, chunkZ + CHUNK)
-			):ExpandToGrid(VOXEL)
+				Vector3.new(xEnd, yMax, zEnd))
 
-			local xCount = CHUNK / VOXEL
-			local zCount = CHUNK / VOXEL
+			local xCount = (xEnd - chunkX) / VOXEL
+			local zCount = (zEnd - chunkZ) / VOXEL
 
 			local materials = {}
 			local occupancy = {}
