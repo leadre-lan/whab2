@@ -16,9 +16,15 @@
       "Server": { "$path": "src/Server/Server.server.lua" },
       "Services": {
         "$className": "Folder",
-        "DataService":  { "$path": "src/Server/Services/DataService.lua" },
-        "WorldService": { "$path": "src/Server/Services/WorldService.lua" },
-        "StatService":  { "$path": "src/Server/Services/StatService.lua" }
+        "DataService":    { "$path": "src/Server/Services/DataService.lua" },
+        "WorldService":   { "$path": "src/Server/Services/WorldService.lua" },
+        "StatService":    { "$path": "src/Server/Services/StatService.lua" },
+        "HubService":     { "$path": "src/Server/Services/HubService.lua" },
+        "MonsterService": { "$path": "src/Server/Services/MonsterService.lua" },
+        "CombatService":  { "$path": "src/Server/Services/CombatService.lua" },
+        "ForgeService":   { "$path": "src/Server/Services/ForgeService.lua" },
+        "RebirthService": { "$path": "src/Server/Services/RebirthService.lua" },
+        "ArenaService":   { "$path": "src/Server/Services/ArenaService.lua" }
       }
     },
     "StarterPlayer": {

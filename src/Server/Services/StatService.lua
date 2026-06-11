@@ -37,25 +37,15 @@ function StatService.init(ds, netRef)
 		pdata.coins          = pdata.coins - cost
 		pdata.stats[statName] = currentLevel + 1
 		dataService.sendUpdate(player)
-	end)
 
-	-- Sword tier upgrade (buy with coins; Forge system comes later)
-	net.BuySword.OnServerEvent:Connect(function(player)
-		local pdata = dataService.get(player)
-		if not pdata then return end
-
-		local nextTier = pdata.swordTier + 1
-		local cost     = Balance.TIER_COST[nextTier]
-		if not cost then return end   -- already max tier
-
-		if pdata.coins < cost then
-			net.Notify:FireClient(player, "Zu wenig Münzen!")
-			return
+		-- Stamina raises max HP immediately
+		if statName == "stamina" then
+			local char = player.Character
+			local hum  = char and char:FindFirstChildOfClass("Humanoid")
+			if hum then
+				hum.MaxHealth = 100 + pdata.stats.stamina * Balance.STAMINA_HP_BONUS
+			end
 		end
-
-		pdata.coins     = pdata.coins - cost
-		pdata.swordTier = nextTier
-		dataService.sendUpdate(player)
 	end)
 end
 

@@ -136,7 +136,7 @@ end
 -- ── Register bamboo with full chop handler (self-contained closure) ───────────
 local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz)
 	local layer    = Layers.DATA[layerIdx]
-	local maxHP    = Balance.BAMBOO_HP[layerIdx]
+	local maxHP    = Balance.bambooHP(layerIdx)
 	local respTime = Balance.BAMBOO_RESPAWN[layerIdx]
 	local h        = layer.bambooH
 	local th       = layer.bambooThick
@@ -250,8 +250,9 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz)
 			clearExtra()
 
 			local mult  = Balance.comboMult(combo)
-			local coins = math.ceil((Balance.COINS_PER_FELL[layerIdx] or 1) * mult) + bonus
-			local xpAmt = Balance.XP_PER_FELL[layerIdx] or 5
+			local rebirthMult = Balance.rebirthMult(pdata.rebirths or 0)
+			local coins = math.ceil(Balance.coinsPerFell(layerIdx) * mult * rebirthMult) + bonus
+			local xpAmt = Balance.xpPerFell(layerIdx)
 
 			pdata.coins       = pdata.coins + coins
 			pdata.totalFelled = pdata.totalFelled + 1
@@ -289,7 +290,7 @@ end
 -- ── Rock cluster builder ──────────────────────────────────────────────────────
 local function buildRock(layerIdx, rx, rz, zoneFolder)
 	local layer    = Layers.DATA[layerIdx]
-	local maxHP    = Balance.ROCK_HP[layerIdx] or 8
+	local maxHP    = Balance.rockHP(layerIdx)
 	local respTime = Balance.ROCK_RESPAWN[layerIdx] or 20
 
 	local rockModel = Instance.new("Model")
@@ -394,9 +395,16 @@ local function buildRock(layerIdx, rx, rz, zoneFolder)
 			setTransp(1)
 
 			local mult  = Balance.comboMult(combo)
-			local coins = math.ceil((Balance.COINS_PER_MINE[layerIdx] or 3) * mult)
+			local rebirthMult = Balance.rebirthMult(pdata.rebirths or 0)
+			local coins = math.ceil(Balance.coinsPerMine(layerIdx) * mult * rebirthMult)
 			pdata.coins      = pdata.coins + coins
 			pdata.totalMined = pdata.totalMined + 1
+
+			-- Rocks drop crafting material for the forge
+			local matKey = "mat" .. layerIdx
+			pdata.materials = pdata.materials or {}
+			pdata.materials[matKey] = (pdata.materials[matKey] or 0) + Balance.MAT_PER_ROCK
+			net.Notify:FireClient(player, "⛏ +1 Material (Schicht " .. layerIdx .. ")")
 			dataService.sendUpdate(player)
 
 			task.spawn(function()
@@ -459,21 +467,22 @@ function WorldService.init(ds, netRef)
 		if old then old:Destroy() end
 	end
 
-	-- Baseplate
+	-- Baseplate (covers hub at x=-320 through procedural layer 12 at x≈1815)
 	local bp = Instance.new("Part")
 	bp.Name     = "Baseplate"
-	bp.Size     = Vector3.new(4096, 20, 2048)
-	bp.Position = Vector3.new(412, -10, 0)
+	bp.Size     = Vector3.new(3200, 20, 2048)
+	bp.Position = Vector3.new(750, -10, 0)
 	bp.Material = Enum.Material.Grass
 	bp.Color    = Color3.fromRGB(98, 122, 58)
 	bp.Anchored = true
 	bp.CanCollide = true
 	bp.Parent   = workspace
 
+	-- Players spawn in the Overworld hub
 	local sl = Instance.new("SpawnLocation")
 	sl.Name     = "SpawnLocation"
 	sl.Size     = Vector3.new(10, 1, 10)
-	sl.Position = Vector3.new(-35, 1.5, 0)
+	sl.Position = Vector3.new(-320, 1.5, -25)
 	sl.Anchored = true
 	sl.Neutral  = true
 	sl.Color    = Color3.fromRGB(162, 162, 165)
@@ -570,26 +579,69 @@ function WorldService.init(ds, netRef)
 		end
 	end
 
-	-- Decorative forest ring
+	-- Decorative forest + rolling hills (breaks up the flatness)
 	local forestFolder = Instance.new("Folder")
 	forestFolder.Name  = "Forest"
 	forestFolder.Parent = workspace
 
-	local treeCount = 0
-	while treeCount < 260 do
-		local x = rng:NextNumber(-350, 1050)
-		local z = rng:NextNumber(-450, 450)
-		local onZone = false
+	local function isOnPlayArea(x, z)
+		-- Hub + arena area
+		if x > -480 and x < -160 and z > -260 and z < 140 then return true end
 		for _, ld in ipairs(Layers.DATA) do
 			if math.abs(x - ld.offsetX) < 82 and math.abs(z) < 82 then
-				onZone = true
-				break
+				return true
 			end
 		end
-		if not onZone then
+		return false
+	end
+
+	local treeCount = 0
+	while treeCount < 380 do
+		local x = rng:NextNumber(-550, 2000)
+		local z = rng:NextNumber(-500, 500)
+		if not isOnPlayArea(x, z) then
 			makeTree(x, z, forestFolder)
 			treeCount += 1
 		end
+	end
+
+	-- Rolling hills: large half-buried spheres scattered between play areas
+	local hillCount = 0
+	while hillCount < 70 do
+		local x = rng:NextNumber(-550, 2000)
+		local z = rng:NextNumber(-520, 520)
+		if not isOnPlayArea(x, z) then
+			local r = rng:NextNumber(14, 45)
+			local hill = Instance.new("Part")
+			hill.Shape   = Enum.PartType.Ball
+			hill.Size    = Vector3.new(r * 2, r * 2, r * 2)
+			hill.Position = Vector3.new(x, rng:NextNumber(-r * 0.55, -r * 0.25), z)
+			hill.Material = Enum.Material.Grass
+			hill.Color    = Color3.fromRGB(
+				88 + rng:NextInteger(0, 24),
+				115 + rng:NextInteger(0, 26),
+				52 + rng:NextInteger(0, 14))
+			hill.Anchored = true
+			hill.CanCollide = true
+			hill.Parent   = forestFolder
+			hillCount += 1
+		end
+	end
+
+	-- Distant mountain ring (visual depth on the horizon)
+	for a = 0, 19 do
+		local ang = a / 20 * math.pi * 2
+		local mx = 750 + math.cos(ang) * 1250
+		local mz = math.sin(ang) * 850
+		local mh = rng:NextNumber(150, 320)
+		local mountain = Instance.new("Part")
+		mountain.Size    = Vector3.new(rng:NextNumber(180, 340), mh, rng:NextNumber(180, 340))
+		mountain.CFrame  = CFrame.new(mx, mh / 2 - 40, mz)
+			* CFrame.Angles(rng:NextNumber(-0.1, 0.1), rng:NextNumber(0, math.pi), rng:NextNumber(-0.1, 0.1))
+		mountain.Material = Enum.Material.Rock
+		mountain.Color    = Color3.fromRGB(86, 98, 86)
+		mountain.Anchored = true
+		mountain.Parent   = forestFolder
 	end
 
 	-- Base lighting (Layer 1 defaults)

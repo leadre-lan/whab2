@@ -67,12 +67,49 @@ net.UpdateData.OnClientEvent:Connect(function(data)
 	localData      = data
 
 	UICtrl.refresh(data, EffectsCtrl)
+	InputCtrl.setDodgeLevel(data.stats and data.stats.dodge or 0)
 
 	if data.swordTier ~= oldTier then
 		InputCtrl.buildSword(data.swordTier)
 		task.wait(0.2)
 		InputCtrl.autoEquip()
 	end
+end)
+
+-- ── Layer-Select / Forge / Rebirth / Lighting ────────────────────────────────
+net.OpenLayerSelect.OnClientEvent:Connect(function()
+	UICtrl.openLayerSelect()
+end)
+
+net.OpenForge.OnClientEvent:Connect(function()
+	UICtrl.openForge()
+end)
+
+net.RebirthDone.OnClientEvent:Connect(function(rebirths, mult)
+	UICtrl.showNotify("✨ REBIRTH " .. rebirths .. "! Multiplikator: x" .. mult)
+	EffectsCtrl.shake(3)
+end)
+
+-- Per-player layer lighting (0 = hub)
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+
+net.ApplyLayerLighting.OnClientEvent:Connect(function(layerIdx)
+	local ld = Layers.DATA[layerIdx]
+	local fog, ambient
+	if ld then
+		fog, ambient = ld.fog, ld.ambient
+	else
+		-- Hub: neutral warm lighting
+		fog = { color = Color3.fromRGB(168, 185, 168), start = 120, finish = 400 }
+		ambient = Color3.fromRGB(140, 150, 135)
+	end
+	TweenService:Create(Lighting, TweenInfo.new(1.2), {
+		FogColor = fog.color,
+		FogStart = fog.start,
+		FogEnd   = fog.finish,
+		OutdoorAmbient = ambient,
+	}):Play()
 end)
 
 net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage, sliceInfo)
@@ -118,6 +155,21 @@ task.spawn(function()
 		InputCtrl.autoEquip()
 	end
 end)
+
+-- ── Controls hint (bottom-left) ───────────────────────────────────────────────
+do
+	local hint = Instance.new("TextLabel")
+	hint.Size = UDim2.new(0, 340, 0, 24)
+	hint.Position = UDim2.new(0, 12, 1, -32)
+	hint.BackgroundTransparency = 1
+	hint.TextColor3 = Color3.fromRGB(200, 205, 220)
+	hint.TextStrokeTransparency = 0.5
+	hint.TextSize = 13
+	hint.Font = Enum.Font.Gotham
+	hint.Text = "🖱 Klick: Schlagen  |  Q: Dash  |  F: Block  |  E: Interagieren"
+	hint.TextXAlignment = Enum.TextXAlignment.Left
+	hint.Parent = UICtrl.getScreenGui()
+end
 
 -- ── Init: build sword and show HUD ───────────────────────────────────────────
 task.wait(0.5)

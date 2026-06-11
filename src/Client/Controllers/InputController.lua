@@ -243,23 +243,55 @@ local function swingSword(isSlam)
 		end
 	end
 
-	-- Target
+	-- Target priority: monster/player under mouse → bamboo/rock under mouse → nearest
 	local target = nil
+	local entityTarget = nil   -- monster Model or player Character
 	local mt = mouse.Target
-	if mt and (mt:GetAttribute("IsBamboo") or mt:GetAttribute("IsRock")) then
-		target = mt
-	else
-		target = findNearestHitbox(isSlam and 10 or 15)
+	if mt then
+		if mt:GetAttribute("IsBamboo") or mt:GetAttribute("IsRock") then
+			target = mt
+		else
+			-- Monster? (Body part carries IsMonster attribute)
+			local model = mt:FindFirstAncestorOfClass("Model")
+			if model then
+				local prim = model.PrimaryPart
+				if prim and prim:GetAttribute("IsMonster") then
+					entityTarget = model
+				elseif Players:GetPlayerFromCharacter(model) and model ~= char then
+					entityTarget = model
+				end
+			end
+		end
+	end
+	if not target and not entityTarget then
+		-- Nearest monster within melee range, else nearest bamboo/rock
+		local root = char:FindFirstChild("HumanoidRootPart")
+		local monstersF = workspace:FindFirstChild("Monsters")
+		if root and monstersF then
+			local bestD = 12
+			for _, m in ipairs(monstersF:GetDescendants()) do
+				if m:IsA("Model") and m.PrimaryPart and m.PrimaryPart:GetAttribute("IsMonster") then
+					local d = (m.PrimaryPart.Position - root.Position).Magnitude
+					if d < bestD then
+						bestD = d
+						entityTarget = m
+					end
+				end
+			end
+		end
+		if not entityTarget then
+			target = findNearestHitbox(isSlam and 10 or 15)
+		end
 	end
 
 	if isSlam then
 		net.SlamAttack:FireServer()
 		if effects then effects.shake(2.6) end
 		if uiCtrl then uiCtrl.showSlamText() end
-	else
-		if target then
-			net.ChopTarget:FireServer(target)
-		end
+	elseif entityTarget then
+		net.AttackEntity:FireServer(entityTarget)
+	elseif target then
+		net.ChopTarget:FireServer(target)
 	end
 
 	-- Animate
@@ -303,6 +335,100 @@ local function swingSword(isSlam)
 	swinging = false
 end
 
+-- ── Dash (Q) ─────────────────────────────────────────────────────────────────
+local lastDash = 0
+local dashCooldown = 3.0   -- reduced by Ausweichen stat (updated via setDodgeLevel)
+
+function InputController.setDodgeLevel(lvl)
+	dashCooldown = math.max(0.8, 3.0 - (lvl or 0) * 0.25)
+end
+
+local function doDash()
+	local now = os.clock()
+	if now - lastDash < dashCooldown then return end
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
+	if not root or not hum then return end
+	lastDash = now
+
+	local dir = hum.MoveDirection
+	if dir.Magnitude < 0.1 then
+		dir = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+	end
+	dir = dir.Unit
+
+	-- Velocity burst + afterimages
+	local bv = Instance.new("LinearVelocity")
+	local att = Instance.new("Attachment")
+	att.Parent = root
+	bv.Attachment0 = att
+	bv.MaxForce = 1e6
+	bv.VectorVelocity = dir * 70
+	bv.Parent = root
+	game:GetService("Debris"):AddItem(bv, 0.22)
+	game:GetService("Debris"):AddItem(att, 0.25)
+
+	-- Afterimage ghosts
+	task.spawn(function()
+		for _ = 1, 4 do
+			local ghost = Instance.new("Part")
+			ghost.Size = Vector3.new(2, 5, 1)
+			ghost.CFrame = root.CFrame
+			ghost.Material = Enum.Material.Neon
+			ghost.Color = Color3.fromRGB(160, 220, 255)
+			ghost.Transparency = 0.55
+			ghost.Anchored = true
+			ghost.CanCollide = false
+			ghost.Parent = workspace
+			TweenService:Create(ghost, TweenInfo.new(0.3),
+				{ Transparency = 1 }):Play()
+			game:GetService("Debris"):AddItem(ghost, 0.35)
+			task.wait(0.05)
+		end
+	end)
+end
+
+-- ── Block (hold F) ────────────────────────────────────────────────────────────
+local blocking = false
+local blockGui = nil
+
+local function setBlocking(state)
+	if blocking == state then return end
+	blocking = state
+	net.SetBlocking:FireServer(state)
+
+	local char = player.Character
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.WalkSpeed = state and 6 or 16
+	end
+
+	-- Blue shield tint indicator
+	if state then
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if root then
+			blockGui = Instance.new("Part")
+			blockGui.Shape = Enum.PartType.Ball
+			blockGui.Size = Vector3.new(7, 7, 7)
+			blockGui.Material = Enum.Material.ForceField
+			blockGui.Color = Color3.fromRGB(90, 160, 255)
+			blockGui.Anchored = false
+			blockGui.CanCollide = false
+			blockGui.Massless = true
+			local w = Instance.new("WeldConstraint")
+			w.Part0 = root
+			w.Part1 = blockGui
+			w.Parent = blockGui
+			blockGui.CFrame = root.CFrame
+			blockGui.Parent = char
+		end
+	elseif blockGui then
+		blockGui:Destroy()
+		blockGui = nil
+	end
+end
+
 -- ── Input ─────────────────────────────────────────────────────────────────────
 function InputController.init(netRef, effectsCtrl, uiController)
 	net     = netRef
@@ -321,6 +447,16 @@ function InputController.init(netRef, effectsCtrl, uiController)
 			else
 				swingSword(false)
 			end
+		elseif input.KeyCode == Enum.KeyCode.Q then
+			doDash()
+		elseif input.KeyCode == Enum.KeyCode.F then
+			setBlocking(true)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.F then
+			setBlocking(false)
 		end
 	end)
 end

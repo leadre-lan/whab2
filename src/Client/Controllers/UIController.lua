@@ -153,18 +153,87 @@ for i, stat in ipairs(STAT_NAMES) do
 	statButtons[stat.id] = { nameLbl = nameLbl, lvlLbl = lvlLbl, btn = btn, def = stat }
 end
 
--- ── Bottom-right: Sword upgrade ───────────────────────────────────────────────
-local upgradePanel = frame("UpgradePanel",
-	UDim2.new(0, 210, 0, 68),
-	UDim2.new(1, -222, 1, -80))
+-- ── Bottom-right: Hub-Teleport + info ─────────────────────────────────────────
+local hubPanel = frame("HubPanel",
+	UDim2.new(0, 210, 0, 96),
+	UDim2.new(1, -222, 1, -108))
 
-local upgTitle = label(upgradePanel, "Title", "Nächstes Schwert",
-	UDim2.new(1, -8, 0, 26), UDim2.new(0, 4, 0, 4),
-	C.textDim, 13, T.FONTS.body, Enum.TextXAlignment.Center)
+local infoLabel = label(hubPanel, "Info", "✨ Rebirths: 0  |  🏅 ELO 1000",
+	UDim2.new(1, -8, 0, 22), UDim2.new(0, 6, 0, 4),
+	C.textDim, 12, T.FONTS.body, Enum.TextXAlignment.Center)
 
-local upgradeBtn = button(upgradePanel, "UpgradeBtn", "Schwert kaufen",
-	UDim2.new(1, -12, 0, 30), UDim2.new(0, 6, 0, 32),
+local fameLabel = label(hubPanel, "Fame", "⭐ Ruhm: 0",
+	UDim2.new(1, -8, 0, 20), UDim2.new(0, 6, 0, 26),
+	C.gold, 13, T.FONTS.body, Enum.TextXAlignment.Center)
+
+local hubBtn = button(hubPanel, "HubBtn", "🏯 Zur Overworld",
+	UDim2.new(1, -12, 0, 32), UDim2.new(0, 6, 0, 52),
 	C.accentDim)
+
+-- ── Layer-Select panel (opened at the forest portal) ─────────────────────────
+local layerPanel = frame("LayerPanel",
+	UDim2.new(0, 320, 0, 460),
+	UDim2.new(0.5, -160, 0.5, -230))
+layerPanel.Visible = false
+layerPanel.BackgroundTransparency = 0.08
+
+label(layerPanel, "Title", "🌲 Schicht wählen",
+	UDim2.new(1, -16, 0, 34), UDim2.new(0, 12, 0, 8),
+	C.text, 20, T.FONTS.header, Enum.TextXAlignment.Center)
+
+local layerScroll = Instance.new("ScrollingFrame")
+layerScroll.Size = UDim2.new(1, -16, 1, -94)
+layerScroll.Position = UDim2.new(0, 8, 0, 46)
+layerScroll.BackgroundTransparency = 1
+layerScroll.BorderSizePixel = 0
+layerScroll.ScrollBarThickness = 5
+layerScroll.CanvasSize = UDim2.new(0, 0, 0, #Layers.DATA * 50)
+layerScroll.Parent = layerPanel
+
+local layerButtons = {}
+for li, ld in ipairs(Layers.DATA) do
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(1, -10, 0, 44)
+	b.Position = UDim2.new(0, 2, 0, (li - 1) * 50)
+	b.BackgroundColor3 = C.panel2
+	b.TextColor3 = ld.glowColor
+	b.TextSize = 15
+	b.Font = T.FONTS.header
+	b.Text = li .. ". " .. ld.name .. "  (Lv. " .. ld.requiredLevel .. ")"
+	b.BorderSizePixel = 0
+	T.applyCorner(b)
+	b.Parent = layerScroll
+	layerButtons[li] = b
+end
+
+local layerCloseBtn = button(layerPanel, "Close", "Schließen",
+	UDim2.new(1, -16, 0, 32), UDim2.new(0, 8, 1, -40),
+	Color3.fromRGB(90, 90, 110))
+
+-- ── Forge panel ───────────────────────────────────────────────────────────────
+local forgePanel = frame("ForgePanel",
+	UDim2.new(0, 340, 0, 230),
+	UDim2.new(0.5, -170, 0.5, -115))
+forgePanel.Visible = false
+forgePanel.BackgroundTransparency = 0.08
+
+label(forgePanel, "Title", "🔨 Schmiede",
+	UDim2.new(1, -16, 0, 34), UDim2.new(0, 12, 0, 8),
+	Color3.fromRGB(255, 160, 70), 20, T.FONTS.header, Enum.TextXAlignment.Center)
+
+local forgeInfo = label(forgePanel, "Info", "",
+	UDim2.new(1, -24, 0, 100), UDim2.new(0, 12, 0, 46),
+	C.text, 15, T.FONTS.body)
+forgeInfo.TextWrapped = true
+forgeInfo.TextYAlignment = Enum.TextYAlignment.Top
+
+local craftBtn = button(forgePanel, "Craft", "SCHMIEDEN",
+	UDim2.new(1, -80, 0, 36), UDim2.new(0, 40, 1, -82),
+	Color3.fromRGB(220, 120, 40))
+
+local forgeCloseBtn = button(forgePanel, "Close", "Schließen",
+	UDim2.new(1, -80, 0, 30), UDim2.new(0, 40, 1, -40),
+	Color3.fromRGB(90, 90, 110))
 
 -- ── Combo label (center) ──────────────────────────────────────────────────────
 local comboLabel = Instance.new("TextLabel")
@@ -292,19 +361,41 @@ function UIController.refresh(data, effects)
 		entry.btn.Active = true
 	end
 
-	-- Sword upgrade button
-	local nextTier = tier + 1
-	local tierCost = Balance.TIER_COST[nextTier]
-	if tierCost then
-		upgradePanel.Visible = true
-		upgTitle.Text = (SWORD_NAMES[nextTier] or "Tier " .. nextTier) .. " — " .. tierCost .. " 💰"
-		if (data.coins or 0) >= tierCost then
-			upgradeBtn.BackgroundColor3 = Color3.fromRGB(55, 185, 75)
+	-- Hub panel info
+	infoLabel.Text = "✨ Rebirths: " .. (data.rebirths or 0) .. "  |  🏅 ELO " .. (data.elo or 1000)
+	fameLabel.Text = "⭐ Ruhm: " .. (data.fame or 0)
+		.. "  |  ⚔ " .. (data.pvpWins or 0) .. "W/" .. (data.pvpLosses or 0) .. "L"
+
+	-- Layer-select buttons: unlocked vs locked styling
+	local highest = data.highestLayer or 1
+	for li, b in ipairs(layerButtons) do
+		local ld = Layers.DATA[li]
+		if li <= highest then
+			b.BackgroundColor3 = C.panel2
+			b.TextColor3 = ld.glowColor
+			b.Text = li .. ". " .. ld.name .. "  ✓"
 		else
-			upgradeBtn.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+			b.BackgroundColor3 = Color3.fromRGB(28, 28, 36)
+			b.TextColor3 = C.textDim
+			b.Text = "🔒 " .. li .. ". " .. ld.name .. "  (Lv. " .. ld.requiredLevel .. ")"
 		end
+	end
+
+	-- Forge panel content
+	local recipe = Balance.FORGE_RECIPES[tier + 1]
+	if recipe then
+		local matKey = "mat" .. recipe.matLayer
+		local have = (data.materials and data.materials[matKey]) or 0
+		forgeInfo.Text = "Nächstes Schwert: " .. recipe.name
+			.. "\n\n💰 " .. recipe.coins .. " Münzen (du: " .. (data.coins or 0) .. ")"
+			.. "\n⛏ " .. recipe.matCount .. "x Material aus Schicht " .. recipe.matLayer
+			.. " (du: " .. have .. ")"
+		local canCraft = (data.coins or 0) >= recipe.coins and have >= recipe.matCount
+		craftBtn.BackgroundColor3 = canCraft
+			and Color3.fromRGB(220, 120, 40)
+			or Color3.fromRGB(90, 90, 110)
 	else
-		upgradePanel.Visible = false
+		forgeInfo.Text = "⚔ Du besitzt bereits das beste Schwert!"
 	end
 
 	-- Coin gain popup
@@ -321,7 +412,16 @@ function UIController.refresh(data, effects)
 	prevLevel = data.level or 1
 end
 
--- ── Expose remote-event wiring for stat buttons ───────────────────────────────
+-- ── Panel open/close ──────────────────────────────────────────────────────────
+function UIController.openLayerSelect()
+	layerPanel.Visible = true
+end
+
+function UIController.openForge()
+	forgePanel.Visible = true
+end
+
+-- ── Expose remote-event wiring ────────────────────────────────────────────────
 function UIController.wireButtons(net)
 	-- Stat upgrade buttons
 	for statId, entry in pairs(statButtons) do
@@ -330,9 +430,28 @@ function UIController.wireButtons(net)
 		end)
 	end
 
-	-- Sword upgrade
-	upgradeBtn.MouseButton1Click:Connect(function()
-		net.BuySword:FireServer()
+	-- Hub teleport
+	hubBtn.MouseButton1Click:Connect(function()
+		net.TeleportToHub:FireServer()
+	end)
+
+	-- Layer select
+	for li, b in ipairs(layerButtons) do
+		b.MouseButton1Click:Connect(function()
+			net.TeleportToLayer:FireServer(li)
+			layerPanel.Visible = false
+		end)
+	end
+	layerCloseBtn.MouseButton1Click:Connect(function()
+		layerPanel.Visible = false
+	end)
+
+	-- Forge
+	craftBtn.MouseButton1Click:Connect(function()
+		net.CraftSword:FireServer()
+	end)
+	forgeCloseBtn.MouseButton1Click:Connect(function()
+		forgePanel.Visible = false
 	end)
 end
 

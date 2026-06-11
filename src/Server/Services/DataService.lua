@@ -27,12 +27,13 @@ local net        = nil  -- set by init()
 
 local function defaultData()
 	return {
-		dataVersion   = 3,
+		dataVersion   = 4,
 		coins         = 0,
 		xp            = 0,
 		level         = 1,
 		totalFelled   = 0,
 		totalMined    = 0,
+		totalKills    = 0,
 		stats = {
 			sharpness = 0,
 			speed     = 0,
@@ -42,9 +43,15 @@ local function defaultData()
 			dodge     = 0,
 		},
 		swordTier     = 1,
+		materials     = {},     -- { ["mat1"] = 12, ... } keyed by layer
 		highestLayer  = 1,
 		rebirths      = 0,
 		rebirthTokens = 0,
+		fame          = 0,
+		elo           = 1000,
+		pvpWins       = 0,
+		pvpLosses     = 0,
+		lastDaily     = 0,      -- os.time of last daily reward
 	}
 end
 
