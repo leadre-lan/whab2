@@ -39,6 +39,16 @@ local ChopBamboo = Instance.new("RemoteEvent")
 ChopBamboo.Name = "ChopBamboo"
 ChopBamboo.Parent = remotesFolder
 
+-- Server fires this to all nearby clients when a bamboo/rock is hit.
+local HitEffect = Instance.new("RemoteEvent")
+HitEffect.Name = "HitEffect"
+HitEffect.Parent = remotesFolder
+
+-- Client fires this when performing an aerial slam.
+local SlamAttack = Instance.new("RemoteEvent")
+SlamAttack.Name = "SlamAttack"
+SlamAttack.Parent = remotesFolder
+
 -- ─── World Setup ──────────────────────────────────────────────────────────────
 workspace.Terrain:Clear()
 
@@ -177,6 +187,7 @@ local rng             = Random.new(42)
 local bambooHealth    = {}   -- [part] = currentHealth number
 local playerCooldowns = {}   -- ["userId_partInstance"] = lastSwingTime (os.clock)
 local chopHandlers    = {}   -- [hitboxPart] = function(player) chop logic
+local playerCombo     = {}   -- [player] = { count=N, lastHitTime=os.clock() }
 
 local zonesFolder = Instance.new("Folder")
 zonesFolder.Name = "Zones"
