@@ -194,10 +194,13 @@ local function findNearestHitbox(maxDist)
 	local zones = workspace:FindFirstChild("Zones")
 	if not zones then return nil end
 
+	-- Spatial query instead of scanning the whole (endless) world per swing
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { zones }
 	local best, bestDist = nil, maxDist
-	for _, desc in ipairs(zones:GetDescendants()) do
-		if desc:IsA("BasePart")
-			and (desc:GetAttribute("IsBamboo") or desc:GetAttribute("IsRock"))
+	for _, desc in ipairs(workspace:GetPartBoundsInRadius(root.Position, maxDist, params)) do
+		if (desc:GetAttribute("IsBamboo") or desc:GetAttribute("IsRock"))
 			and not desc:GetAttribute("IsDead") then
 			local d = (desc.Position - root.Position).Magnitude
 			if d < bestDist then

@@ -74,6 +74,15 @@ local function onPlayerAdded(player)
 	DataService.load(player)
 
 	player.CharacterAdded:Connect(function(char)
+		-- Unstuck: while the world is still generating, physics can sink the
+		-- freshly spawned character INTO the hub ground — lift it back out.
+		task.delay(1, function()
+			local root = char:FindFirstChild("HumanoidRootPart")
+			if root and root.Position.Y < 1.5 then
+				root.CFrame = CFrame.new(HubService.getSpawnPosition() + Vector3.new(0, 4, 0))
+			end
+		end)
+
 		task.wait(0.5)
 		-- Apply stamina HP bonus
 		local pdata = DataService.get(player)

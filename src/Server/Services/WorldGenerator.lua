@@ -447,4 +447,170 @@ function WorldGenerator.generate(cfg)
 	}
 end
 
+-- ════ Infinite biome mode (Minecraft-style chunk streaming) ═══════════════════
+-- Terrain + props are generated in CHUNK×CHUNK pieces around the players at
+-- runtime, deterministically from the seed: a chunk always rebuilds exactly
+-- the same way, so far-away props can be despawned and rebuilt on revisit.
+
+WorldGenerator.CHUNK = 80
+
+-- Landmark builders, exported for WorldService (placed once at the layer center)
+WorldGenerator.buildBigTree       = buildBigTree
+WorldGenerator.buildRockFormation = buildRockFormation
+
+function WorldGenerator.makeInfiniteHeightFunc(cfg)
+	local seed   = cfg.seed
+	local cx, cz = cfg.center.X, cfg.center.Z
+	return function(x, z)
+		-- Rolling hills, NO border cliffs — the biome never ends
+		local h = 12
+			+ 13 * math.noise(x / 150, z / 150, seed)
+			+ 4.5 * math.noise(x / 45, z / 45, seed * 0.73 + 17)
+		-- Flat spawn pad at the center so teleports land cleanly
+		local dx, dz = x - cx, z - cz
+		local dc = math.sqrt(dx * dx + dz * dz)
+		if dc < 35 then
+			local t = math.clamp(dc / 35, 0, 1)
+			h = 12 + (h - 12) * (t * t)
+		end
+		return h
+	end
+end
+
+-- Write one voxel-aligned terrain chunk (ci/cj are integer chunk indices)
+function WorldGenerator.writeChunkTerrain(heightAt, material, ci, cj)
+	local CHUNK  = WorldGenerator.CHUNK
+	local x0, z0 = ci * CHUNK, cj * CHUNK
+	local yMin, yMax = -16, 48          -- hills stay within ~ -6..30
+	local ySize  = (yMax - yMin) / VOXEL
+	local count  = CHUNK / VOXEL
+
+	local region = Region3.new(
+		Vector3.new(x0, yMin, z0),
+		Vector3.new(x0 + CHUNK, yMax, z0 + CHUNK))
+
+	local materials, occupancy = {}, {}
+	for xi = 1, count do
+		materials[xi] = {}
+		occupancy[xi] = {}
+		for yi = 1, ySize do
+			materials[xi][yi] = {}
+			occupancy[xi][yi] = {}
+		end
+	end
+	for xi = 1, count do
+		local wx = x0 + (xi - 0.5) * VOXEL
+		for zi = 1, count do
+			local wz = z0 + (zi - 0.5) * VOXEL
+			local h = heightAt(wx, wz)
+			for yi = 1, ySize do
+				local wy  = yMin + (yi - 0.5) * VOXEL
+				local occ = math.clamp((h - wy) / VOXEL + 0.5, 0, 1)
+				occupancy[xi][yi][zi] = occ
+				materials[xi][yi][zi] = occ > 0 and material or Enum.Material.Air
+			end
+		end
+	end
+	Terrain:WriteVoxels(region, VOXEL, materials, occupancy)
+end
+
+-- True rendered terrain height. WriteVoxels quantizes the surface to the
+-- voxel grid, so the visible ground sits up to ~2 studs ABOVE heightAt —
+-- props placed at heightAt ended up half-buried ("overlapped" stumps).
+local terrainRay = RaycastParams.new()
+terrainRay.FilterType = Enum.RaycastFilterType.Include
+terrainRay.FilterDescendantsInstances = { Terrain }
+
+function WorldGenerator.surfaceY(heightAt, x, z)
+	local hit = workspace:Raycast(Vector3.new(x, 120, z), Vector3.new(0, -200, 0), terrainRay)
+	return hit and hit.Position.Y or heightAt(x, z)
+end
+
+-- Build the decorative props of one chunk into `folder` and return the
+-- interactive spots. RNG derives from (seed, ci, cj) → fully deterministic.
+function WorldGenerator.populateChunk(cfg, heightAt, ci, cj, folder)
+	local CHUNK  = WorldGenerator.CHUNK
+	local rng    = Random.new((cfg.seed % 100000) + ci * 73856093 + cj * 19349663)
+	local x0, z0 = ci * CHUNK, cj * CHUNK
+	local layer  = cfg.layer
+	local leafColor = (layer and layer.bambooColor or Color3.fromRGB(72, 185, 62))
+		:Lerp(Color3.fromRGB(50, 130, 45), 0.5)
+
+	-- Cross-kind spacing so trees/bamboo/rocks never overlap each other
+	local placed = {}
+	local function isFree(x, z, minD)
+		for _, p in ipairs(placed) do
+			local dx, dz = x - p.X, z - p.Z
+			if dx * dx + dz * dz < minD * minD then return false end
+		end
+		return true
+	end
+	local function nearCenter(x, z, r)
+		local dx, dz = x - cfg.center.X, z - cfg.center.Z
+		return dx * dx + dz * dz < r * r
+	end
+
+	local bambooSpots, oreSpots = {}, {}
+
+	-- Bamboo: dense clusters via noise mask (clearings stay walkable)
+	for _ = 1, 34 do
+		local x = x0 + rng:NextNumber(2, CHUNK - 2)
+		local z = z0 + rng:NextNumber(2, CHUNK - 2)
+		local mask = math.noise(x / 70, z / 70, cfg.seed * 1.31)
+		if mask > 0 and not nearCenter(x, z, 30) and isFree(x, z, 3.5) then
+			table.insert(placed, Vector3.new(x, 0, z))
+			table.insert(bambooSpots, {
+				pos   = Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
+				scale = rng:NextNumber(0.8, 1.35),
+			})
+		end
+	end
+
+	-- Trees: separate mask channel so woods and bamboo fields interleave
+	for _ = 1, 9 do
+		local x = x0 + rng:NextNumber(3, CHUNK - 3)
+		local z = z0 + rng:NextNumber(3, CHUNK - 3)
+		local mask = math.noise(x / 110, z / 110, cfg.seed * 2.17 + 31)
+		if mask > 0.05 and not nearCenter(x, z, 32) and isFree(x, z, 7) then
+			table.insert(placed, Vector3.new(x, 0, z))
+			makeTree(rng, Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
+				rng:NextNumber(0.85, 1.5), folder, leafColor)
+		end
+	end
+
+	-- Boulders
+	for _ = 1, 3 do
+		if rng:NextNumber() < 0.55 then
+			local x = x0 + rng:NextNumber(3, CHUNK - 3)
+			local z = z0 + rng:NextNumber(3, CHUNK - 3)
+			if not nearCenter(x, z, 30) and isFree(x, z, 5) then
+				table.insert(placed, Vector3.new(x, 0, z))
+				makeBoulder(rng, Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z),
+					rng:NextNumber(0.9, 1.6), folder)
+			end
+		end
+	end
+
+	-- Ore rock: roughly every 3rd chunk
+	if rng:NextNumber() < 0.35 then
+		local x = x0 + rng:NextNumber(6, CHUNK - 6)
+		local z = z0 + rng:NextNumber(6, CHUNK - 6)
+		if not nearCenter(x, z, 30) and isFree(x, z, 5) then
+			table.insert(oreSpots, { pos = Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z) })
+		end
+	end
+
+	-- Wild monster: roughly every 5th chunk
+	local monsterSpot = nil
+	if rng:NextNumber() < 0.2 then
+		local x = x0 + rng:NextNumber(10, CHUNK - 10)
+		local z = z0 + rng:NextNumber(10, CHUNK - 10)
+		if not nearCenter(x, z, 60) then
+			monsterSpot = Vector3.new(x, WorldGenerator.surfaceY(heightAt, x, z), z)
+		end
+	end
+
+	return bambooSpots, oreSpots, monsterSpot
+end
+
 return WorldGenerator

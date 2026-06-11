@@ -504,12 +504,206 @@ end
 -- Per-layer spawn points (filled during init; HubService teleports here)
 WorldService.layerSpawns = {}
 
+-- ── Infinite biome chunk manager (Minecraft-style) ────────────────────────────
+-- Every gen layer is an endless biome: terrain and props stream in around the
+-- players in deterministic chunks; props of stale chunks are despawned and
+-- rebuilt identically when someone returns.
+local WorldGenerator  = nil   -- set in init
+local MonsterService_ = nil   -- lazy require (avoids load-order coupling)
+
+local INFINITE  = {}    -- [li] = ctx { li, layer, cfg, zf, heightAt, chunks }
+local CHUNK     = 80
+local RADIUS_TERRAIN = 4    -- chunks around a player (320 studs — beyond fog)
+local RADIUS_PROPS   = 3
+local MAX_DIST       = 2000 -- generation cap per biome (layers are 5000 apart)
+local UNLOAD_AFTER   = 45   -- seconds unseen → chunk props despawn
+
+local function chunkKey(ci, cj) return ci .. "," .. cj end
+
+local function getMonsterService()
+	MonsterService_ = MonsterService_ or require(script.Parent:WaitForChild("MonsterService"))
+	return MonsterService_
+end
+
+local function ensureTerrain(ctx, ci, cj)
+	local key = chunkKey(ci, cj)
+	local st = ctx.chunks[key]
+	if not st then
+		st = {}
+		ctx.chunks[key] = st
+	end
+	if not st.terrain then
+		WorldGenerator.writeChunkTerrain(ctx.heightAt, ctx.cfg.material, ci, cj)
+		st.terrain = true
+	end
+	return st
+end
+
+local function ensureProps(ctx, ci, cj)
+	local st = ensureTerrain(ctx, ci, cj)
+	st.lastSeen = os.clock()
+	if st.folder then return end
+
+	local f = Instance.new("Folder")
+	f.Name = "C" .. chunkKey(ci, cj)
+	f.Parent = ctx.zf
+	st.folder = f
+
+	local bambooSpots, oreSpots, monsterSpot =
+		WorldGenerator.populateChunk(ctx.cfg, ctx.heightAt, ci, cj, f)
+
+	for _, spot in ipairs(bambooSpots) do
+		local scaled = table.clone(ctx.layer)
+		scaled.bambooH     = ctx.layer.bambooH * spot.scale
+		scaled.bambooThick = ctx.layer.bambooThick * spot.scale
+		local hitbox, visuals, segH, model, bY = buildBambooVisuals(
+			scaled, spot.pos.X, spot.pos.Z, f, spot.pos.Y)
+		registerBamboo(hitbox, ctx.li, visuals, segH, model,
+			spot.pos.X, spot.pos.Z, bY, scaled)
+	end
+	for _, spot in ipairs(oreSpots) do
+		buildRock(ctx.li, spot.pos.X, spot.pos.Z, f, spot.pos.Y)
+	end
+	if monsterSpot then
+		pcall(function()
+			getMonsterService().spawnWild(ctx.li, monsterSpot, f)
+		end)
+	end
+end
+
+local function unloadProps(ctx, key)
+	local st = ctx.chunks[key]
+	if not st or not st.folder then return end
+	-- Clean up monster + handler registries before destroying the folder
+	local ms = getMonsterService()
+	for _, child in ipairs(st.folder:GetChildren()) do
+		if child:IsA("Model") and ms.isMonster(child) then
+			ms.despawn(child)
+		end
+	end
+	for _, d in ipairs(st.folder:GetDescendants()) do
+		chopHandlers[d] = nil
+		bambooHP[d] = nil
+	end
+	st.folder:Destroy()
+	st.folder = nil
+end
+
+-- Generate missing chunks around one player, nearest ring first.
+-- Budgeted so a single tick never causes a lag spike.
+local function streamAround(ctx, px, pz, now)
+	local pci = math.floor(px / CHUNK)
+	local pcj = math.floor(pz / CHUNK)
+	local budget = 3
+	for r = 0, RADIUS_TERRAIN do
+		for ci = pci - r, pci + r do
+			for cj = pcj - r, pcj + r do
+				if math.max(math.abs(ci - pci), math.abs(cj - pcj)) == r then
+					local wx, wz = (ci + 0.5) * CHUNK, (cj + 0.5) * CHUNK
+					if math.abs(wx - ctx.cfg.center.X) <= MAX_DIST
+						and math.abs(wz - ctx.cfg.center.Z) <= MAX_DIST then
+						local key = chunkKey(ci, cj)
+						local st  = ctx.chunks[key]
+						if r <= RADIUS_PROPS and not (st and st.folder) then
+							ensureProps(ctx, ci, cj)
+							budget -= 1
+						elseif not (st and st.terrain) then
+							ensureTerrain(ctx, ci, cj)
+							budget -= 1
+						elseif st and st.folder then
+							st.lastSeen = now
+						end
+						if budget <= 0 then return end
+					end
+				end
+			end
+		end
+	end
+end
+
+local function chunkStreamLoop()
+	while true do
+		task.wait(0.6)
+		local now = os.clock()
+		for _, ctx in pairs(INFINITE) do
+			for _, player in ipairs(Players:GetPlayers()) do
+				local char = player.Character
+				local root = char and char:FindFirstChild("HumanoidRootPart")
+				if root then
+					local dx = math.abs(root.Position.X - ctx.cfg.center.X)
+					local dz = math.abs(root.Position.Z - ctx.cfg.center.Z)
+					if dx < MAX_DIST + 400 and dz < MAX_DIST + 400 then
+						streamAround(ctx, root.Position.X, root.Position.Z, now)
+					end
+				end
+			end
+			for key, st in pairs(ctx.chunks) do
+				if st.folder and now - (st.lastSeen or 0) > UNLOAD_AFTER then
+					unloadProps(ctx, key)
+				end
+			end
+		end
+	end
+end
+
+-- Set up one endless biome: center chunks, spawn point, landmarks, camps
+local function setupInfiniteLayer(li, layer, zf)
+	local cfg = {
+		seed     = layer.gen.seed,
+		center   = Vector3.new(layer.offsetX, 0, 0),
+		material = layer.gen.material,
+		layer    = layer,
+	}
+	local ctx = {
+		li = li, layer = layer, cfg = cfg, zf = zf,
+		heightAt = WorldGenerator.makeInfiniteHeightFunc(cfg),
+		chunks   = {},
+	}
+	INFINITE[li] = ctx
+
+	-- Center 3x3 now, so teleports always land on solid ground
+	local cci = math.floor(layer.offsetX / CHUNK)
+	for ci = cci - 1, cci + 1 do
+		for cj = -1, 1 do
+			ensureProps(ctx, ci, cj)
+		end
+	end
+	task.wait()
+
+	local sy = WorldGenerator.surfaceY(ctx.heightAt, layer.offsetX, 0)
+	WorldService.layerSpawns[li] = Vector3.new(layer.offsetX, sy + 3, 0)
+
+	-- Landmarks near the spawn + monster camps around them
+	local rngL = Random.new(layer.gen.seed)
+	local leafColor = layer.bambooColor:Lerp(Color3.fromRGB(50, 130, 45), 0.5)
+	local tPos = Vector3.new(layer.offsetX + 85, 0, 45)
+	tPos = Vector3.new(tPos.X, WorldGenerator.surfaceY(ctx.heightAt, tPos.X, tPos.Z), tPos.Z)
+	WorldGenerator.buildBigTree(rngL, tPos, zf, leafColor)
+	local rPos = Vector3.new(layer.offsetX - 75, 0, -65)
+	rPos = Vector3.new(rPos.X, WorldGenerator.surfaceY(ctx.heightAt, rPos.X, rPos.Z), rPos.Z)
+	WorldGenerator.buildRockFormation(rngL, rPos, zf)
+
+	local camps = {}
+	for _, lm in ipairs({ tPos, rPos }) do
+		for _ = 1, 2 do
+			local ang = rngL:NextNumber(0, math.pi * 2)
+			local d   = rngL:NextNumber(22, 40)
+			local x, z = lm.X + math.cos(ang) * d, lm.Z + math.sin(ang) * d
+			table.insert(camps, Vector3.new(x, WorldGenerator.surfaceY(ctx.heightAt, x, z), z))
+		end
+	end
+	WorldService.layerCamps = WorldService.layerCamps or {}
+	WorldService.layerCamps[li] = camps
+
+	makeZoneSign(layer, li, WorldService.layerSpawns[li] + Vector3.new(6, 1, 6), zf)
+end
+
 -- ── Public: init ─────────────────────────────────────────────────────────────
 function WorldService.init(ds, netRef)
 	dataService = ds
 	net         = netRef
 
-	local WorldGenerator = require(script.Parent:WaitForChild("WorldGenerator"))
+	WorldGenerator = require(script.Parent:WaitForChild("WorldGenerator"))
 
 	-- Performance: stream the world around each player (layers are 5000 apart)
 	pcall(function()
@@ -582,55 +776,21 @@ function WorldService.init(ds, netRef)
 		zf.Name   = "L" .. li .. "_" .. layer.name
 		zf.Parent = zonesFolder
 
-		local genResult = nil
+		-- ── Endless biome (Minecraft-style chunk streaming) ──
+		-- Never let a generator bug take down the whole server init —
+		-- fall back to the part-based island instead.
+		local usedInfinite = false
 		if layer.gen then
-			-- ── Generated layer: Terrain + organic scattering (GAME_DESIGN 6.5) ──
-			local genCfg = {
-				seed         = layer.gen.seed,
-				center       = Vector3.new(layer.offsetX, 0, 0),
-				size         = layer.gen.size,
-				material     = layer.gen.material,
-				layer        = layer,
-				bambooCount  = layer.gen.bambooCount,
-				oreCount     = layer.gen.oreCount,
-				treeCount    = layer.gen.treeCount,
-				boulderCount = layer.gen.boulderCount,
-			}
-			-- Never let a generator bug take down the whole server init —
-			-- fall back to the part-based island instead.
-			local ok, resultOrErr = pcall(WorldGenerator.generate, genCfg)
+			local ok, err = pcall(setupInfiniteLayer, li, layer, zf)
 			if ok then
-				genResult = resultOrErr
+				usedInfinite = true
 			else
-				warn("[WorldService] WorldGenerator für '" .. layer.name .. "' fehlgeschlagen: "
-					.. tostring(resultOrErr) .. " — nutze Part-Insel als Fallback.")
+				warn("[WorldService] Endlos-Biom für '" .. layer.name .. "' fehlgeschlagen: "
+					.. tostring(err) .. " — nutze Part-Insel als Fallback.")
 			end
 		end
 
-		if genResult then
-			local result = genResult
-			WorldService.layerSpawns[li] = result.spawnPoint
-			WorldService.layerCamps = WorldService.layerCamps or {}
-			WorldService.layerCamps[li] = result.camps
-
-			-- Interactive bamboo at the generated spots (scale + rotation variation)
-			for _, spot in ipairs(result.bambooSpots) do
-				local scaled = table.clone(layer)
-				scaled.bambooH     = layer.bambooH * spot.scale
-				scaled.bambooThick = layer.bambooThick * spot.scale
-				local hitbox, visuals, segH, model, bY = buildBambooVisuals(
-					scaled, spot.pos.X, spot.pos.Z, zf, spot.pos.Y)
-				registerBamboo(hitbox, li, visuals, segH, model,
-					spot.pos.X, spot.pos.Z, bY, scaled)
-			end
-
-			-- Interactive ore rocks (clustered at the rock formation landmark)
-			for _, spot in ipairs(result.oreSpots) do
-				buildRock(li, spot.pos.X, spot.pos.Z, zf, spot.pos.Y)
-			end
-
-			makeZoneSign(layer, li, result.spawnPoint + Vector3.new(6, 0, 6), zf)
-		else
+		if not usedInfinite then
 			-- ── Part-based layer (own island, far from everything else) ──
 			local plat = Instance.new("Part")
 			plat.Size     = Vector3.new(400, 20, 400)
@@ -699,7 +859,10 @@ function WorldService.init(ds, netRef)
 	L.FogColor       = Color3.fromRGB(168, 185, 168)
 	L.OutdoorAmbient = Color3.fromRGB(140, 150, 135)
 
-	print("[WorldService] " .. #Layers.DATA .. " Schichten generiert (Schicht 1 via WorldGenerator).")
+	-- Stream chunks around the players from now on
+	task.spawn(chunkStreamLoop)
+
+	print("[WorldService] " .. #Layers.DATA .. " endlose Biome bereit (Chunk-Streaming aktiv).")
 end
 
 function WorldService.getLayerSpawn(layerIdx)
@@ -765,11 +928,13 @@ function WorldService.handleSlam(player)
 
 	local zonesF = workspace:FindFirstChild("Zones")
 	if not zonesF then return end
-	for _, desc in ipairs(zonesF:GetDescendants()) do
-		if desc:IsA("BasePart")
-			and (desc:GetAttribute("IsBamboo") or desc:GetAttribute("IsRock"))
-			and not desc:GetAttribute("IsDead")
-			and (desc.Position - pos).Magnitude <= Balance.SLAM_RADIUS then
+	-- Spatial query instead of iterating the whole (endless) world
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { zonesF }
+	for _, desc in ipairs(workspace:GetPartBoundsInRadius(pos, Balance.SLAM_RADIUS, params)) do
+		if (desc:GetAttribute("IsBamboo") or desc:GetAttribute("IsRock"))
+			and not desc:GetAttribute("IsDead") then
 			local h = chopHandlers[desc]
 			if h then h(player, math.ceil(baseDmg)) end
 		end

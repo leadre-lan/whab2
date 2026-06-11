@@ -148,6 +148,12 @@ local function spawnMonster(layerIdx, homePos, parent, isBoss, opts)
 	return model
 end
 
+-- Public: wild monster owned by a streamed chunk. No respawn — the chunk
+-- itself deterministically rebuilds it when it reloads.
+function MonsterService.spawnWild(layerIdx, pos, parent)
+	return spawnMonster(layerIdx, pos, parent, false, { noRespawn = true })
+end
+
 -- Public: spawn a one-off training bot (used by ArenaService demo fights)
 function MonsterService.spawnTrainingBot(layerIdx, pos, parent, onDeath)
 	return spawnMonster(layerIdx, pos, parent, false, {
