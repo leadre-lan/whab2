@@ -142,6 +142,14 @@ local function wireTool(tool)
 		local bambooPart = findBamboo()
 		if bambooPart then
 			chopEvent:FireServer(bambooPart)
+			-- Visual hit flash
+			local orig = bambooPart.BrickColor
+			bambooPart.BrickColor = BrickColor.new("Bright yellow")
+			task.delay(0.1, function()
+				if bambooPart and bambooPart.Parent then
+					bambooPart.BrickColor = orig
+				end
+			end)
 		end
 	end)
 end

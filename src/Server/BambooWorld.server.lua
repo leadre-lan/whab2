@@ -10,6 +10,9 @@ local Config = require(ReplicatedStorage:WaitForChild("Config"))
 -- ============================================================
 -- Ground & spawn (created via script so XML parsing doesn't matter)
 -- ============================================================
+-- Clear default terrain to prevent Z-fighting with our baseplate
+workspace.Terrain:Clear()
+
 -- Remove any existing Baseplate from template to prevent Z-fighting
 local existing = workspace:FindFirstChild("Baseplate")
 if existing then existing:Destroy() end
@@ -35,14 +38,6 @@ spawn.Neutral         = true
 spawn.AllowTeamChangeOnTouch = false
 spawn.Parent          = workspace
 
--- Background music
-local music = Instance.new("Sound")
-music.Name      = "BackgroundMusic"
-music.SoundId   = "rbxassetid://1843464219"
-music.Looped    = true
-music.Volume    = 0.4
-music.Parent    = workspace
-music:Play()
 
 -- ============================================================
 -- Workspace containers
@@ -133,11 +128,8 @@ local function createBambooStalk(bambooType, position, bambooTypeId)
 	part.Material         = Enum.Material.SmoothPlastic
 	part.CastShadow       = true
 
-	-- CylinderMesh is vertical by default in Roblox (Y-axis aligned)
-	local mesh            = Instance.new("SpecialMesh")
-	mesh.MeshType         = Enum.MeshType.Cylinder
-	mesh.Scale            = Vector3.new(1, 1, 1)
-	mesh.Parent           = part
+	part.Shape = Enum.PartType.Cylinder
+	part.CFrame = CFrame.new(part.Position)
 
 	-- Attributes used by GameManager to identify and track bamboo
 	part:SetAttribute("IsBamboo",    true)

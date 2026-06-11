@@ -246,6 +246,16 @@ upgradeButton.MouseButton1Click:Connect(function()
 end)
 
 -- ============================================================
+-- Background music
+-- ============================================================
+local music = Instance.new("Sound")
+music.SoundId = "rbxassetid://1843464219"
+music.Looped  = true
+music.Volume  = 0.4
+music.Parent  = game:GetService("SoundService")
+music:Play()
+
+-- ============================================================
 -- Initial render
 -- ============================================================
 refreshHUD()
