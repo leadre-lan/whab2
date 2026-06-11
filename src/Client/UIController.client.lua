@@ -72,7 +72,7 @@ coinLabel.BackgroundTransparency  = 1
 coinLabel.TextColor3              = Color3.fromRGB(255, 220, 50)
 coinLabel.TextScaled              = true
 coinLabel.Font                    = Enum.Font.GothamBold
-coinLabel.Text                    = "💰 ROJO SYNC OK! 0"
+coinLabel.Text                    = "💰 Münzen: 0"
 coinLabel.Parent                  = coinFrame
 
 -- ============================================================
