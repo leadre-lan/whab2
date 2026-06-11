@@ -1,0 +1,1044 @@
+<?xml version="1.0" encoding="utf-8"?>
+<roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://www.roblox.com/roblox.xsd" version="4"><Meta name="ExplicitAutoJoints">true</Meta><Item class="DataModel" referent="RBX40D06D04"><Properties><string name="Name">Game</string></Properties><Item class="Workspace" referent="RBX889D324C"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">false</bool></Properties><Item class="Part" referent="RBX6D6BAAF1"><Properties><string name="Name">Baseplate</string><bool name="Anchored">true</bool><token name="shape">0</token><CoordinateFrame name="CFrame">&lt;X&gt;0&lt;/X&gt;&lt;Y&gt;-10&lt;/Y&gt;&lt;Z&gt;0&lt;/Z&gt;&lt;R00&gt;1&lt;/R00&gt;&lt;R01&gt;0&lt;/R01&gt;&lt;R02&gt;0&lt;/R02&gt;&lt;R10&gt;0&lt;/R10&gt;&lt;R11&gt;1&lt;/R11&gt;&lt;R12&gt;0&lt;/R12&gt;&lt;R20&gt;0&lt;/R20&gt;&lt;R21&gt;0&lt;/R21&gt;&lt;R22&gt;1&lt;/R22&gt;</CoordinateFrame><Vector3 name="size">&lt;X&gt;2048&lt;/X&gt;&lt;Y&gt;20&lt;/Y&gt;&lt;Z&gt;2048&lt;/Z&gt;</Vector3><BrickColor name="BrickColor">141</BrickColor><token name="Material">256</token></Properties></Item></Item><Item class="ReplicatedStorage" referent="RBX1554BA7A"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="ModuleScript" referent="RBX52971BAE"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- Config.lua
+-- Place as a ModuleScript in ReplicatedStorage
+-- Shared configuration for Bamboo Slasher Simulator
+
+local Config = {}
+
+-- ============================================================
+-- BAMBOO TYPES
+-- Each type maps to a zone. Health, reward, and required sword
+-- level scale up with zone number.
+-- ============================================================
+Config.BAMBOO_TYPES = {
+	[1] = {
+		health             = 10,
+		reward             = 1,
+		requiredSwordLevel = 1,
+		respawnTime        = 3,
+		brickColorName     = "Bright green",
+		thickness          = 1.2,
+		height             = 8,
+	},
+	[2] = {
+		health             = 80,
+		reward             = 15,
+		requiredSwordLevel = 5,
+		respawnTime        = 6,
+		brickColorName     = "Dark green",
+		thickness          = 1.5,
+		height             = 10,
+	},
+	[3] = {
+		health             = 500,
+		reward             = 120,
+		requiredSwordLevel = 12,
+		respawnTime        = 10,
+		brickColorName     = "Olive",
+		thickness          = 1.8,
+		height             = 12,
+	},
+	[4] = {
+		health             = 2500,
+		reward             = 600,
+		requiredSwordLevel = 20,
+		respawnTime        = 16,
+		brickColorName     = "Sand green",
+		thickness          = 2.1,
+		height             = 14,
+	},
+	[5] = {
+		health             = 8000,
+		reward             = 2000,
+		requiredSwordLevel = 30,
+		respawnTime        = 25,
+		brickColorName     = "Bright yellowish green",
+		thickness          = 2.5,
+		height             = 16,
+	},
+}
+
+-- ============================================================
+-- SWORDS  (10 levels)
+-- cost = 0 for the starter sword; swingDelay in seconds
+-- ============================================================
+Config.SWORDS = {
+	[1]  = { name = "Holzschwert",     damage = 1,    swingDelay = 0.80, cost = 0       },
+	[2]  = { name = "Steinschwert",    damage = 5,    swingDelay = 0.75, cost = 50      },
+	[3]  = { name = "Eisenschwert",    damage = 20,   swingDelay = 0.70, cost = 250     },
+	[4]  = { name = "Goldschwert",     damage = 70,   swingDelay = 0.65, cost = 1200    },
+	[5]  = { name = "Rubinschwert",    damage = 200,  swingDelay = 0.60, cost = 6000    },
+	[6]  = { name = "Diamantschwert",  damage = 550,  swingDelay = 0.55, cost = 30000   },
+	[7]  = { name = "Drachenschwert",  damage = 1200, swingDelay = 0.52, cost = 150000  },
+	[8]  = { name = "Schattenschwert", damage = 2000, swingDelay = 0.48, cost = 600000  },
+	[9]  = { name = "Himmelschwert",   damage = 2800, swingDelay = 0.44, cost = 1200000 },
+	[10] = { name = "Uralt Schwert",   damage = 3500, swingDelay = 0.40, cost = 2500000 },
+}
+
+-- ============================================================
+-- ZONES  (5 zones)
+-- bambooCount  = number of stalks spawned per zone
+-- offset       = world-space origin of the zone platform centre
+-- Zones are laid out 120 studs apart on the X axis so they
+-- never overlap (platform is 100 studs wide).
+-- ============================================================
+Config.ZONES = {
+	[1] = {
+		name               = "Bambushain",
+		requiredSwordLevel = 1,
+		bambooTypeId       = 1,
+		bambooCount        = 25,
+		offset             = Vector3.new(0,   0, 0),
+	},
+	[2] = {
+		name               = "Dunkler Hain",
+		requiredSwordLevel = 5,
+		bambooTypeId       = 2,
+		bambooCount        = 25,
+		offset             = Vector3.new(120, 0, 0),
+	},
+	[3] = {
+		name               = "Olivenhain",
+		requiredSwordLevel = 12,
+		bambooTypeId       = 3,
+		bambooCount        = 25,
+		offset             = Vector3.new(240, 0, 0),
+	},
+	[4] = {
+		name               = "Sandhain",
+		requiredSwordLevel = 20,
+		bambooTypeId       = 4,
+		bambooCount        = 25,
+		offset             = Vector3.new(360, 0, 0),
+	},
+	[5] = {
+		name               = "Urwald",
+		requiredSwordLevel = 30,
+		bambooTypeId       = 5,
+		bambooCount        = 25,
+		offset             = Vector3.new(480, 0, 0),
+	},
+}
+
+return Config
+]]></ProtectedString></Properties></Item></Item><Item class="ServerScriptService" referent="RBXCAD13B70"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX05F95CF6"><Properties><string name="Name">RemoteSetup</string><ProtectedString name="Source"><![CDATA[-- RemoteSetup.server.lua
+-- Place as a Script in ServerScriptService.
+-- This script MUST run before BambooWorld and GameManager so that
+-- RemoteEvents exist when the other scripts require them.
+-- Set its RunContext to "Server" and give it a low load order
+-- (e.g. name it "01_RemoteSetup" or rely on alphabetical order).
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Create a container folder so clients can find remotes easily
+local remotesFolder = Instance.new("Folder")
+remotesFolder.Name  = "BambooRemotes"
+remotesFolder.Parent = ReplicatedStorage
+
+-- Helper: create a named RemoteEvent inside the folder
+local function makeEvent(name)
+	local re      = Instance.new("RemoteEvent")
+	re.Name       = name
+	re.Parent     = remotesFolder
+	return re
+end
+
+-- ChopBamboo  : Client → Server  (part reference)
+makeEvent("ChopBamboo")
+
+-- BuyUpgrade  : Client → Server  (no arguments needed)
+makeEvent("BuyUpgrade")
+
+-- UpdateData  : Server → Client  (table: coins, swordLevel, totalChopped)
+makeEvent("UpdateData")
+
+print("[RemoteSetup] BambooRemotes folder created with 3 RemoteEvents.")
+]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item><Item class="Script" referent="RBXA3021B4A"><Properties><string name="Name">BambooWorld</string><ProtectedString name="Source"><![CDATA[-- BambooWorld.server.lua
+-- Place as a Script in ServerScriptService.
+-- Procedurally generates the bamboo world at runtime.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Wait for the config module (stored in ReplicatedStorage by convention)
+local Config = require(ReplicatedStorage:WaitForChild("Config"))
+
+-- ============================================================
+-- Workspace containers
+-- ============================================================
+local zonesFolder = Instance.new("Folder")
+zonesFolder.Name   = "Zones"
+zonesFolder.Parent = workspace
+
+-- ============================================================
+-- Helpers
+-- ============================================================
+
+-- Simple seeded pseudo-random so the map looks the same on every
+-- server restart (not strictly required, but keeps things tidy).
+local rng = Random.new(12345)
+
+local function randRange(min, max)
+	return rng:NextNumber(min, max)
+end
+
+-- Create the flat grass platform for a zone
+local function createPlatform(zone)
+	local part        = Instance.new("Part")
+	part.Name         = zone.name .. "_Platform"
+	part.Size         = Vector3.new(100, 2, 100)
+	part.Position     = zone.offset + Vector3.new(0, -1, 0)  -- top surface at Y = 0
+	part.Anchored     = true
+	part.CanCollide   = true
+	part.BrickColor   = BrickColor.new("Bright green")
+	part.Material     = Enum.Material.Grass
+	return part
+end
+
+-- Create a BillboardGui sign above the platform
+local function createSign(zone, platformPart)
+	local signPart        = Instance.new("Part")
+	signPart.Name         = "Sign_" .. zone.name
+	signPart.Size         = Vector3.new(0.5, 4, 0.5)
+	signPart.Position     = zone.offset + Vector3.new(0, 6, -45)
+	signPart.Anchored     = true
+	signPart.CanCollide   = false
+	signPart.BrickColor   = BrickColor.new("Reddish brown")
+	signPart.Material     = Enum.Material.Wood
+
+	local billboard           = Instance.new("BillboardGui")
+	billboard.Name            = "ZoneSign"
+	billboard.Size            = UDim2.new(0, 220, 0, 80)
+	billboard.StudsOffset     = Vector3.new(0, 3, 0)
+	billboard.AlwaysOnTop     = false
+	billboard.Parent          = signPart
+
+	local titleLabel              = Instance.new("TextLabel")
+	titleLabel.Name               = "Title"
+	titleLabel.Size               = UDim2.new(1, 0, 0.6, 0)
+	titleLabel.BackgroundColor3   = Color3.fromRGB(30, 80, 30)
+	titleLabel.BackgroundTransparency = 0.2
+	titleLabel.TextColor3         = Color3.fromRGB(255, 255, 200)
+	titleLabel.TextScaled         = true
+	titleLabel.Font               = Enum.Font.GothamBold
+	titleLabel.Text               = zone.name
+	titleLabel.Parent             = billboard
+
+	local reqLabel                = Instance.new("TextLabel")
+	reqLabel.Name                 = "Req"
+	reqLabel.Size                 = UDim2.new(1, 0, 0.4, 0)
+	reqLabel.Position             = UDim2.new(0, 0, 0.6, 0)
+	reqLabel.BackgroundColor3     = Color3.fromRGB(20, 50, 20)
+	reqLabel.BackgroundTransparency = 0.2
+	reqLabel.TextColor3           = Color3.fromRGB(200, 255, 200)
+	reqLabel.TextScaled           = true
+	reqLabel.Font                 = Enum.Font.Gotham
+	reqLabel.Text                 = "Schwertlevel " .. zone.requiredSwordLevel .. " erforderlich"
+	reqLabel.Parent               = billboard
+
+	return signPart
+end
+
+-- Create a single bamboo stalk as a tall cylinder-ish Part
+local function createBambooStalk(bambooType, position, bambooTypeId)
+	local part            = Instance.new("Part")
+	part.Name             = "Bamboo"
+	part.Size             = Vector3.new(bambooType.thickness, bambooType.height, bambooType.thickness)
+	-- Bottom of stalk sits on platform surface (Y = 0)
+	part.Position         = Vector3.new(position.X, bambooType.height / 2, position.Z)
+	part.Anchored         = true
+	part.CanCollide       = true
+	part.BrickColor       = BrickColor.new(bambooType.brickColorName)
+	part.Material         = Enum.Material.SmoothPlastic
+	part.CastShadow       = true
+
+	-- Slightly round it with a SpecialMesh (cylinder)
+	local mesh            = Instance.new("SpecialMesh")
+	mesh.MeshType         = Enum.MeshType.Cylinder
+	-- Cylinder mesh in Roblox is oriented along the X axis by default;
+	-- rotate the part so it stands vertically.
+	part.CFrame           = CFrame.new(part.Position) * CFrame.Angles(0, 0, math.rad(90))
+	mesh.Scale            = Vector3.new(1, 1, 1)
+	mesh.Parent           = part
+
+	-- Attributes used by GameManager to identify and track bamboo
+	part:SetAttribute("IsBamboo",    true)
+	part:SetAttribute("IsDead",      false)
+	part:SetAttribute("BambooTypeId", bambooTypeId)
+
+	return part
+end
+
+-- ============================================================
+-- World generation
+-- ============================================================
+for zoneIndex, zone in ipairs(Config.ZONES) do
+	local zoneFolder       = Instance.new("Folder")
+	zoneFolder.Name        = "Zone_" .. zoneIndex
+	zoneFolder.Parent      = zonesFolder
+
+	-- Platform
+	local platform         = createPlatform(zone)
+	platform.Parent        = zoneFolder
+
+	-- Sign post
+	local sign             = createSign(zone, platform)
+	sign.Parent            = zoneFolder
+
+	-- Bamboo folder
+	local bambooFolder     = Instance.new("Folder")
+	bambooFolder.Name      = "Bamboo"
+	bambooFolder.Parent    = zoneFolder
+
+	local bambooType       = Config.BAMBOO_TYPES[zone.bambooTypeId]
+	local halfExtent       = 45  -- scatter radius inside the 100-stud platform
+
+	for i = 1, zone.bambooCount do
+		-- Random position within the zone platform (leave a 5-stud border)
+		local localX  = randRange(-halfExtent, halfExtent)
+		local localZ  = randRange(-halfExtent, halfExtent)
+		local worldPos = zone.offset + Vector3.new(localX, 0, localZ)
+
+		local stalk   = createBambooStalk(bambooType, worldPos, zone.bambooTypeId)
+		stalk.Parent  = bambooFolder
+	end
+
+	print(string.format("[BambooWorld] Zone %d '%s' generated with %d stalks.",
+		zoneIndex, zone.name, zone.bambooCount))
+end
+
+print("[BambooWorld] World generation complete.")
+]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item><Item class="Script" referent="RBX6F6144C1"><Properties><string name="Name">GameManager</string><ProtectedString name="Source"><![CDATA[-- GameManager.server.lua
+-- Place as a Script in ServerScriptService.
+-- Handles all game logic: data persistence, chopping, upgrades.
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataStoreService  = game:GetService("DataStoreService")
+
+-- Wait for Config and Remotes
+local Config      = require(ReplicatedStorage:WaitForChild("Config"))
+local remotes     = ReplicatedStorage:WaitForChild("BambooRemotes")
+local chopEvent   = remotes:WaitForChild("ChopBamboo")
+local upgradeEvent= remotes:WaitForChild("BuyUpgrade")
+local updateEvent = remotes:WaitForChild("UpdateData")
+
+-- DataStore
+local playerDataStore = DataStoreService:GetDataStore("BambooSlasher_v1")
+
+-- ============================================================
+-- In-memory state
+-- ============================================================
+-- playerData[player] = { coins, swordLevel, totalChopped }
+local playerData = {}
+
+-- bambooHealth[part] = current health (number)
+-- Populated lazily when a bamboo is first hit.
+local bambooHealth = {}
+
+-- ============================================================
+-- Default data for a new player
+-- ============================================================
+local function defaultData()
+	return {
+		coins        = 0,
+		swordLevel   = 1,
+		totalChopped = 0,
+	}
+end
+
+-- ============================================================
+-- DataStore helpers
+-- ============================================================
+local function loadData(player)
+	local key  = "player_" .. player.UserId
+	local success, result = pcall(function()
+		return playerDataStore:GetAsync(key)
+	end)
+	if success and result then
+		-- Ensure all fields exist (handles old saves missing new keys)
+		local data = defaultData()
+		for k, v in pairs(result) do
+			data[k] = v
+		end
+		return data
+	else
+		if not success then
+			warn("[GameManager] Failed to load data for " .. player.Name .. ": " .. tostring(result))
+		end
+		return defaultData()
+	end
+end
+
+local function saveData(player)
+	local data = playerData[player]
+	if not data then return end
+	local key  = "player_" .. player.UserId
+	local success, err = pcall(function()
+		playerDataStore:SetAsync(key, {
+			coins        = data.coins,
+			swordLevel   = data.swordLevel,
+			totalChopped = data.totalChopped,
+		})
+	end)
+	if not success then
+		warn("[GameManager] Failed to save data for " .. player.Name .. ": " .. tostring(err))
+	end
+end
+
+-- ============================================================
+-- Fire UpdateData to a single client
+-- ============================================================
+local function sendUpdate(player)
+	local data = playerData[player]
+	if not data then return end
+	updateEvent:FireClient(player, {
+		coins        = data.coins,
+		swordLevel   = data.swordLevel,
+		totalChopped = data.totalChopped,
+	})
+end
+
+-- ============================================================
+-- Color helpers for hit feedback
+-- ============================================================
+local COLOR_HEALTHY  = nil   -- set per-bamboo type at hit time
+local COLOR_DEAD     = Color3.fromRGB(80, 50, 20)
+
+-- Lerp a bamboo part's color based on health fraction
+local function updateBambooColor(part, bambooType, healthFraction)
+	local baseColor   = BrickColor.new(bambooType.brickColorName).Color
+	-- Fade toward brown/dark as health drops
+	local damagedColor = Color3.fromRGB(160, 100, 40)
+	part.Color = baseColor:Lerp(damagedColor, 1 - healthFraction)
+end
+
+-- ============================================================
+-- Bamboo respawn
+-- ============================================================
+local function respawnBamboo(part, bambooType)
+	task.delay(bambooType.respawnTime, function()
+		if not part or not part.Parent then return end
+		local maxHealth     = bambooType.health
+		bambooHealth[part]  = maxHealth
+		part.Transparency   = 0
+		part.CanCollide     = true
+		part:SetAttribute("IsDead", false)
+		part.Color          = BrickColor.new(bambooType.brickColorName).Color
+	end)
+end
+
+-- ============================================================
+-- ChopBamboo handler
+-- ============================================================
+chopEvent.OnServerEvent:Connect(function(player, bambooPart)
+	-- Basic validation
+	if typeof(bambooPart) ~= "Instance" then return end
+	if not bambooPart:IsA("BasePart") then return end
+	if not bambooPart:GetAttribute("IsBamboo") then return end
+	if bambooPart:GetAttribute("IsDead") then return end
+
+	local data = playerData[player]
+	if not data then return end
+
+	local bambooTypeId = bambooPart:GetAttribute("BambooTypeId")
+	local bambooType   = Config.BAMBOO_TYPES[bambooTypeId]
+	if not bambooType then return end
+
+	-- Check player sword level
+	if data.swordLevel &lt; bambooType.requiredSwordLevel then
+		-- Silently reject; client should show a warning
+		return
+	end
+
+	-- Distance sanity check (anti-exploit): must be within 25 studs
+	local character = player.Character
+	if not character then return end
+	local rootPart  = character:FindFirstChild("HumanoidRootPart")
+	if not rootPart then return end
+	if (rootPart.Position - bambooPart.Position).Magnitude &gt; 25 then return end
+
+	-- Lazy-init health
+	if not bambooHealth[bambooPart] then
+		bambooHealth[bambooPart] = bambooType.health
+	end
+
+	-- Apply damage
+	local sword       = Config.SWORDS[data.swordLevel]
+	local damage      = sword and sword.damage or 1
+	bambooHealth[bambooPart] = bambooHealth[bambooPart] - damage
+
+	-- Color feedback
+	local healthFraction = math.clamp(bambooHealth[bambooPart] / bambooType.health, 0, 1)
+	updateBambooColor(bambooPart, bambooType, healthFraction)
+
+	if bambooHealth[bambooPart] &lt;= 0 then
+		-- Kill the bamboo
+		bambooPart:SetAttribute("IsDead", true)
+		bambooPart.Transparency = 1
+		bambooPart.CanCollide   = false
+		bambooPart.Color        = COLOR_DEAD
+
+		-- Award coins
+		data.coins        = data.coins + bambooType.reward
+		data.totalChopped = data.totalChopped + 1
+		sendUpdate(player)
+
+		-- Schedule respawn
+		respawnBamboo(bambooPart, bambooType)
+	end
+end)
+
+-- ============================================================
+-- BuyUpgrade handler
+-- ============================================================
+upgradeEvent.OnServerEvent:Connect(function(player)
+	local data = playerData[player]
+	if not data then return end
+
+	local nextLevel = data.swordLevel + 1
+	local nextSword = Config.SWORDS[nextLevel]
+	if not nextSword then return end  -- already at max
+
+	if data.coins &lt; nextSword.cost then return end
+
+	data.coins     = data.coins - nextSword.cost
+	data.swordLevel = nextLevel
+	sendUpdate(player)
+end)
+
+-- ============================================================
+-- Player lifecycle
+-- ============================================================
+local function onPlayerAdded(player)
+	local data         = loadData(player)
+	playerData[player] = data
+
+	-- Send data when the character spawns (HumanoidRootPart is ready)
+	player.CharacterAdded:Connect(function(character)
+		-- Short wait so the client LocalScripts have time to connect
+		task.wait(0.5)
+		sendUpdate(player)
+	end)
+
+	-- If character already exists (e.g. fast respawn)
+	if player.Character then
+		task.wait(0.5)
+		sendUpdate(player)
+	end
+end
+
+local function onPlayerRemoving(player)
+	saveData(player)
+	playerData[player] = nil
+	-- Clean up bamboo health entries is not strictly necessary since
+	-- parts persist, but we don't track per-player health anyway.
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
+
+-- Handle players who joined before this script ran
+for _, player in ipairs(Players:GetPlayers()) do
+	task.spawn(onPlayerAdded, player)
+end
+
+-- ============================================================
+-- Auto-save every 60 seconds
+-- ============================================================
+task.spawn(function()
+	while true do
+		task.wait(60)
+		for _, player in ipairs(Players:GetPlayers()) do
+			saveData(player)
+		end
+		print("[GameManager] Auto-saved all player data.")
+	end
+end)
+
+print("[GameManager] Server logic ready.")
+]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item></Item><Item class="StarterPlayer" referent="RBX0D9F29C1"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX64BCDA8C"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX3BBC0AF0"><Properties><string name="Name">PlayerController</string><ProtectedString name="Source"><![CDATA[-- PlayerController.client.lua
+-- Place as a LocalScript in StarterPlayer &gt; StarterPlayerScripts.
+-- Manages the sword Tool, swing raycasting, chop firing, and
+-- local cooldown enforcement.
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService  = game:GetService("UserInputService")
+local RunService        = game:GetService("RunService")
+
+-- ============================================================
+-- Wait for shared resources
+-- ============================================================
+local Config    = require(ReplicatedStorage:WaitForChild("Config"))
+local remotes   = ReplicatedStorage:WaitForChild("BambooRemotes")
+local chopEvent = remotes:WaitForChild("ChopBamboo")
+local updateEvent = remotes:WaitForChild("UpdateData")
+
+local player    = Players.LocalPlayer
+-- Wait for the character; retry until it exists
+local character = player.Character or player.CharacterAdded:Wait()
+local humanoid  = character:WaitForChild("Humanoid")
+local rootPart  = character:WaitForChild("HumanoidRootPart")
+
+-- ============================================================
+-- Local state (updated by UpdateData from server)
+-- ============================================================
+local localData = {
+	coins        = 0,
+	swordLevel   = 1,
+	totalChopped = 0,
+}
+
+-- ============================================================
+-- Build a Sword Tool and insert it into the player's Backpack
+-- ============================================================
+local function buildSword(swordLevel)
+	local swordConfig = Config.SWORDS[swordLevel] or Config.SWORDS[1]
+
+	local tool       = Instance.new("Tool")
+	tool.Name        = "Sword"
+	tool.ToolTip     = swordConfig.name
+	tool.RequiresHandle = true
+	tool.CanBeDropped   = false
+
+	-- Handle (the visible blade part)
+	local handle           = Instance.new("Part")
+	handle.Name            = "Handle"
+	handle.Size            = Vector3.new(0.3, 3, 0.3)
+	handle.BrickColor      = BrickColor.new("Bright yellow")
+	handle.Material        = Enum.Material.SmoothPlastic
+	handle.CanCollide      = false
+	handle.Parent          = tool
+
+	-- Simple blade mesh
+	local mesh             = Instance.new("SpecialMesh")
+	mesh.MeshType          = Enum.MeshType.Wedge
+	mesh.Scale             = Vector3.new(0.8, 3, 0.5)
+	mesh.Parent            = handle
+
+	return tool
+end
+
+-- ============================================================
+-- Swing cooldown
+-- ============================================================
+local lastSwingTime = 0
+
+local function canSwing()
+	local swordConfig  = Config.SWORDS[localData.swordLevel] or Config.SWORDS[1]
+	local delay        = swordConfig.swingDelay
+	return (tick() - lastSwingTime) &gt;= delay
+end
+
+-- ============================================================
+-- Raycast: find bamboo within reach
+-- Max reach = 15 studs from HumanoidRootPart.
+-- We cast in the camera look direction so the player swings
+-- toward wherever they are looking.
+-- ============================================================
+local MAX_REACH = 15
+
+local function findBamboo()
+	-- Refresh rootPart reference in case of respawn
+	local char = player.Character
+	if not char then return nil end
+	local root = char:FindFirstChild("HumanoidRootPart")
+	if not root then return nil end
+
+	local camera    = workspace.CurrentCamera
+	local origin    = root.Position
+	local direction = camera.CFrame.LookVector * MAX_REACH
+
+	local params = RaycastParams.new()
+	params.FilterDescendantsInstances = { char }
+	params.FilterType = Enum.RaycastFilterType.Exclude
+
+	local result = workspace:Raycast(origin, direction, params)
+	if result and result.Instance then
+		local hit = result.Instance
+		if hit:GetAttribute("IsBamboo") and not hit:GetAttribute("IsDead") then
+			return hit
+		end
+	end
+
+	-- Fallback: sphere-overlap style search when raycast misses
+	-- (useful when bamboo is close and the ray passes beside it)
+	local zonesFolder = workspace:FindFirstChild("Zones")
+	if not zonesFolder then return nil end
+
+	local closest     = nil
+	local closestDist = MAX_REACH
+
+	for _, zoneFolder in ipairs(zonesFolder:GetChildren()) do
+		local bambooFolder = zoneFolder:FindFirstChild("Bamboo")
+		if bambooFolder then
+			for _, stalk in ipairs(bambooFolder:GetChildren()) do
+				if stalk:IsA("BasePart")
+					and stalk:GetAttribute("IsBamboo")
+					and not stalk:GetAttribute("IsDead")
+				then
+					local dist = (stalk.Position - origin).Magnitude
+					if dist &lt; closestDist then
+						closestDist = dist
+						closest     = stalk
+					end
+				end
+			end
+		end
+	end
+
+	return closest
+end
+
+-- ============================================================
+-- Swing animation twitch (purely visual, client-side)
+-- ============================================================
+local function playSwingTween(tool)
+	-- Simple: briefly change handle color then restore
+	local handle = tool:FindFirstChild("Handle")
+	if not handle then return end
+	local original = handle.BrickColor
+	handle.BrickColor = BrickColor.new("Bright orange")
+	task.delay(0.08, function()
+		if handle and handle.Parent then
+			handle.BrickColor = original
+		end
+	end)
+end
+
+-- ============================================================
+-- Tool wiring – called every time we (re)create the tool
+-- ============================================================
+local currentTool = nil
+
+local function wireTool(tool)
+	currentTool = tool
+
+	tool.Activated:Connect(function()
+		if not canSwing() then return end
+
+		lastSwingTime = tick()
+		playSwingTween(tool)
+
+		local bambooPart = findBamboo()
+		if bambooPart then
+			chopEvent:FireServer(bambooPart)
+		end
+	end)
+end
+
+-- ============================================================
+-- Equip the sword on spawn (and after respawn)
+-- ============================================================
+local function equipSword()
+	-- Remove any existing sword tools from the backpack/character first
+	for _, item in ipairs(player.Backpack:GetChildren()) do
+		if item:IsA("Tool") and item.Name == "Sword" then
+			item:Destroy()
+		end
+	end
+	if player.Character then
+		for _, item in ipairs(player.Character:GetChildren()) do
+			if item:IsA("Tool") and item.Name == "Sword" then
+				item:Destroy()
+			end
+		end
+	end
+
+	local sword = buildSword(localData.swordLevel)
+	wireTool(sword)
+	sword.Parent = player.Backpack
+end
+
+-- ============================================================
+-- UpdateData listener
+-- Updates local state, refreshes sword name/stats
+-- ============================================================
+updateEvent.OnClientEvent:Connect(function(data)
+	local prevLevel      = localData.swordLevel
+	localData.coins        = data.coins
+	localData.swordLevel   = data.swordLevel
+	localData.totalChopped = data.totalChopped
+
+	-- Update displayed tool name if the tool is in use
+	local swordConfig = Config.SWORDS[localData.swordLevel] or Config.SWORDS[1]
+
+	if currentTool then
+		currentTool.ToolTip = swordConfig.name
+	end
+
+	-- If sword level changed, rebuild the tool so damage/delay update
+	if data.swordLevel ~= prevLevel then
+		equipSword()
+	end
+end)
+
+-- ============================================================
+-- Character respawn: re-equip sword
+-- ============================================================
+player.CharacterAdded:Connect(function(newChar)
+	character = newChar
+	humanoid  = newChar:WaitForChild("Humanoid")
+	rootPart  = newChar:WaitForChild("HumanoidRootPart")
+	-- Give server a moment to fire UpdateData on CharacterAdded
+	task.wait(0.6)
+	equipSword()
+end)
+
+-- ============================================================
+-- Initial equip (may run before CharacterAdded fires UpdateData)
+-- ============================================================
+task.wait(0.2)
+equipSword()
+]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item><Item class="LocalScript" referent="RBX48AB18F8"><Properties><string name="Name">UIController</string><ProtectedString name="Source"><![CDATA[-- UIController.client.lua
+-- Place as a LocalScript in StarterPlayer &gt; StarterPlayerScripts.
+-- Builds and manages the HUD: coin counter, sword display, upgrade button.
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- ============================================================
+-- Wait for shared resources
+-- ============================================================
+local Config      = require(ReplicatedStorage:WaitForChild("Config"))
+local remotes     = ReplicatedStorage:WaitForChild("BambooRemotes")
+local updateEvent = remotes:WaitForChild("UpdateData")
+local buyEvent    = remotes:WaitForChild("BuyUpgrade")
+
+local player      = Players.LocalPlayer
+local playerGui   = player:WaitForChild("PlayerGui")
+
+-- ============================================================
+-- Local cached state
+-- ============================================================
+local localData = {
+	coins        = 0,
+	swordLevel   = 1,
+	totalChopped = 0,
+}
+
+-- ============================================================
+-- Number formatter  (e.g. 1500 → "1,500")
+-- ============================================================
+local function formatNumber(n)
+	local s = tostring(math.floor(n))
+	-- Insert commas every three digits from the right
+	local result = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	-- Remove a leading comma if the length is a multiple of 3
+	if result:sub(1,1) == "," then
+		result = result:sub(2)
+	end
+	return result
+end
+
+-- ============================================================
+-- Build the ScreenGui
+-- ============================================================
+local screenGui             = Instance.new("ScreenGui")
+screenGui.Name              = "BambooHUD"
+screenGui.ResetOnSpawn      = false
+screenGui.IgnoreGuiInset    = false
+screenGui.ZIndexBehavior    = Enum.ZIndexBehavior.Sibling
+screenGui.Parent            = playerGui
+
+-- ============================================================
+-- Coin display  (top-left)
+-- ============================================================
+local coinFrame                      = Instance.new("Frame")
+coinFrame.Name                       = "CoinFrame"
+coinFrame.Size                       = UDim2.new(0, 230, 0, 50)
+coinFrame.Position                   = UDim2.new(0, 12, 0, 12)
+coinFrame.BackgroundColor3           = Color3.fromRGB(20, 20, 20)
+coinFrame.BackgroundTransparency     = 0.35
+coinFrame.BorderSizePixel            = 0
+coinFrame.Parent                     = screenGui
+
+local coinCorner        = Instance.new("UICorner")
+coinCorner.CornerRadius = UDim.new(0, 10)
+coinCorner.Parent       = coinFrame
+
+local coinLabel                   = Instance.new("TextLabel")
+coinLabel.Name                    = "CoinLabel"
+coinLabel.Size                    = UDim2.new(1, 0, 1, 0)
+coinLabel.BackgroundTransparency  = 1
+coinLabel.TextColor3              = Color3.fromRGB(255, 220, 50)
+coinLabel.TextScaled              = true
+coinLabel.Font                    = Enum.Font.GothamBold
+coinLabel.Text                    = "💰 Münzen: 0"
+coinLabel.Parent                  = coinFrame
+
+-- ============================================================
+-- Sword display  (top-center)
+-- ============================================================
+local swordFrame                     = Instance.new("Frame")
+swordFrame.Name                      = "SwordFrame"
+swordFrame.Size                      = UDim2.new(0, 280, 0, 50)
+-- Anchor to top-center
+swordFrame.AnchorPoint               = Vector2.new(0.5, 0)
+swordFrame.Position                  = UDim2.new(0.5, 0, 0, 12)
+swordFrame.BackgroundColor3          = Color3.fromRGB(20, 20, 60)
+swordFrame.BackgroundTransparency    = 0.35
+swordFrame.BorderSizePixel           = 0
+swordFrame.Parent                    = screenGui
+
+local swordCorner        = Instance.new("UICorner")
+swordCorner.CornerRadius = UDim.new(0, 10)
+swordCorner.Parent       = swordFrame
+
+local swordLabel                  = Instance.new("TextLabel")
+swordLabel.Name                   = "SwordLabel"
+swordLabel.Size                   = UDim2.new(1, 0, 1, 0)
+swordLabel.BackgroundTransparency = 1
+swordLabel.TextColor3             = Color3.fromRGB(180, 220, 255)
+swordLabel.TextScaled             = true
+swordLabel.Font                   = Enum.Font.GothamBold
+swordLabel.Text                   = "⚔ Holzschwert  (Lv. 1)"
+swordLabel.Parent                 = swordFrame
+
+-- ============================================================
+-- Upgrade button  (bottom-right)
+-- ============================================================
+local upgradeFrame                    = Instance.new("Frame")
+upgradeFrame.Name                     = "UpgradeFrame"
+upgradeFrame.Size                     = UDim2.new(0, 260, 0, 80)
+upgradeFrame.AnchorPoint              = Vector2.new(1, 1)
+upgradeFrame.Position                 = UDim2.new(1, -16, 1, -16)
+upgradeFrame.BackgroundColor3         = Color3.fromRGB(20, 20, 20)
+upgradeFrame.BackgroundTransparency   = 0.3
+upgradeFrame.BorderSizePixel          = 0
+upgradeFrame.Parent                   = screenGui
+
+local upgradeCorner        = Instance.new("UICorner")
+upgradeCorner.CornerRadius = UDim.new(0, 12)
+upgradeCorner.Parent       = upgradeFrame
+
+-- Sub-label: next sword name
+local upgradeTitle                  = Instance.new("TextLabel")
+upgradeTitle.Name                   = "UpgradeTitle"
+upgradeTitle.Size                   = UDim2.new(1, 0, 0.45, 0)
+upgradeTitle.BackgroundTransparency = 1
+upgradeTitle.TextColor3             = Color3.fromRGB(255, 255, 255)
+upgradeTitle.TextScaled             = true
+upgradeTitle.Font                   = Enum.Font.Gotham
+upgradeTitle.Text                   = "Nächstes Schwert"
+upgradeTitle.Parent                 = upgradeFrame
+
+-- Main clickable button
+local upgradeButton                      = Instance.new("TextButton")
+upgradeButton.Name                       = "UpgradeButton"
+upgradeButton.Size                       = UDim2.new(1, -16, 0.52, 0)
+upgradeButton.Position                   = UDim2.new(0, 8, 0.48, 0)
+upgradeButton.BackgroundColor3           = Color3.fromRGB(50, 180, 80)
+upgradeButton.BorderSizePixel            = 0
+upgradeButton.TextColor3                 = Color3.fromRGB(255, 255, 255)
+upgradeButton.TextScaled                 = true
+upgradeButton.Font                       = Enum.Font.GothamBold
+upgradeButton.Text                       = "UPGRADE"
+upgradeButton.AutoButtonColor            = true
+upgradeButton.Parent                     = upgradeFrame
+
+local btnCorner        = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 8)
+btnCorner.Parent       = upgradeButton
+
+-- ============================================================
+-- Chop counter  (below coin display)
+-- ============================================================
+local chopFrame                       = Instance.new("Frame")
+chopFrame.Name                        = "ChopFrame"
+chopFrame.Size                        = UDim2.new(0, 230, 0, 36)
+chopFrame.Position                    = UDim2.new(0, 12, 0, 68)
+chopFrame.BackgroundColor3            = Color3.fromRGB(20, 20, 20)
+chopFrame.BackgroundTransparency      = 0.45
+chopFrame.BorderSizePixel             = 0
+chopFrame.Parent                      = screenGui
+
+local chopCorner        = Instance.new("UICorner")
+chopCorner.CornerRadius = UDim.new(0, 8)
+chopCorner.Parent       = chopFrame
+
+local chopLabel                   = Instance.new("TextLabel")
+chopLabel.Name                    = "ChopLabel"
+chopLabel.Size                    = UDim2.new(1, 0, 1, 0)
+chopLabel.BackgroundTransparency  = 1
+chopLabel.TextColor3              = Color3.fromRGB(200, 255, 200)
+chopLabel.TextScaled              = true
+chopLabel.Font                    = Enum.Font.Gotham
+chopLabel.Text                    = "🌿 Gefällt: 0"
+chopLabel.Parent                  = chopFrame
+
+-- ============================================================
+-- Refresh all HUD elements from localData
+-- ============================================================
+local function refreshHUD()
+	local coins      = localData.coins
+	local swordLv    = localData.swordLevel
+	local chopped    = localData.totalChopped
+
+	-- Coin display
+	coinLabel.Text = "💰 Münzen: " .. formatNumber(coins)
+
+	-- Chop counter
+	chopLabel.Text = "🌿 Gefällt: " .. formatNumber(chopped)
+
+	-- Sword display
+	local sword = Config.SWORDS[swordLv] or Config.SWORDS[1]
+	swordLabel.Text = "⚔ " .. sword.name .. "  (Lv. " .. swordLv .. ")"
+
+	-- Upgrade button
+	local nextLevel = swordLv + 1
+	local nextSword = Config.SWORDS[nextLevel]
+
+	if not nextSword then
+		-- Max level
+		upgradeTitle.Text      = "Maximales Schwert erreicht!"
+		upgradeButton.Text     = "MAX LEVEL"
+		upgradeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+		upgradeButton.Active   = false
+	else
+		local canAfford = coins &gt;= nextSword.cost
+		upgradeTitle.Text  = nextSword.name
+		upgradeButton.Text = "UPGRADE  💰 " .. formatNumber(nextSword.cost)
+
+		if canAfford then
+			upgradeButton.BackgroundColor3 = Color3.fromRGB(50, 180, 80)
+			upgradeButton.TextColor3       = Color3.fromRGB(255, 255, 255)
+			upgradeButton.Active           = true
+		else
+			upgradeButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+			upgradeButton.TextColor3       = Color3.fromRGB(160, 160, 160)
+			upgradeButton.Active           = false
+		end
+	end
+end
+
+-- ============================================================
+-- UpdateData listener
+-- ============================================================
+updateEvent.OnClientEvent:Connect(function(data)
+	localData.coins        = data.coins
+	localData.swordLevel   = data.swordLevel
+	localData.totalChopped = data.totalChopped
+	refreshHUD()
+end)
+
+-- ============================================================
+-- Upgrade button click
+-- ============================================================
+upgradeButton.MouseButton1Click:Connect(function()
+	local swordLv   = localData.swordLevel
+	local nextLevel = swordLv + 1
+	local nextSword = Config.SWORDS[nextLevel]
+	if not nextSword then return end
+	if localData.coins &lt; nextSword.cost then return end
+
+	-- Optimistic UI flicker
+	upgradeButton.Text = "..."
+	buyEvent:FireServer()
+end)
+
+-- ============================================================
+-- Initial render
+-- ============================================================
+refreshHUD()
+]]></ProtectedString><bool name="Disabled">false</bool></Properties></Item></Item></Item><Item class="Lighting" referent="RBXB400D29E"><Properties><string name="Name">Lighting</string><float name="Brightness">2</float><Color3uint8 name="Ambient">4283848224</Color3uint8><bool name="GlobalShadows">true</bool></Properties></Item></Item></roblox>
