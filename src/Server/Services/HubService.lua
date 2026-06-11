@@ -8,12 +8,30 @@ local TweenService = game:GetService("TweenService")
 
 local Layers = require(RS:WaitForChild("Shared"):WaitForChild("Layers"))
 
--- Hub is far west of the forest layers (layers start at x=0)
+-- Hub is far west of the forest layers (layers start at x=5000)
 local HUB_X = -320
 local HUB_Z = 0
 
 local dataService = nil
 local net         = nil
+
+-- With StreamingEnabled the target region may not exist on the client yet:
+-- a plain CFrame teleport lets the character fall through the unloaded world
+-- and die (= "teleport doesn't work"). Anchor while the area streams in.
+local function safeTeleport(player, targetCFrame)
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not root then return end
+	root.Anchored = true
+	root.CFrame = targetCFrame
+	task.spawn(function()
+		pcall(function()
+			player:RequestStreamAroundAsync(targetCFrame.Position, 5)
+		end)
+		task.wait(0.2)
+		if root.Parent then root.Anchored = false end
+	end)
+end
 
 -- ── Builders ──────────────────────────────────────────────────────────────────
 
@@ -309,11 +327,7 @@ local function buildHub(hubFolder)
 		exitPrompt.RequiresLineOfSight = false
 		exitPrompt.Parent = door
 		exitPrompt.Triggered:Connect(function(player)
-			local char = player.Character
-			local root = char and char:FindFirstChild("HumanoidRootPart")
-			if root then
-				root.CFrame = CFrame.new(forgeX - 14, 4, HUB_Z)
-			end
+			safeTeleport(player, CFrame.new(forgeX - 14, 4, HUB_Z))
 		end)
 	end
 
@@ -335,7 +349,7 @@ local function buildHub(hubFolder)
 		local char = player.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart")
 		if root then
-			root.CFrame = CFrame.new(FORGE_INT + Vector3.new(0, 4, 10))
+			safeTeleport(player, CFrame.new(FORGE_INT + Vector3.new(0, 4, 10)))
 			net.OpenForge:FireClient(player)
 		end
 	end)
@@ -493,23 +507,16 @@ function HubService.init(ds, netRef)
 			return
 		end
 
-		local char = player.Character
-		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if not root then return end
-
 		-- Spawn point comes from the WorldGenerator (terrain height varies)
 		local WorldService = require(script.Parent:WaitForChild("WorldService"))
 		local spawn = WorldService.getLayerSpawn(layerIdx) or Vector3.new(layer.offsetX, 6, 0)
-		root.CFrame = CFrame.new(spawn + Vector3.new(0, 3, 0))
+		safeTeleport(player, CFrame.new(spawn + Vector3.new(0, 3, 0)))
 		net.ApplyLayerLighting:FireClient(player, layerIdx)
 	end)
 
 	-- Teleport back to hub
 	net.TeleportToHub.OnServerEvent:Connect(function(player)
-		local char = player.Character
-		local root = char and char:FindFirstChild("HumanoidRootPart")
-		if not root then return end
-		root.CFrame = CFrame.new(HubService.getSpawnPosition() + Vector3.new(0, 3, 0))
+		safeTeleport(player, CFrame.new(HubService.getSpawnPosition() + Vector3.new(0, 3, 0)))
 		net.ApplyLayerLighting:FireClient(player, 0)  -- 0 = hub lighting
 	end)
 

@@ -115,22 +115,36 @@ local function spawnMonster(layerIdx, homePos, parent, isBoss, opts)
 	local dmg   = Balance.monsterDamage(layerIdx) * (isBoss and (layer.boss and layer.boss.dmgMult or 2) or 1)
 	if opts.hpMult then maxHP = math.ceil(maxHP * opts.hpMult) end
 
+	local scale = isBoss and 2.6 or 1
 	monsters[model] = {
 		layerIdx   = layerIdx,
 		isBoss     = isBoss or false,
+		scale      = scale,
 		hp         = maxHP,
 		maxHP      = maxHP,
 		damage     = dmg,
 		homePos    = homePos,
 		body       = body,
 		hpFill     = hpFill,
-		state      = "idle",       -- idle | chase | telegraph | dead
+		state      = "idle",       -- idle | chase | telegraph | attack | dead
 		lastAttack = 0,
 		baseColor  = body.Color,
+		baseSize   = body.Size,
 		noRespawn  = opts.noRespawn or false,
 		noLoot     = opts.noLoot or false,
 		onDeath    = opts.onDeath,
+		-- Animation state (integrated every frame, decisions at 10 Hz)
+		pos        = Vector3.new(homePos.X, 0, homePos.Z),
+		groundY    = homePos.Y,
+		curGroundY = homePos.Y,
+		yaw        = rng:NextNumber(0, math.pi * 2),
+		targetYaw  = 0,
+		hopT       = rng:NextNumber(0, math.pi),
+		moving     = false,
+		active     = false,
+		targetRoot = nil,
 	}
+	monsters[model].targetYaw = monsters[model].yaw
 	return model
 end
 
@@ -246,89 +260,185 @@ function MonsterService.isMonster(model)
 end
 
 -- ── AI loop ───────────────────────────────────────────────────────────────────
-local function aiStep(dt)
+-- Decisions (targeting, attacks, ground checks) run at 10 Hz; the actual
+-- movement is integrated EVERY frame via animStep — moving anchored parts at
+-- 10 Hz looked like a slideshow, and the old idle bob moved only the Body so
+-- eyes and spikes visually detached from the monster.
+
+local groundRayParams = nil  -- set in init (excludes the Monsters folder)
+
+local function groundYAt(x, z, fallback)
+	local hit = workspace:Raycast(Vector3.new(x, 300, z), Vector3.new(0, -400, 0), groundRayParams)
+	if not hit then return fallback end
+	-- Never treat a player standing there as "ground"
+	local model = hit.Instance:FindFirstAncestorOfClass("Model")
+	if model and model:FindFirstChildOfClass("Humanoid") then return fallback end
+	return hit.Position.Y
+end
+
+-- Telegraph (inflate + red flash) → lunge at the target → bounce back
+local function doAttack(m, targetRoot)
+	m.state = "telegraph"
+	local body = m.body
+	TweenService:Create(body,
+		TweenInfo.new(Balance.MONSTER_TELEGRAPH, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Color = Color3.fromRGB(255, 50, 30), Size = m.baseSize * 1.2 }):Play()
+
+	task.spawn(function()
+		task.wait(Balance.MONSTER_TELEGRAPH)
+		if m.state ~= "telegraph" or not body.Parent then return end
+
+		-- Release: snap back to base size, lunge toward the target
+		body.Size  = m.baseSize
+		body.Color = m.baseColor
+		m.state = "attack"
+
+		local dir = Vector3.new(0, 0, -1)
+		if targetRoot and targetRoot.Parent then
+			local flat = (targetRoot.Position - Vector3.new(m.pos.X, targetRoot.Position.Y, m.pos.Z))
+				* Vector3.new(1, 0, 1)
+			if flat.Magnitude > 0.1 then dir = flat.Unit end
+		end
+		m.targetYaw = math.atan2(-dir.X, -dir.Z)
+
+		local startPos  = m.pos
+		local strikePos = startPos + dir * 4 * m.scale
+		local t0 = os.clock()
+		while os.clock() - t0 < 0.14 do
+			if m.state ~= "attack" or not body.Parent then return end
+			local a = math.min(1, (os.clock() - t0) / 0.14)
+			m.pos = startPos:Lerp(strikePos, a * a)  -- accelerate into the hit
+			task.wait()
+		end
+
+		-- Impact: hit all players still in range (dodge by moving away!)
+		for _, p in ipairs(Players:GetPlayers()) do
+			local char = p.Character
+			local r = char and char:FindFirstChild("HumanoidRootPart")
+			local h = char and char:FindFirstChildOfClass("Humanoid")
+			if r and h and h.Health > 0
+				and (r.Position - body.Position).Magnitude <= Balance.MONSTER_ATK_RANGE + 2 then
+				local dmg = m.damage
+				-- Blocking reduces damage
+				if char:GetAttribute("Blocking") then
+					dmg = math.ceil(dmg * (1 - Balance.BLOCK_REDUCTION))
+				end
+				h:TakeDamage(dmg)
+				net.HitEffect:FireClient(p, r.Position, Color3.fromRGB(255, 60, 40), false, nil, nil, nil)
+			end
+		end
+
+		-- Bounce back to where the lunge started
+		t0 = os.clock()
+		while os.clock() - t0 < 0.22 do
+			if m.state ~= "attack" or not body.Parent then return end
+			local a = math.min(1, (os.clock() - t0) / 0.22)
+			m.pos = strikePos:Lerp(startPos, 1 - (1 - a) * (1 - a))
+			task.wait()
+		end
+		if m.state == "attack" then m.state = "chase" end
+	end)
+end
+
+local function thinkStep()
 	for model, m in pairs(monsters) do
 		if m.state == "dead" or not m.body.Parent then continue end
 
-		local body = m.body
-
-		-- Find nearest player in aggro range
-		local nearest, nearestDist = nil, Balance.MONSTER_AGGRO * (m.isBoss and 1.5 or 1)
+		-- Find nearest living player
+		local nearest, nearestDist = nil, math.huge
 		for _, p in ipairs(Players:GetPlayers()) do
 			local char = p.Character
 			local root = char and char:FindFirstChild("HumanoidRootPart")
 			local hum  = char and char:FindFirstChildOfClass("Humanoid")
 			if root and hum and hum.Health > 0 then
-				local d = (root.Position - body.Position).Magnitude
+				local d = (root.Position - m.body.Position).Magnitude
 				if d < nearestDist then
-					nearest, nearestDist = p, d
+					nearest, nearestDist = root, d
 				end
 			end
 		end
 
-		if m.state == "telegraph" then continue end  -- locked in wind-up
+		-- Animation culling: don't replicate movement nobody can see
+		m.active = nearestDist < 140
 
-		if nearest then
-			local root = nearest.Character.HumanoidRootPart
+		-- Follow the terrain (layers are hilly — fixed home height looked floaty)
+		if m.active then
+			m.groundY = groundYAt(m.pos.X, m.pos.Z, m.groundY)
+		end
+
+		if m.state == "telegraph" or m.state == "attack" then continue end
+
+		local aggro = Balance.MONSTER_AGGRO * (m.isBoss and 1.5 or 1)
+		if nearest and nearestDist <= aggro then
+			m.targetRoot = nearest
 			if nearestDist <= Balance.MONSTER_ATK_RANGE then
-				-- Attack with telegraph
 				local now = os.clock()
 				if now - m.lastAttack >= Balance.MONSTER_ATK_CD then
 					m.lastAttack = now
-					m.state = "telegraph"
-					task.spawn(function()
-						-- Wind-up: flash red, grow slightly
-						local oc = m.baseColor
-						body.Color = Color3.fromRGB(255, 50, 30)
-						task.wait(Balance.MONSTER_TELEGRAPH)
-						if m.state == "dead" or not body.Parent then return end
-						body.Color = oc
-						m.state = "chase"
-						-- Hit all players still in range (dodge by moving away!)
-						for _, p in ipairs(Players:GetPlayers()) do
-							local char = p.Character
-							local r = char and char:FindFirstChild("HumanoidRootPart")
-							local h = char and char:FindFirstChildOfClass("Humanoid")
-							if r and h and h.Health > 0
-								and (r.Position - body.Position).Magnitude <= Balance.MONSTER_ATK_RANGE + 2 then
-								local dmg = m.damage
-								-- Blocking reduces damage
-								if char:GetAttribute("Blocking") then
-									dmg = math.ceil(dmg * (1 - Balance.BLOCK_REDUCTION))
-								end
-								h:TakeDamage(dmg)
-								net.HitEffect:FireClient(p, r.Position, Color3.fromRGB(255, 60, 40), false, nil, nil, nil)
-							end
-						end
-					end)
+					doAttack(m, nearest)
+				else
+					m.state = "chase"  -- hold position, keep facing the player
 				end
 			else
-				-- Chase
 				m.state = "chase"
-				local dir = (root.Position - body.Position) * Vector3.new(1, 0, 1)
-				if dir.Magnitude > 0.1 then
-					dir = dir.Unit
-					local speed = Balance.MONSTER_SPEED * (m.isBoss and 0.8 or 1)
-					local newPos = body.Position + dir * speed * dt
-					-- Keep monsters near their home platform
-					local fromHome = (newPos - m.homePos) * Vector3.new(1, 0, 1)
-					if fromHome.Magnitude < 70 then
-						-- Bob while moving + face the player
-						local bob = math.sin(os.clock() * 8) * 0.3
-						local look = CFrame.lookAt(
-							Vector3.new(newPos.X, m.homePos.Y + 1.7 + bob, newPos.Z),
-							Vector3.new(root.Position.X, m.homePos.Y + 1.7 + bob, root.Position.Z))
-						model:PivotTo(look)
-					end
-				end
 			end
 		else
-			-- Idle: gentle bob in place
 			m.state = "idle"
-			local bob = math.sin(os.clock() * 2 + m.homePos.X) * 0.15
-			local cur = body.Position
-			body.Position = Vector3.new(cur.X, m.homePos.Y + 1.7 + bob, cur.Z)
+			m.targetRoot = nil
 		end
+	end
+end
+
+local function animStep(dt)
+	local now = os.clock()
+	for model, m in pairs(monsters) do
+		if m.state == "dead" or not m.active or not m.body.Parent then continue end
+
+		m.moving = false
+
+		-- Chase movement (integrated per frame for smooth motion)
+		if m.state == "chase" and m.targetRoot and m.targetRoot.Parent then
+			local toTarget = (m.targetRoot.Position - m.pos) * Vector3.new(1, 0, 1)
+			local dist = toTarget.Magnitude
+			if dist > 0.1 then
+				m.targetYaw = math.atan2(-toTarget.X / dist, -toTarget.Z / dist)
+			end
+			if dist > Balance.MONSTER_ATK_RANGE - 2 then
+				local speed  = Balance.MONSTER_SPEED * (m.isBoss and 0.8 or 1)
+				local newPos = m.pos + toTarget.Unit * speed * dt
+				-- Keep monsters near their home platform
+				if ((newPos - m.homePos) * Vector3.new(1, 0, 1)).Magnitude < 70 then
+					m.pos = newPos
+					m.moving = true
+				end
+			end
+		end
+
+		-- Smooth turn toward the target yaw (no more snap rotation)
+		local dy = (m.targetYaw - m.yaw + math.pi) % (math.pi * 2) - math.pi
+		m.yaw += dy * math.min(1, dt * 9)
+
+		-- Smooth ground following
+		m.curGroundY += (m.groundY - m.curGroundY) * math.min(1, dt * 10)
+
+		-- Vertical animation per state
+		local offY, pitch = 0, 0
+		if m.moving then
+			-- Hop locomotion: the ball bounces forward instead of sliding
+			m.hopT += dt * 7
+			local s = math.abs(math.sin(m.hopT))
+			offY  = s * 1.1 * m.scale
+			pitch = math.sin(m.hopT * 2) * 0.10   -- slight forward tumble
+		elseif m.state == "telegraph" then
+			offY = math.abs(math.sin(now * 35)) * 0.12  -- tremble during wind-up
+		else
+			offY = math.sin(now * 2 + m.homePos.X) * 0.15 * m.scale  -- breathing bob
+		end
+
+		model:PivotTo(
+			CFrame.new(m.pos.X, m.curGroundY + 1.7 * m.scale + offY, m.pos.Z)
+			* CFrame.Angles(0, m.yaw, 0)
+			* CFrame.Angles(pitch, 0, 0))
 	end
 end
 
@@ -345,12 +455,11 @@ function MonsterService.init(ds, netRef)
 	folder.Parent = workspace
 
 	-- Find ground height via raycast (terrain layers are not flat)
-	local rayParams = RaycastParams.new()
-	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	rayParams.FilterDescendantsInstances = { folder }
+	groundRayParams = RaycastParams.new()
+	groundRayParams.FilterType = Enum.RaycastFilterType.Exclude
+	groundRayParams.FilterDescendantsInstances = { folder }
 	local function groundY(x, z)
-		local hit = workspace:Raycast(Vector3.new(x, 300, z), Vector3.new(0, -400, 0), rayParams)
-		return hit and hit.Position.Y or 1
+		return groundYAt(x, z, 1)
 	end
 
 	local WorldService = require(script.Parent:WaitForChild("WorldService"))
@@ -382,14 +491,15 @@ function MonsterService.init(ds, netRef)
 		end
 	end
 
-	-- AI heartbeat (throttled to ~10 Hz)
+	-- Decisions at ~10 Hz, animation every frame (smooth movement)
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
 		acc += dt
 		if acc >= 0.1 then
-			aiStep(acc)
+			thinkStep()
 			acc = 0
 		end
+		animStep(dt)
 	end)
 
 	print("[MonsterService] Monster + Bosse gespawnt.")
