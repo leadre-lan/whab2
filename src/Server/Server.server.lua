@@ -61,7 +61,7 @@ safeInit("CombatService",  CombatService.init, DataService, MonsterService, net)
 safeInit("StatService",    StatService.init, DataService, net)
 safeInit("ForgeService",   ForgeService.init, DataService, net)
 safeInit("RebirthService", RebirthService.init, DataService, net)
-safeInit("ArenaService",   ArenaService.init, DataService, net)
+safeInit("ArenaService",   ArenaService.init, DataService, MonsterService, net)
 
 -- Cross-service wiring
 CombatService.setArenaService(ArenaService)

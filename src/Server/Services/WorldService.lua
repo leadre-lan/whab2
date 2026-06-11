@@ -471,8 +471,9 @@ local function makeZoneSign(layer, li, pos, parent)
 	post.Parent   = parent
 
 	local bb = Instance.new("BillboardGui")
-	bb.Size        = UDim2.new(0, 270, 0, 105)
+	bb.Size        = UDim2.new(0, 160, 0, 62)
 	bb.StudsOffset = Vector3.new(0, 4.5, 0)
+	bb.MaxDistance = 110   -- never visible from the hub or other layers
 	bb.Parent      = post
 
 	local tl = Instance.new("TextLabel")

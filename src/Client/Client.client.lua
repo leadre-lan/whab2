@@ -6,10 +6,21 @@ local SoundService = game:GetService("SoundService")
 local player = Players.LocalPlayer
 
 -- ── Wait for server to create remotes ────────────────────────────────────────
-local netFolder = RS:WaitForChild("BambooNet", 15)
+-- WaitForChild on EVERY remote: GetChildren() right after the folder appears
+-- races against the server still adding remotes — a missing one killed the
+-- whole client script (everything after the nil-index never ran).
+local netFolder = RS:WaitForChild("BambooNet")
+local REMOTE_NAMES = {
+	"UpdateData", "HitEffect", "Notify", "LayerUnlocked",
+	"OpenLayerSelect", "ApplyLayerLighting", "OpenForge", "RebirthDone",
+	"ChopTarget", "SlamAttack", "UpgradeStat",
+	"AttackEntity", "SetBlocking",
+	"TeleportToLayer", "TeleportToHub",
+	"CraftSword", "DoRebirth",
+}
 local net = {}
-for _, re in ipairs(netFolder:GetChildren()) do
-	net[re.Name] = re
+for _, name in ipairs(REMOTE_NAMES) do
+	net[name] = netFolder:WaitForChild(name)
 end
 
 -- ── Load shared modules ───────────────────────────────────────────────────────

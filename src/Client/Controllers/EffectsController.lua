@@ -168,7 +168,7 @@ function EffectsController.spawnCoinPopup(screenGui, amount)
 	lbl.TextColor3 = Color3.fromRGB(255, 228, 55)
 	lbl.TextSize = 24
 	lbl.Font  = Enum.Font.GothamBold
-	lbl.Text  = "+" .. amount .. " 💰"
+	lbl.Text  = "+" .. amount .. " 🎋"
 	lbl.TextXAlignment = Enum.TextXAlignment.Left
 	lbl.ZIndex = 12
 	lbl.Parent = screenGui

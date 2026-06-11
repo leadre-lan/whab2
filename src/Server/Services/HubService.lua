@@ -40,8 +40,9 @@ local function makeSign(parent, pos, title, subtitle, titleColor)
 	}, parent)
 
 	local bb = Instance.new("BillboardGui")
-	bb.Size = UDim2.new(0, 260, 0, 95)
+	bb.Size = UDim2.new(0, 150, 0, 56)
 	bb.StudsOffset = Vector3.new(0, 4, 0)
+	bb.MaxDistance = 70    -- tags from other areas must never bleed through
 	bb.Parent = post
 
 	local tl = Instance.new("TextLabel")
@@ -206,7 +207,7 @@ local function buildHub(hubFolder)
 		color = Color3.fromRGB(120, 50, 40),
 	}, hubFolder)
 	makeSign(hubFolder, Vector3.new(HUB_X + 10, 3.75, arenaZ + 5),
-		"⚔ PVP-Arena", "Roter Kreis = 1v1 Queue",
+		"⚔ PVP-Arena", "Rot: 1v1 | Blau: Bot-Training",
 		Color3.fromRGB(235, 90, 70))
 
 	-- ── Schmiede (east, +X) — building shell, ForgeService in Phase 3 ──
@@ -239,26 +240,104 @@ local function buildHub(hubFolder)
 		collide = false,
 	}, hubFolder)
 	makeSign(hubFolder, Vector3.new(forgeX - 13, 3.75, HUB_Z + 9),
-		"🔨 Schmiede", "E: Schwert schmieden",
+		"🔨 Schmiede", "E an der Tür: Betreten",
 		Color3.fromRGB(255, 150, 60))
 
-	-- Forge prompt → opens crafting UI on the client
-	local forgePromptPart = part({
-		size = Vector3.new(2, 2, 2),
-		pos = Vector3.new(forgeX - 11, 3, HUB_Z),
-		material = Enum.Material.Neon,
-		color = Color3.fromRGB(255, 150, 60),
-		transparency = 1, collide = false,
+	-- ── Forge interior: a closed room high above the map. The door prompt
+	-- teleports the player INSIDE; there the sword is leveled with Bamboos. ──
+	local FORGE_INT = Vector3.new(HUB_X, 500, HUB_Z + 400)
+	do
+		local R = 26  -- room half-size
+		-- Floor / ceiling / walls (enclosed — you never see outside)
+		part({ size = Vector3.new(R * 2, 2, R * 2), pos = FORGE_INT + Vector3.new(0, -1, 0),
+			material = Enum.Material.WoodPlanks, color = Color3.fromRGB(95, 68, 45) }, hubFolder)
+		part({ size = Vector3.new(R * 2, 2, R * 2), pos = FORGE_INT + Vector3.new(0, 15, 0),
+			material = Enum.Material.Wood, color = Color3.fromRGB(70, 50, 34) }, hubFolder)
+		for _, w in ipairs({
+			{ Vector3.new(R * 2, 16, 2), Vector3.new(0, 7, -R) },
+			{ Vector3.new(R * 2, 16, 2), Vector3.new(0, 7, R) },
+			{ Vector3.new(2, 16, R * 2), Vector3.new(-R, 7, 0) },
+			{ Vector3.new(2, 16, R * 2), Vector3.new(R, 7, 0) },
+		}) do
+			part({ size = w[1], pos = FORGE_INT + w[2],
+				material = Enum.Material.Brick, color = Color3.fromRGB(88, 64, 48) }, hubFolder)
+		end
+		-- Furnace (glowing) + anvil
+		part({ size = Vector3.new(7, 8, 4), pos = FORGE_INT + Vector3.new(0, 4, -R + 4),
+			material = Enum.Material.Slate, color = Color3.fromRGB(60, 58, 56) }, hubFolder)
+		local fire = part({ size = Vector3.new(4, 3.5, 0.6), pos = FORGE_INT + Vector3.new(0, 2.5, -R + 5.9),
+			material = Enum.Material.Neon, color = Color3.fromRGB(255, 120, 30), collide = false }, hubFolder)
+		local fireLight = Instance.new("PointLight")
+		fireLight.Color = Color3.fromRGB(255, 140, 50)
+		fireLight.Range = 24
+		fireLight.Brightness = 1.6
+		fireLight.Parent = fire
+		part({ size = Vector3.new(3.2, 1.2, 1.2), pos = FORGE_INT + Vector3.new(6, 2.6, -R + 6),
+			material = Enum.Material.Metal, color = Color3.fromRGB(70, 72, 78) }, hubFolder)
+		part({ size = Vector3.new(1.2, 2, 1.4), pos = FORGE_INT + Vector3.new(6, 1, -R + 6),
+			material = Enum.Material.Wood, color = Color3.fromRGB(80, 56, 36) }, hubFolder)
+		-- Warm ambient lamps
+		for _, lx in ipairs({ -R + 4, R - 4 }) do
+			local lamp = part({ size = Vector3.new(1, 1, 1), pos = FORGE_INT + Vector3.new(lx, 11, 0),
+				material = Enum.Material.Neon, color = Color3.fromRGB(255, 200, 110), collide = false }, hubFolder)
+			local l = Instance.new("PointLight")
+			l.Color = Color3.fromRGB(255, 200, 110)
+			l.Range = 22
+			l.Parent = lamp
+		end
+
+		-- Anvil prompt: opens the sword-leveling UI (currency: Bamboos)
+		local anvilPrompt = Instance.new("ProximityPrompt")
+		anvilPrompt.ActionText = "Schwert schmieden"
+		anvilPrompt.ObjectText = "Amboss"
+		anvilPrompt.HoldDuration = 0
+		anvilPrompt.MaxActivationDistance = 20
+		anvilPrompt.RequiresLineOfSight = false
+		anvilPrompt.Parent = fire
+		anvilPrompt.Triggered:Connect(function(player)
+			net.OpenForge:FireClient(player)
+		end)
+
+		-- Exit door
+		local door = part({ size = Vector3.new(4, 7, 1), pos = FORGE_INT + Vector3.new(0, 3.5, R - 1),
+			material = Enum.Material.Wood, color = Color3.fromRGB(120, 85, 50) }, hubFolder)
+		local exitPrompt = Instance.new("ProximityPrompt")
+		exitPrompt.ActionText = "Zur Overworld"
+		exitPrompt.ObjectText = "Tür"
+		exitPrompt.HoldDuration = 0
+		exitPrompt.MaxActivationDistance = 14
+		exitPrompt.RequiresLineOfSight = false
+		exitPrompt.Parent = door
+		exitPrompt.Triggered:Connect(function(player)
+			local char = player.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root then
+				root.CFrame = CFrame.new(forgeX - 14, 4, HUB_Z)
+			end
+		end)
+	end
+
+	-- Door prompt at the forge building → teleport INTO the forge room
+	local forgeDoor = part({
+		size = Vector3.new(3.5, 6, 1),
+		pos = Vector3.new(forgeX - 9.5, 3.5, HUB_Z + 4),
+		material = Enum.Material.Wood,
+		color = Color3.fromRGB(120, 85, 50),
 	}, hubFolder)
 	local forgePrompt = Instance.new("ProximityPrompt")
-	forgePrompt.ActionText = "Schmieden"
+	forgePrompt.ActionText = "Schmiede betreten"
 	forgePrompt.ObjectText = "Schmiede"
 	forgePrompt.HoldDuration = 0
-	forgePrompt.MaxActivationDistance = 12
+	forgePrompt.MaxActivationDistance = 16
 	forgePrompt.RequiresLineOfSight = false
-	forgePrompt.Parent = forgePromptPart
+	forgePrompt.Parent = forgeDoor
 	forgePrompt.Triggered:Connect(function(player)
-		net.OpenForge:FireClient(player)
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		if root then
+			root.CFrame = CFrame.new(FORGE_INT + Vector3.new(0, 4, 10))
+			net.OpenForge:FireClient(player)
+		end
 	end)
 
 	-- ── Rebirth-Schrein (west, -X) — placeholder until Phase 4 ──
@@ -348,7 +427,7 @@ local function buildHub(hubFolder)
 		local reward = 250 * (1 + (pdata.rebirths or 0))
 		pdata.coins = pdata.coins + reward
 		dataService.sendUpdate(player)
-		net.Notify:FireClient(player, "🎁 +" .. reward .. " Münzen!")
+		net.Notify:FireClient(player, "🎁 +" .. reward .. " Bamboos!")
 	end)
 
 	-- Lantern posts around the plaza

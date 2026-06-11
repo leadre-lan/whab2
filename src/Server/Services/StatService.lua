@@ -30,7 +30,7 @@ function StatService.init(ds, netRef)
 		local cost = Balance.statCost(currentLevel)
 
 		if pdata.coins < cost then
-			net.Notify:FireClient(player, "Zu wenig Münzen! (" .. cost .. " benötigt)")
+			net.Notify:FireClient(player, "Zu wenig Bamboos! (" .. cost .. " benötigt)")
 			return
 		end
 

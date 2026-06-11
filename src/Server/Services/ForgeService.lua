@@ -27,7 +27,7 @@ function ForgeService.init(ds, netRef)
 		local have   = (pdata.materials and pdata.materials[matKey]) or 0
 
 		if pdata.coins < recipe.coins then
-			net.Notify:FireClient(player, "Zu wenig Münzen! (" .. recipe.coins .. " benötigt)")
+			net.Notify:FireClient(player, "Zu wenig Bamboos! (" .. recipe.coins .. " benötigt)")
 			return
 		end
 		if have < recipe.matCount then

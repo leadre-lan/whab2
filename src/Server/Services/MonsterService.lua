@@ -70,9 +70,10 @@ local function buildMonsterModel(layer, pos, isBoss)
 	-- Health bar billboard
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "HPBar"
-	bb.Size = UDim2.new(0, isBoss and 200 or 110, 0, isBoss and 44 or 30)
+	bb.Size = UDim2.new(0, isBoss and 130 or 80, 0, isBoss and 32 or 22)
 	bb.StudsOffset = Vector3.new(0, 3 * scale, 0)
-	bb.AlwaysOnTop = true
+	bb.AlwaysOnTop = false
+	bb.MaxDistance = 90    -- never visible from other worlds
 	bb.Parent = body
 
 	local nameLbl = Instance.new("TextLabel")
@@ -103,13 +104,16 @@ local function buildMonsterModel(layer, pos, isBoss)
 end
 
 -- ── Spawn one monster ─────────────────────────────────────────────────────────
-local function spawnMonster(layerIdx, homePos, parent, isBoss)
+local function spawnMonster(layerIdx, homePos, parent, isBoss, opts)
+	opts = opts or {}
 	local layer = Layers.DATA[layerIdx]
 	local model, body, hpFill = buildMonsterModel(layer, homePos, isBoss)
+	if opts.name then model.Name = opts.name end
 	model.Parent = parent
 
 	local maxHP = Balance.monsterHP(layerIdx) * (isBoss and (layer.boss and layer.boss.hpMult or 10) or 1)
 	local dmg   = Balance.monsterDamage(layerIdx) * (isBoss and (layer.boss and layer.boss.dmgMult or 2) or 1)
+	if opts.hpMult then maxHP = math.ceil(maxHP * opts.hpMult) end
 
 	monsters[model] = {
 		layerIdx   = layerIdx,
@@ -123,8 +127,30 @@ local function spawnMonster(layerIdx, homePos, parent, isBoss)
 		state      = "idle",       -- idle | chase | telegraph | dead
 		lastAttack = 0,
 		baseColor  = body.Color,
+		noRespawn  = opts.noRespawn or false,
+		noLoot     = opts.noLoot or false,
+		onDeath    = opts.onDeath,
 	}
 	return model
+end
+
+-- Public: spawn a one-off training bot (used by ArenaService demo fights)
+function MonsterService.spawnTrainingBot(layerIdx, pos, parent, onDeath)
+	return spawnMonster(layerIdx, pos, parent, false, {
+		name = "🤖 Trainings-Bot",
+		noRespawn = true,
+		noLoot = true,
+		hpMult = 2,
+		onDeath = onDeath,
+	})
+end
+
+function MonsterService.despawn(model)
+	local m = monsters[model]
+	if m then
+		monsters[model] = nil
+		model:Destroy()
+	end
 end
 
 -- ── Damage a monster (called by CombatService) ───────────────────────────────
@@ -153,7 +179,7 @@ function MonsterService.damageMonster(player, model, damage)
 
 		-- Loot
 		local pdata = dataService.get(player)
-		if pdata then
+		if pdata and not m.noLoot then
 			local mult  = Balance.rebirthMult(pdata.rebirths or 0)
 			local coins = math.ceil(Balance.monsterCoins(m.layerIdx) * mult)
 				* (m.isBoss and 10 or 1)
@@ -193,15 +219,23 @@ function MonsterService.damageMonster(player, model, damage)
 					{ Transparency = 1, Size = p.Size * 0.3 }):Play()
 			end
 		end
+		local noRespawn = m.noRespawn
+		local onDeath   = m.onDeath
 		monsters[model] = nil
 		task.delay(0.7, function() model:Destroy() end)
 
-		-- Respawn (bosses take 4x longer)
-		task.delay(Balance.MONSTER_RESPAWN * (isBoss and 4 or 1), function()
-			if parent and parent.Parent then
-				spawnMonster(layerIdx, respawnPos, parent, isBoss)
-			end
-		end)
+		if onDeath then
+			task.spawn(onDeath, player)
+		end
+
+		-- Respawn (bosses take 4x longer; training bots never respawn)
+		if not noRespawn then
+			task.delay(Balance.MONSTER_RESPAWN * (isBoss and 4 or 1), function()
+				if parent and parent.Parent then
+					spawnMonster(layerIdx, respawnPos, parent, isBoss)
+				end
+			end)
+		end
 		return true
 	end
 	return false

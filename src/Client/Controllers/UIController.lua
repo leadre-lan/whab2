@@ -74,7 +74,7 @@ local coinFrame = frame("CoinFrame",
 	UDim2.new(0, 210, 0, 82),
 	UDim2.new(0, 12, 0, 12))
 
-local coinLabel = label(coinFrame, "CoinLabel", "💰 0",
+local coinLabel = label(coinFrame, "CoinLabel", "🎋 0",
 	UDim2.new(1, -12, 0, 36), UDim2.new(0, 10, 0, 4),
 	C.gold, 24, T.FONTS.header)
 
@@ -321,7 +321,7 @@ local prevLevel = -1
 
 function UIController.refresh(data, effects)
 	-- Coins
-	coinLabel.Text = "💰 " .. (data.coins or 0)
+	coinLabel.Text = "🎋 " .. (data.coins or 0)
 
 	-- Level + XP
 	local lvl  = data.level or 1
@@ -387,7 +387,7 @@ function UIController.refresh(data, effects)
 		local matKey = "mat" .. recipe.matLayer
 		local have = (data.materials and data.materials[matKey]) or 0
 		forgeInfo.Text = "Nächstes Schwert: " .. recipe.name
-			.. "\n\n💰 " .. recipe.coins .. " Münzen (du: " .. (data.coins or 0) .. ")"
+			.. "\n\n🎋 " .. recipe.coins .. " Bamboos (du: " .. (data.coins or 0) .. ")"
 			.. "\n⛏ " .. recipe.matCount .. "x Material aus Schicht " .. recipe.matLayer
 			.. " (du: " .. have .. ")"
 		local canCraft = (data.coins or 0) >= recipe.coins and have >= recipe.matCount
