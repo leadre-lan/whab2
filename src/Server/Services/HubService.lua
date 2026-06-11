@@ -33,6 +33,28 @@ local function safeTeleport(player, targetCFrame)
 	end)
 end
 
+-- Teleport into a forest layer (nil layerIdx = highest unlocked).
+-- Used by the layer-select UI AND by walking through the portal.
+local function teleportToLayer(player, layerIdx)
+	local pdata = dataService.getOrLoad(player)
+	if not pdata then return end
+
+	layerIdx = layerIdx or pdata.highestLayer or 1
+	local layer = Layers.DATA[layerIdx]
+	if not layer then return end
+	if layerIdx > (pdata.highestLayer or 1) then
+		net.Notify:FireClient(player, "🔒 " .. layer.name .. " ist noch gesperrt!")
+		return
+	end
+
+	-- Spawn point comes from the WorldGenerator (terrain height varies)
+	local WorldService = require(script.Parent:WaitForChild("WorldService"))
+	local spawn = WorldService.getLayerSpawn(layerIdx) or Vector3.new(layer.offsetX, 6, 0)
+	safeTeleport(player, CFrame.new(spawn + Vector3.new(0, 3, 0)))
+	net.ApplyLayerLighting:FireClient(player, layerIdx)
+	net.Notify:FireClient(player, "🌲 " .. layer.name)
+end
+
 -- ── Builders ──────────────────────────────────────────────────────────────────
 
 local function part(props, parent)
@@ -187,8 +209,20 @@ local function buildHub(hubFolder)
 		end
 	end)
 	makeSign(hubFolder, Vector3.new(HUB_X - 12, 3.75, portalZ - 4),
-		"🌲 Wald-Portal", "E drücken: Schicht wählen",
+		"🌲 Wald-Portal", "Durchlaufen: Wald | E: Schicht wählen",
 		Color3.fromRGB(95, 230, 110))
+
+	-- Walking through the glow teleports to the highest unlocked layer —
+	-- pressing E next to it opens the layer-select instead.
+	portalGlow.Touched:Connect(function(hit)
+		local char = hit and hit.Parent
+		local player = char and Players:GetPlayerFromCharacter(char)
+		if not player then return end
+		local last = player:GetAttribute("PortalCooldown") or 0
+		if os.clock() - last < 4 then return end
+		player:SetAttribute("PortalCooldown", os.clock())
+		teleportToLayer(player, nil)
+	end)
 
 	-- ProximityPrompt on the portal
 	local prompt = Instance.new("ProximityPrompt")
@@ -201,7 +235,7 @@ local function buildHub(hubFolder)
 	prompt.Parent = portalGlow
 
 	prompt.Triggered:Connect(function(player)
-		local pdata = dataService.get(player)
+		local pdata = dataService.getOrLoad(player)
 		if pdata then
 			net.OpenLayerSelect:FireClient(player, pdata.highestLayer)
 		end
@@ -496,22 +530,7 @@ function HubService.init(ds, netRef)
 	-- Teleport request: validate unlock, move character, tell client to apply lighting
 	net.TeleportToLayer.OnServerEvent:Connect(function(player, layerIdx)
 		if type(layerIdx) ~= "number" then return end
-		layerIdx = math.floor(layerIdx)
-		local layer = Layers.DATA[layerIdx]
-		if not layer then return end
-
-		local pdata = dataService.get(player)
-		if not pdata then return end
-		if layerIdx > pdata.highestLayer then
-			net.Notify:FireClient(player, "🔒 " .. layer.name .. " ist noch gesperrt!")
-			return
-		end
-
-		-- Spawn point comes from the WorldGenerator (terrain height varies)
-		local WorldService = require(script.Parent:WaitForChild("WorldService"))
-		local spawn = WorldService.getLayerSpawn(layerIdx) or Vector3.new(layer.offsetX, 6, 0)
-		safeTeleport(player, CFrame.new(spawn + Vector3.new(0, 3, 0)))
-		net.ApplyLayerLighting:FireClient(player, layerIdx)
+		teleportToLayer(player, math.floor(layerIdx))
 	end)
 
 	-- Teleport back to hub

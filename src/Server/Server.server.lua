@@ -70,7 +70,7 @@ HubService.rebirthHandler = RebirthService.tryRebirth
 -- ── Player Lifecycle ──────────────────────────────────────────────────────────
 local Balance = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Balance"))
 
-Players.PlayerAdded:Connect(function(player)
+local function onPlayerAdded(player)
 	DataService.load(player)
 
 	player.CharacterAdded:Connect(function(char)
@@ -89,7 +89,16 @@ Players.PlayerAdded:Connect(function(player)
 		task.wait(0.5)
 		DataService.sendUpdate(player)
 	end
-end)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- The service inits above yield (terrain generation) — in Studio the player
+-- joins DURING init, so PlayerAdded has already fired with no listener and
+-- the player ends up without data (portal/E, loot, HUD all silently dead).
+for _, player in ipairs(Players:GetPlayers()) do
+	task.spawn(onPlayerAdded, player)
+end
 
 Players.PlayerRemoving:Connect(function(player)
 	DataService.flush(player)

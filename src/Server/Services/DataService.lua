@@ -105,6 +105,22 @@ function DataService.get(player)
 	return playerData[player]
 end
 
+-- Like get(), but loads on demand if the PlayerAdded race lost the data.
+-- May yield (DataStore); only call from handlers that are allowed to yield.
+local loading = {}
+function DataService.getOrLoad(player)
+	if playerData[player] then return playerData[player] end
+	if not player.Parent then return nil end
+	if loading[player] then
+		repeat task.wait() until not loading[player]
+		return playerData[player]
+	end
+	loading[player] = true
+	DataService.load(player)
+	loading[player] = nil
+	return playerData[player]
+end
+
 function DataService.flush(player)
 	DataService.save(player)
 	playerData[player] = nil
