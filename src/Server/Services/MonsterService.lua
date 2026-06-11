@@ -17,61 +17,124 @@ local net         = nil
 local monsters = {}   -- [model] = state table
 
 -- ── Monster model builder ─────────────────────────────────────────────────────
+-- A proper little creature instead of a ball with spikes: body, head with
+-- angry eyes + pupils + brows, horns, mouth, stub arms, feet and back spikes.
+-- The face points toward -Z (matches the AI's yaw math).
 local function buildMonsterModel(layer, pos, isBoss)
-	local scale = isBoss and 2.6 or 1
-	local color = layer.glowColor:Lerp(Color3.fromRGB(30, 30, 30), isBoss and 0.25 or 0.45)
+	local s = isBoss and 2.6 or 1
+	local bodyColor = layer.glowColor:Lerp(Color3.fromRGB(30, 30, 30), isBoss and 0.25 or 0.45)
+	local darkColor = bodyColor:Lerp(Color3.fromRGB(15, 15, 20), 0.45)
+	local hornColor = Color3.fromRGB(228, 218, 198)
 
 	local model = Instance.new("Model")
 	model.Name = isBoss and (layer.boss and layer.boss.name or "Boss") or layer.monsterName
 
-	local body = Instance.new("Part")
-	body.Name  = "Body"
-	body.Shape = Enum.PartType.Ball
-	body.Size  = Vector3.new(3.4, 3.4, 3.4) * scale
-	body.Position = pos + Vector3.new(0, 1.7 * scale, 0)
-	body.Material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic
-	body.Color = color
-	body.Anchored = true
-	body.CanCollide = false
-	body:SetAttribute("IsMonster", true)
-	body.Parent = model
-	model.PrimaryPart = body
+	local center = pos + Vector3.new(0, 1.7 * s, 0)
 
-	-- Eyes
-	for side = -1, 1, 2 do
-		local eye = Instance.new("Part")
-		eye.Name  = "Eye"
-		eye.Shape = Enum.PartType.Ball
-		eye.Size  = Vector3.new(0.55, 0.55, 0.55) * scale
-		eye.Material = Enum.Material.Neon
-		eye.Color = isBoss and Color3.fromRGB(255, 60, 40) or Color3.fromRGB(255, 235, 200)
-		eye.Anchored = true
-		eye.CanCollide = false
-		eye.CFrame = body.CFrame * CFrame.new(side * 0.7 * scale, 0.5 * scale, -1.4 * scale)
-		eye.Parent = model
+	local function mpart(props)
+		local p = Instance.new("Part")
+		if props.shape then p.Shape = props.shape end
+		p.Size = props.size
+		p.CFrame = CFrame.new(center) * props.offset
+		p.Material = props.material or Enum.Material.SmoothPlastic
+		p.Color = props.color
+		p.Anchored = true
+		p.CanCollide = false
+		p.CastShadow = false
+		if props.name then p.Name = props.name end
+		p.Parent = model
+		return p
 	end
 
-	-- Spikes on top (bosses get a crown of them)
-	local spikeCount = isBoss and 5 or 2
+	-- Body
+	local body = mpart({
+		name = "Body", shape = Enum.PartType.Ball,
+		size = Vector3.new(3.2, 3.2, 3.2) * s, offset = CFrame.new(),
+		color = bodyColor,
+		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
+	})
+	body:SetAttribute("IsMonster", true)
+	model.PrimaryPart = body
+
+	-- Head (slightly forward)
+	mpart({
+		shape = Enum.PartType.Ball,
+		size = Vector3.new(2.1, 2.1, 2.1) * s,
+		offset = CFrame.new(0, 1.45 * s, -0.15 * s),
+		color = bodyColor:Lerp(Color3.fromRGB(255, 255, 255), 0.06),
+		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
+	})
+
+	-- Eyes + pupils + angry brows
+	for side = -1, 1, 2 do
+		mpart({
+			shape = Enum.PartType.Ball,
+			size = Vector3.new(0.56, 0.56, 0.56) * s,
+			offset = CFrame.new(side * 0.42 * s, 1.72 * s, -1.02 * s),
+			color = isBoss and Color3.fromRGB(255, 70, 45) or Color3.fromRGB(250, 248, 240),
+			material = Enum.Material.Neon,
+		})
+		mpart({
+			shape = Enum.PartType.Ball,
+			size = Vector3.new(0.26, 0.26, 0.26) * s,
+			offset = CFrame.new(side * 0.42 * s, 1.72 * s, -1.26 * s),
+			color = Color3.fromRGB(20, 18, 24),
+		})
+		mpart({
+			size = Vector3.new(0.62, 0.14, 0.22) * s,
+			offset = CFrame.new(side * 0.44 * s, 2.04 * s, -1.0 * s)
+				* CFrame.Angles(0, 0, side * math.rad(-16)),
+			color = darkColor,
+		})
+		-- Horns (bosses get longer ones)
+		mpart({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new((isBoss and 1.25 or 0.85) * s, 0.28 * s, 0.28 * s),
+			offset = CFrame.new(side * 0.78 * s, 2.35 * s, -0.1 * s)
+				* CFrame.Angles(0, 0, math.rad(90 - side * 32)),
+			color = hornColor,
+		})
+		-- Stub arms
+		mpart({
+			shape = Enum.PartType.Ball,
+			size = Vector3.new(0.9, 0.9, 0.9) * s,
+			offset = CFrame.new(side * 1.55 * s, -0.15 * s, -0.35 * s),
+			color = darkColor,
+		})
+		-- Feet (flat pucks)
+		mpart({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(0.5 * s, 1.05 * s, 1.05 * s),
+			offset = CFrame.new(side * 0.65 * s, -1.42 * s, 0)
+				* CFrame.Angles(0, 0, math.rad(90)),
+			color = darkColor,
+		})
+	end
+
+	-- Mouth (slight smirk)
+	mpart({
+		size = Vector3.new(0.95, 0.16, 0.18) * s,
+		offset = CFrame.new(0, 1.22 * s, -1.08 * s) * CFrame.Angles(0, 0, math.rad(5)),
+		color = Color3.fromRGB(25, 20, 28),
+	})
+
+	-- Back spikes along the spine (bosses: glowing crown row)
+	local spikeCount = isBoss and 4 or 3
 	for i = 1, spikeCount do
-		local spike = Instance.new("Part")
-		spike.Name = "Spike"
-		spike.Size = Vector3.new(0.4, 1.3, 0.4) * scale
-		spike.Material = Enum.Material.SmoothPlastic
-		spike.Color = layer.glowColor
-		spike.Anchored = true
-		spike.CanCollide = false
-		spike.CFrame = body.CFrame
-			* CFrame.Angles(0, (i / spikeCount) * math.pi * 2, math.rad(25))
-			* CFrame.new(0, 1.9 * scale, 0)
-		spike.Parent = model
+		mpart({
+			size = Vector3.new(0.3, 0.95 - i * 0.12, 0.3) * s,
+			offset = CFrame.new(0, (1.15 - (i - 1) * 0.62) * s, (1.15 + (i - 1) * 0.18) * s)
+				* CFrame.Angles(math.rad(28 + i * 8), 0, 0),
+			color = layer.glowColor,
+			material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
+		})
 	end
 
 	-- Health bar billboard
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "HPBar"
 	bb.Size = UDim2.new(0, isBoss and 130 or 80, 0, isBoss and 32 or 22)
-	bb.StudsOffset = Vector3.new(0, 3 * scale, 0)
+	bb.StudsOffset = Vector3.new(0, 3.4 * s, 0)
 	bb.AlwaysOnTop = false
 	bb.MaxDistance = 90    -- never visible from other worlds
 	bb.Parent = body
@@ -271,9 +334,16 @@ end
 -- 10 Hz looked like a slideshow, and the old idle bob moved only the Body so
 -- eyes and spikes visually detached from the monster.
 
-local groundRayParams = nil  -- set in init (excludes the Monsters folder)
+local groundRayParams = nil  -- set in init
+local monstersFolder  = nil  -- set in init
 
-local function groundYAt(x, z, fallback)
+-- excludeModel: chunk-spawned monsters live under Zones, so each monster must
+-- exclude ITSELF or the ray hits its own head and it climbs upward.
+local function groundYAt(x, z, fallback, excludeModel)
+	if groundRayParams then
+		groundRayParams.FilterDescendantsInstances = excludeModel
+			and { monstersFolder, excludeModel } or { monstersFolder }
+	end
 	local hit = workspace:Raycast(Vector3.new(x, 300, z), Vector3.new(0, -400, 0), groundRayParams)
 	if not hit then return fallback end
 	-- Never treat a player standing there as "ground"
@@ -369,7 +439,7 @@ local function thinkStep()
 
 		-- Follow the terrain (layers are hilly — fixed home height looked floaty)
 		if m.active then
-			m.groundY = groundYAt(m.pos.X, m.pos.Z, m.groundY)
+			m.groundY = groundYAt(m.pos.X, m.pos.Z, m.groundY, model)
 		end
 
 		if m.state == "telegraph" or m.state == "attack" then continue end
@@ -461,6 +531,7 @@ function MonsterService.init(ds, netRef)
 	folder.Parent = workspace
 
 	-- Find ground height via raycast (terrain layers are not flat)
+	monstersFolder = folder
 	groundRayParams = RaycastParams.new()
 	groundRayParams.FilterType = Enum.RaycastFilterType.Exclude
 	groundRayParams.FilterDescendantsInstances = { folder }

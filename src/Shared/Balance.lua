@@ -17,9 +17,15 @@ end
 
 function Balance.xpPerFell(layer)     return scaled(5, layer) end
 function Balance.coinsPerFell(layer)  return scaled(1.5, layer) end
-function Balance.bambooHP(layer)      return scaled(2, layer) end
 function Balance.coinsPerMine(layer)  return scaled(4, layer) end
 function Balance.rockHP(layer)        return scaled(5, layer) end
+
+-- Segment cutting: damage accumulates per stalk; every segHP slices one piece
+-- off the top. Tier-1 sword = 1 segment per swing on layer 1; better swords
+-- cut several segments per swing (sword progression carries the feel).
+function Balance.bambooSegHP(layer)   return scaled(1, layer) end
+function Balance.coinsPerCut(layer)   return math.max(1, math.ceil(Balance.coinsPerFell(layer) / 4)) end
+function Balance.xpPerCut(layer)      return math.max(1, math.ceil(Balance.xpPerFell(layer) / 4)) end
 
 Balance.BAMBOO_RESPAWN = {}
 Balance.ROCK_RESPAWN   = {}
@@ -32,9 +38,7 @@ end
 
 -- ── Combat / Stats ────────────────────────────────────────────────────────────
 Balance.SWING_DELAY      = 0.35
-Balance.LEVEL_DMG        = 0.12   -- +12% damage per player level — higher level
-                                  -- = the sword cuts bamboo like a sharp knife
-Balance.CLEAVE_RADIUS    = 8      -- one swing slices ALL bamboo around the target
+Balance.CLEAVE_RADIUS    = 8      -- one swing also slices bamboo around the target
 Balance.SHARPNESS_MULT   = 0.15   -- +15% damage per Schärfe level
 Balance.SPEED_REDUCTION  = 0.025  -- -0.025s swing delay per level (min 0.15)
 Balance.LUCK_CRIT_CHANCE = 0.03   -- +3% crit per level (cap 60%)

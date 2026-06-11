@@ -29,9 +29,15 @@ end
 
 function Balance.xpPerFell(layer)     return scaled(5, layer) end
 function Balance.coinsPerFell(layer)  return scaled(1.5, layer) end
-function Balance.bambooHP(layer)      return scaled(2, layer) end
 function Balance.coinsPerMine(layer)  return scaled(4, layer) end
 function Balance.rockHP(layer)        return scaled(5, layer) end
+
+-- Segment cutting: damage accumulates per stalk; every segHP slices one piece
+-- off the top. Tier-1 sword = 1 segment per swing on layer 1; better swords
+-- cut several segments per swing (sword progression carries the feel).
+function Balance.bambooSegHP(layer)   return scaled(1, layer) end
+function Balance.coinsPerCut(layer)   return math.max(1, math.ceil(Balance.coinsPerFell(layer) / 4)) end
+function Balance.xpPerCut(layer)      return math.max(1, math.ceil(Balance.xpPerFell(layer) / 4)) end
 
 Balance.BAMBOO_RESPAWN = {}
 Balance.ROCK_RESPAWN   = {}
@@ -44,9 +50,7 @@ end
 
 -- ── Combat / Stats ────────────────────────────────────────────────────────────
 Balance.SWING_DELAY      = 0.35
-Balance.LEVEL_DMG        = 0.12   -- +12% damage per player level — higher level
-                                  -- = the sword cuts bamboo like a sharp knife
-Balance.CLEAVE_RADIUS    = 8      -- one swing slices ALL bamboo around the target
+Balance.CLEAVE_RADIUS    = 8      -- one swing also slices bamboo around the target
 Balance.SHARPNESS_MULT   = 0.15   -- +15% damage per Schärfe level
 Balance.SPEED_REDUCTION  = 0.025  -- -0.025s swing delay per level (min 0.15)
 Balance.LUCK_CRIT_CHANCE = 0.03   -- +3% crit per level (cap 60%)
@@ -1792,61 +1796,124 @@ local net         = nil
 local monsters = {}   -- [model] = state table
 
 -- ── Monster model builder ─────────────────────────────────────────────────────
+-- A proper little creature instead of a ball with spikes: body, head with
+-- angry eyes + pupils + brows, horns, mouth, stub arms, feet and back spikes.
+-- The face points toward -Z (matches the AI's yaw math).
 local function buildMonsterModel(layer, pos, isBoss)
-	local scale = isBoss and 2.6 or 1
-	local color = layer.glowColor:Lerp(Color3.fromRGB(30, 30, 30), isBoss and 0.25 or 0.45)
+	local s = isBoss and 2.6 or 1
+	local bodyColor = layer.glowColor:Lerp(Color3.fromRGB(30, 30, 30), isBoss and 0.25 or 0.45)
+	local darkColor = bodyColor:Lerp(Color3.fromRGB(15, 15, 20), 0.45)
+	local hornColor = Color3.fromRGB(228, 218, 198)
 
 	local model = Instance.new("Model")
 	model.Name = isBoss and (layer.boss and layer.boss.name or "Boss") or layer.monsterName
 
-	local body = Instance.new("Part")
-	body.Name  = "Body"
-	body.Shape = Enum.PartType.Ball
-	body.Size  = Vector3.new(3.4, 3.4, 3.4) * scale
-	body.Position = pos + Vector3.new(0, 1.7 * scale, 0)
-	body.Material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic
-	body.Color = color
-	body.Anchored = true
-	body.CanCollide = false
-	body:SetAttribute("IsMonster", true)
-	body.Parent = model
-	model.PrimaryPart = body
+	local center = pos + Vector3.new(0, 1.7 * s, 0)
 
-	-- Eyes
-	for side = -1, 1, 2 do
-		local eye = Instance.new("Part")
-		eye.Name  = "Eye"
-		eye.Shape = Enum.PartType.Ball
-		eye.Size  = Vector3.new(0.55, 0.55, 0.55) * scale
-		eye.Material = Enum.Material.Neon
-		eye.Color = isBoss and Color3.fromRGB(255, 60, 40) or Color3.fromRGB(255, 235, 200)
-		eye.Anchored = true
-		eye.CanCollide = false
-		eye.CFrame = body.CFrame * CFrame.new(side * 0.7 * scale, 0.5 * scale, -1.4 * scale)
-		eye.Parent = model
+	local function mpart(props)
+		local p = Instance.new("Part")
+		if props.shape then p.Shape = props.shape end
+		p.Size = props.size
+		p.CFrame = CFrame.new(center) * props.offset
+		p.Material = props.material or Enum.Material.SmoothPlastic
+		p.Color = props.color
+		p.Anchored = true
+		p.CanCollide = false
+		p.CastShadow = false
+		if props.name then p.Name = props.name end
+		p.Parent = model
+		return p
 	end
 
-	-- Spikes on top (bosses get a crown of them)
-	local spikeCount = isBoss and 5 or 2
+	-- Body
+	local body = mpart({
+		name = "Body", shape = Enum.PartType.Ball,
+		size = Vector3.new(3.2, 3.2, 3.2) * s, offset = CFrame.new(),
+		color = bodyColor,
+		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
+	})
+	body:SetAttribute("IsMonster", true)
+	model.PrimaryPart = body
+
+	-- Head (slightly forward)
+	mpart({
+		shape = Enum.PartType.Ball,
+		size = Vector3.new(2.1, 2.1, 2.1) * s,
+		offset = CFrame.new(0, 1.45 * s, -0.15 * s),
+		color = bodyColor:Lerp(Color3.fromRGB(255, 255, 255), 0.06),
+		material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
+	})
+
+	-- Eyes + pupils + angry brows
+	for side = -1, 1, 2 do
+		mpart({
+			shape = Enum.PartType.Ball,
+			size = Vector3.new(0.56, 0.56, 0.56) * s,
+			offset = CFrame.new(side * 0.42 * s, 1.72 * s, -1.02 * s),
+			color = isBoss and Color3.fromRGB(255, 70, 45) or Color3.fromRGB(250, 248, 240),
+			material = Enum.Material.Neon,
+		})
+		mpart({
+			shape = Enum.PartType.Ball,
+			size = Vector3.new(0.26, 0.26, 0.26) * s,
+			offset = CFrame.new(side * 0.42 * s, 1.72 * s, -1.26 * s),
+			color = Color3.fromRGB(20, 18, 24),
+		})
+		mpart({
+			size = Vector3.new(0.62, 0.14, 0.22) * s,
+			offset = CFrame.new(side * 0.44 * s, 2.04 * s, -1.0 * s)
+				* CFrame.Angles(0, 0, side * math.rad(-16)),
+			color = darkColor,
+		})
+		-- Horns (bosses get longer ones)
+		mpart({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new((isBoss and 1.25 or 0.85) * s, 0.28 * s, 0.28 * s),
+			offset = CFrame.new(side * 0.78 * s, 2.35 * s, -0.1 * s)
+				* CFrame.Angles(0, 0, math.rad(90 - side * 32)),
+			color = hornColor,
+		})
+		-- Stub arms
+		mpart({
+			shape = Enum.PartType.Ball,
+			size = Vector3.new(0.9, 0.9, 0.9) * s,
+			offset = CFrame.new(side * 1.55 * s, -0.15 * s, -0.35 * s),
+			color = darkColor,
+		})
+		-- Feet (flat pucks)
+		mpart({
+			shape = Enum.PartType.Cylinder,
+			size = Vector3.new(0.5 * s, 1.05 * s, 1.05 * s),
+			offset = CFrame.new(side * 0.65 * s, -1.42 * s, 0)
+				* CFrame.Angles(0, 0, math.rad(90)),
+			color = darkColor,
+		})
+	end
+
+	-- Mouth (slight smirk)
+	mpart({
+		size = Vector3.new(0.95, 0.16, 0.18) * s,
+		offset = CFrame.new(0, 1.22 * s, -1.08 * s) * CFrame.Angles(0, 0, math.rad(5)),
+		color = Color3.fromRGB(25, 20, 28),
+	})
+
+	-- Back spikes along the spine (bosses: glowing crown row)
+	local spikeCount = isBoss and 4 or 3
 	for i = 1, spikeCount do
-		local spike = Instance.new("Part")
-		spike.Name = "Spike"
-		spike.Size = Vector3.new(0.4, 1.3, 0.4) * scale
-		spike.Material = Enum.Material.SmoothPlastic
-		spike.Color = layer.glowColor
-		spike.Anchored = true
-		spike.CanCollide = false
-		spike.CFrame = body.CFrame
-			* CFrame.Angles(0, (i / spikeCount) * math.pi * 2, math.rad(25))
-			* CFrame.new(0, 1.9 * scale, 0)
-		spike.Parent = model
+		mpart({
+			size = Vector3.new(0.3, 0.95 - i * 0.12, 0.3) * s,
+			offset = CFrame.new(0, (1.15 - (i - 1) * 0.62) * s, (1.15 + (i - 1) * 0.18) * s)
+				* CFrame.Angles(math.rad(28 + i * 8), 0, 0),
+			color = layer.glowColor,
+			material = isBoss and Enum.Material.Neon or Enum.Material.SmoothPlastic,
+		})
 	end
 
 	-- Health bar billboard
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "HPBar"
 	bb.Size = UDim2.new(0, isBoss and 130 or 80, 0, isBoss and 32 or 22)
-	bb.StudsOffset = Vector3.new(0, 3 * scale, 0)
+	bb.StudsOffset = Vector3.new(0, 3.4 * s, 0)
 	bb.AlwaysOnTop = false
 	bb.MaxDistance = 90    -- never visible from other worlds
 	bb.Parent = body
@@ -2046,9 +2113,16 @@ end
 -- 10 Hz looked like a slideshow, and the old idle bob moved only the Body so
 -- eyes and spikes visually detached from the monster.
 
-local groundRayParams = nil  -- set in init (excludes the Monsters folder)
+local groundRayParams = nil  -- set in init
+local monstersFolder  = nil  -- set in init
 
-local function groundYAt(x, z, fallback)
+-- excludeModel: chunk-spawned monsters live under Zones, so each monster must
+-- exclude ITSELF or the ray hits its own head and it climbs upward.
+local function groundYAt(x, z, fallback, excludeModel)
+	if groundRayParams then
+		groundRayParams.FilterDescendantsInstances = excludeModel
+			and { monstersFolder, excludeModel } or { monstersFolder }
+	end
 	local hit = workspace:Raycast(Vector3.new(x, 300, z), Vector3.new(0, -400, 0), groundRayParams)
 	if not hit then return fallback end
 	-- Never treat a player standing there as "ground"
@@ -2144,7 +2218,7 @@ local function thinkStep()
 
 		-- Follow the terrain (layers are hilly — fixed home height looked floaty)
 		if m.active then
-			m.groundY = groundYAt(m.pos.X, m.pos.Z, m.groundY)
+			m.groundY = groundYAt(m.pos.X, m.pos.Z, m.groundY, model)
 		end
 
 		if m.state == "telegraph" or m.state == "attack" then continue end
@@ -2236,6 +2310,7 @@ function MonsterService.init(ds, netRef)
 	folder.Parent = workspace
 
 	-- Find ground height via raycast (terrain layers are not flat)
+	monstersFolder = folder
 	groundRayParams = RaycastParams.new()
 	groundRayParams.FilterType = Enum.RaycastFilterType.Exclude
 	groundRayParams.FilterDescendantsInstances = { folder }
@@ -3088,10 +3163,9 @@ local function computeDamage(player, damageOverride)
 	if not d then return 1 end
 	local sharpness = d.stats.sharpness or 0
 	local tier      = d.swordTier or 1
-	-- Level scaling: every level the sword cuts faster — high level slices
-	-- low-layer bamboo in one clean swing, like a sharp knife.
-	local base = (1 + sharpness * Balance.SHARPNESS_MULT + ((d.level or 1) - 1) * Balance.LEVEL_DMG)
-		* (Balance.TIER_MULT[tier] or 1)
+	-- Progression lives in the SWORD: tier + Schärfe decide how many segments
+	-- one swing cuts (level alone never one-shots a stalk)
+	local base = (1 + sharpness * Balance.SHARPNESS_MULT) * (Balance.TIER_MULT[tier] or 1)
 	local dmg  = math.ceil(base)
 	-- Crit
 	local luck = d.stats.luck or 0
@@ -3101,7 +3175,9 @@ local function computeDamage(player, damageOverride)
 	return dmg
 end
 
--- ── Bamboo stalk visual builder (returns hitbox, visuals[], segH) ─────────────
+-- ── Bamboo stalk visual builder ───────────────────────────────────────────────
+-- Returns hitbox, segGroups, segH, model, baseY. segGroups[i] holds the parts
+-- of segment i (bottom→top) so the stalk can be sliced piece by piece.
 local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 	baseY = baseY or 1
 	local h  = layer.bambooH
@@ -3125,9 +3201,12 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 	hitbox.Parent = model
 	model.PrimaryPart = hitbox
 
-	local visuals = {}
+	local segGroups = {}
 
 	for s = 1, segCount do
+		local group = {}
+		segGroups[s] = group
+
 		local segY = baseY + (s - 0.5) * segH
 		local seg  = Instance.new("Part")
 		seg.Shape   = Enum.PartType.Cylinder
@@ -3138,7 +3217,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		seg.Anchored = true
 		seg.CanCollide = false
 		seg.Parent  = model
-		table.insert(visuals, { part = seg, color = layer.bambooColor })
+		table.insert(group, { part = seg, color = layer.bambooColor })
 
 		if s < segCount then
 			local ring = Instance.new("Part")
@@ -3150,11 +3229,11 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 			ring.Anchored = true
 			ring.CanCollide = false
 			ring.Parent  = model
-			table.insert(visuals, { part = ring, color = layer.nodeColor })
+			table.insert(group, { part = ring, color = layer.nodeColor })
 		end
 	end
 
-	-- Leaves
+	-- Leaves belong to the top segment — they fall with the first cut
 	local leafCol = layer.bambooColor:Lerp(Color3.fromRGB(55, 140, 48), 0.45)
 	for l = 1, 4 do
 		local ang  = (l / 4) * math.pi * 2 + rng:NextNumber(0, 0.9)
@@ -3168,31 +3247,36 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		leaf.Anchored = true
 		leaf.CanCollide = false
 		leaf.Parent  = model
-		table.insert(visuals, { part = leaf, color = leafCol })
+		table.insert(segGroups[segCount], { part = leaf, color = leafCol })
 	end
 
-	return hitbox, visuals, segH, model, baseY
+	return hitbox, segGroups, segH, model, baseY
 end
 
 -- ── Register bamboo with full chop handler (self-contained closure) ───────────
-local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, baseY, layerOverride)
+-- Segment cutting: every swing slices pieces off the TOP of the stalk. How
+-- many segments fall per swing depends on the sword (tier + Schärfe). The
+-- stalk is gone once every segment is cut, then it regrows.
+local function registerBamboo(hitbox, layerIdx, segGroups, segH, model, bx, bz, baseY, layerOverride)
 	baseY = baseY or 1
 	local layer    = layerOverride or Layers.DATA[layerIdx]
-	local maxHP    = Balance.bambooHP(layerIdx)
+	local segHP    = Balance.bambooSegHP(layerIdx)
 	local respTime = Balance.BAMBOO_RESPAWN[layerIdx]
 	local h        = layer.bambooH
 	local th       = layer.bambooThick
+	local segCount = #segGroups
 
+	local segsLeft   = segCount
+	local accum      = 0      -- carried-over damage toward the next segment
 	local extraSegs  = 0
 	local extraParts = {}
 	local growToken  = 0
 
 	local function setTransp(t)
-		for _, v in ipairs(visuals) do v.part.Transparency = t end
+		for _, group in ipairs(segGroups) do
+			for _, v in ipairs(group) do v.part.Transparency = t end
+		end
 		for _, p in ipairs(extraParts) do pcall(function() p.Transparency = t end) end
-	end
-	local function resetColors()
-		for _, v in ipairs(visuals) do v.part.Color = v.color end
 	end
 	local function clearExtra()
 		extraSegs = 0
@@ -3200,11 +3284,20 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, ba
 		table.clear(extraParts)
 	end
 
+	-- Hitbox shrinks with the stalk so clicks target what's actually left
+	local function updateHitbox()
+		local remaining = math.max(segsLeft, 0) * segH
+		if remaining > 0 then
+			hitbox.Size = Vector3.new(th * 2.5, remaining, th * 2.5)
+			hitbox.Position = Vector3.new(bx, baseY + remaining / 2, bz)
+		end
+	end
+
 	local function growAnim()
 		setTransp(1)
-		for _, v in ipairs(visuals) do
-			v.part.Transparency = 0
-			task.wait(0.035)
+		for _, group in ipairs(segGroups) do
+			for _, v in ipairs(group) do v.part.Transparency = 0 end
+			task.wait(0.04)
 		end
 	end
 
@@ -3215,7 +3308,9 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, ba
 			while true do
 				task.wait(10)
 				if tok ~= growToken or not hitbox.Parent then return end
-				if hitbox:GetAttribute("IsDead") or extraSegs >= 4 then return end
+				if hitbox:GetAttribute("IsDead") then return end
+				-- Only intact stalks keep growing (extra segments = bonus loot)
+				if segsLeft < segCount or extraSegs >= 4 then continue end
 				extraSegs += 1
 				local segY = baseY + h + (extraSegs - 0.5) * segH
 				local seg  = Instance.new("Part")
@@ -3265,66 +3360,92 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, ba
 		local combo  = trackCombo(player)
 		local damage = computeDamage(player, damageOverride)
 
-		bambooHP[hitbox] = (bambooHP[hitbox] or maxHP) - damage
-
-		-- Tint toward orange as HP drops
-		local frac = math.max(0, bambooHP[hitbox]) / maxHP
-		for _, v in ipairs(visuals) do
-			v.part.Color = v.color:Lerp(Color3.fromRGB(255, 80, 0), 1 - frac)
+		-- Damage accumulates; every segHP one piece falls off the top
+		accum += damage
+		local cuts = math.floor(accum / segHP)
+		if cuts < 1 then
+			-- Not through yet — feedback hit without a slice
+			broadcastHit(Vector3.new(bx, baseY + segsLeft * segH, bz),
+				layer.bambooColor, false, combo, damage, nil)
+			return
 		end
+		accum -= cuts * segHP
 
-		local died = bambooHP[hitbox] <= 0
-		local sliceInfo = died and {
-			slicePos  = hitbox.Position,
-			topHeight = h + extraSegs * segH,
+		-- Bonus growth segments fall first, then real segments top-down
+		local cutTotal = 0
+		while cuts > 0 and extraSegs > 0 do
+			local p = table.remove(extraParts)
+			if p then pcall(function() p:Destroy() end) end
+			extraSegs -= 1
+			cuts -= 1
+			cutTotal += 1
+		end
+		while cuts > 0 and segsLeft > 0 do
+			for _, v in ipairs(segGroups[segsLeft]) do v.part.Transparency = 1 end
+			segsLeft -= 1
+			cuts -= 1
+			cutTotal += 1
+		end
+		if cutTotal == 0 then return end
+		updateHitbox()
+
+		local died = segsLeft <= 0
+
+		-- The removed piece, for the client's flying-pieces effect
+		local removedH  = cutTotal * segH
+		local cutPlaneY = baseY + segsLeft * segH
+		local sliceInfo = {
+			slicePos  = Vector3.new(bx, cutPlaneY + removedH / 2, bz),
+			topHeight = removedH,
 			color     = layer.bambooColor,
 			thickness = th,
-		} or nil
+		}
 
-		broadcastHit(hitbox.Position, layer.bambooColor, died, combo, damage, sliceInfo)
+		-- Rewards per cut piece + a fell bonus for finishing the stalk
+		local mult        = Balance.comboMult(combo)
+		local rebirthMult = Balance.rebirthMult(pdata.rebirths or 0)
+		local coins = math.ceil(Balance.coinsPerCut(layerIdx) * cutTotal * mult * rebirthMult)
+		local xpAmt = Balance.xpPerCut(layerIdx) * cutTotal
+		if died then
+			coins += math.ceil(Balance.coinsPerFell(layerIdx) * mult * rebirthMult)
+			xpAmt += Balance.xpPerFell(layerIdx)
+			pdata.totalFelled = pdata.totalFelled + 1
+		end
+		pdata.coins = pdata.coins + coins
+
+		local leveledUp, newLevel = dataService.addXP(player, xpAmt)
+		if leveledUp then
+			for li2, ld in ipairs(Layers.DATA) do
+				if newLevel >= ld.requiredLevel and li2 > pdata.highestLayer then
+					pdata.highestLayer = li2
+					net.LayerUnlocked:FireClient(player, li2)
+				end
+			end
+		end
+		dataService.sendUpdate(player)
+
+		broadcastHit(sliceInfo.slicePos, layer.bambooColor, died, combo, damage, sliceInfo)
 
 		if died then
 			hitbox:SetAttribute("IsDead", true)
 			hitbox.CanCollide = false
 			setTransp(1)
-
-			local bonus = extraSegs
 			clearExtra()
-
-			local mult  = Balance.comboMult(combo)
-			local rebirthMult = Balance.rebirthMult(pdata.rebirths or 0)
-			local coins = math.ceil(Balance.coinsPerFell(layerIdx) * mult * rebirthMult) + bonus
-			local xpAmt = Balance.xpPerFell(layerIdx)
-
-			pdata.coins       = pdata.coins + coins
-			pdata.totalFelled = pdata.totalFelled + 1
-
-			local leveledUp, newLevel = dataService.addXP(player, xpAmt)
-			if leveledUp then
-				for li, ld in ipairs(Layers.DATA) do
-					if newLevel >= ld.requiredLevel and li > pdata.highestLayer then
-						pdata.highestLayer = li
-						net.LayerUnlocked:FireClient(player, li)
-					end
-				end
-			end
-
-			dataService.sendUpdate(player)
+			accum = 0
 
 			task.spawn(function()
 				task.wait(respTime)
 				if not hitbox.Parent then return end
-				bambooHP[hitbox] = maxHP
+				segsLeft = segCount
 				hitbox:SetAttribute("IsDead", false)
+				updateHitbox()
 				hitbox.CanCollide = true
-				resetColors()
 				growAnim()
 				startGrowth()
 			end)
 		end
 	end
 
-	bambooHP[hitbox]     = maxHP
 	chopHandlers[hitbox] = handler
 	startGrowth()
 end
@@ -4045,10 +4166,20 @@ InputCtrl.init(net, EffectsCtrl, UICtrl)
 -- known-good ids so every zone always ends up with music.
 local TweenService = game:GetService("TweenService")
 
-local TRACK_HUB    = { "rbxassetid://1841647093" }                          -- ruhig
-local TRACK_FOREST = { "rbxassetid://1843463175", "rbxassetid://1841647093" } -- Grün/Gold
-local TRACK_MYSTIC = { "rbxassetid://9046897116", "rbxassetid://1843463175" } -- Kristall/Schatten
-local TRACK_EPIC   = { "rbxassetid://1837879082", "rbxassetid://9046897116" } -- Vulkan/Himmel
+-- ▼▼ HIER eigene Musik-IDs eintragen (erste ladbare ID gewinnt) ▼▼
+local TRACK_HUB    = {  -- gemütlich/fröhlich
+	"rbxassetid://9043887091", "rbxassetid://9046863017", "rbxassetid://1843463175",
+}
+local TRACK_FOREST = {  -- hell, entspannt (Grüner/Goldener Hain)
+	"rbxassetid://9046896990", "rbxassetid://9045766818", "rbxassetid://1843463175",
+}
+local TRACK_MYSTIC = {  -- geheimnisvoll (Kristall/Schatten)
+	"rbxassetid://9046897116", "rbxassetid://1843463175",
+}
+local TRACK_EPIC   = {  -- treibend (Vulkan/Himmel)
+	"rbxassetid://9046515361", "rbxassetid://1837879082",
+}
+local MUSIC_VOLUME = 0.27
 
 local function zoneTracks(layerIdx)
 	if not layerIdx or layerIdx == 0 then return TRACK_HUB end
@@ -4096,7 +4227,7 @@ local function playZoneMusic(layerIdx)
 				end
 				currentMusic = music
 				music:Play()
-				TweenService:Create(music, TweenInfo.new(1.2), { Volume = 0.35 }):Play()
+				TweenService:Create(music, TweenInfo.new(1.2), { Volume = MUSIC_VOLUME }):Play()
 				return
 			end
 			music:Destroy()
@@ -4184,9 +4315,10 @@ net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage,
 	EffectsCtrl.shake(died and 1.25 or 0.38)
 	EffectsCtrl.spawnFragments(hitPos, color, died and 9 or 3)
 
-	if died then
+	-- Every cut (not just the final fell) shows flying pieces + slice sound
+	if sliceInfo then
 		EffectsCtrl.spawnFallingTops(sliceInfo)
-		EffectsCtrl.playSliceSound((sliceInfo and sliceInfo.slicePos) or hitPos)
+		EffectsCtrl.playSliceSound(sliceInfo.slicePos or hitPos)
 	end
 
 	if combo then UICtrl.showCombo(combo) end
@@ -4389,8 +4521,8 @@ function EffectsController.spawnFallingTops(sliceInfo)
 		{ Transparency = 1, Size = flash.Size * 1.6 }):Play()
 	Debris:AddItem(flash, 0.2)
 
-	-- Stalk segments fly apart (top pieces get flung further)
-	local pieces = math.clamp(math.floor(topH / 3 + 0.5), 3, 7)
+	-- The cut piece breaks into its segments (1 piece per ~3 studs cut)
+	local pieces = math.clamp(math.floor(topH / 3 + 0.5), 1, 7)
 	local segLen = topH / pieces
 	local baseY  = pos.Y - topH / 2
 	for i = 1, pieces do

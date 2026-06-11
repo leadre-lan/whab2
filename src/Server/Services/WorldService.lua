@@ -51,10 +51,9 @@ local function computeDamage(player, damageOverride)
 	if not d then return 1 end
 	local sharpness = d.stats.sharpness or 0
 	local tier      = d.swordTier or 1
-	-- Level scaling: every level the sword cuts faster — high level slices
-	-- low-layer bamboo in one clean swing, like a sharp knife.
-	local base = (1 + sharpness * Balance.SHARPNESS_MULT + ((d.level or 1) - 1) * Balance.LEVEL_DMG)
-		* (Balance.TIER_MULT[tier] or 1)
+	-- Progression lives in the SWORD: tier + Schärfe decide how many segments
+	-- one swing cuts (level alone never one-shots a stalk)
+	local base = (1 + sharpness * Balance.SHARPNESS_MULT) * (Balance.TIER_MULT[tier] or 1)
 	local dmg  = math.ceil(base)
 	-- Crit
 	local luck = d.stats.luck or 0
@@ -64,7 +63,9 @@ local function computeDamage(player, damageOverride)
 	return dmg
 end
 
--- ── Bamboo stalk visual builder (returns hitbox, visuals[], segH) ─────────────
+-- ── Bamboo stalk visual builder ───────────────────────────────────────────────
+-- Returns hitbox, segGroups, segH, model, baseY. segGroups[i] holds the parts
+-- of segment i (bottom→top) so the stalk can be sliced piece by piece.
 local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 	baseY = baseY or 1
 	local h  = layer.bambooH
@@ -88,9 +89,12 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 	hitbox.Parent = model
 	model.PrimaryPart = hitbox
 
-	local visuals = {}
+	local segGroups = {}
 
 	for s = 1, segCount do
+		local group = {}
+		segGroups[s] = group
+
 		local segY = baseY + (s - 0.5) * segH
 		local seg  = Instance.new("Part")
 		seg.Shape   = Enum.PartType.Cylinder
@@ -101,7 +105,7 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		seg.Anchored = true
 		seg.CanCollide = false
 		seg.Parent  = model
-		table.insert(visuals, { part = seg, color = layer.bambooColor })
+		table.insert(group, { part = seg, color = layer.bambooColor })
 
 		if s < segCount then
 			local ring = Instance.new("Part")
@@ -113,11 +117,11 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 			ring.Anchored = true
 			ring.CanCollide = false
 			ring.Parent  = model
-			table.insert(visuals, { part = ring, color = layer.nodeColor })
+			table.insert(group, { part = ring, color = layer.nodeColor })
 		end
 	end
 
-	-- Leaves
+	-- Leaves belong to the top segment — they fall with the first cut
 	local leafCol = layer.bambooColor:Lerp(Color3.fromRGB(55, 140, 48), 0.45)
 	for l = 1, 4 do
 		local ang  = (l / 4) * math.pi * 2 + rng:NextNumber(0, 0.9)
@@ -131,31 +135,36 @@ local function buildBambooVisuals(layer, bx, bz, zoneFolder, baseY)
 		leaf.Anchored = true
 		leaf.CanCollide = false
 		leaf.Parent  = model
-		table.insert(visuals, { part = leaf, color = leafCol })
+		table.insert(segGroups[segCount], { part = leaf, color = leafCol })
 	end
 
-	return hitbox, visuals, segH, model, baseY
+	return hitbox, segGroups, segH, model, baseY
 end
 
 -- ── Register bamboo with full chop handler (self-contained closure) ───────────
-local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, baseY, layerOverride)
+-- Segment cutting: every swing slices pieces off the TOP of the stalk. How
+-- many segments fall per swing depends on the sword (tier + Schärfe). The
+-- stalk is gone once every segment is cut, then it regrows.
+local function registerBamboo(hitbox, layerIdx, segGroups, segH, model, bx, bz, baseY, layerOverride)
 	baseY = baseY or 1
 	local layer    = layerOverride or Layers.DATA[layerIdx]
-	local maxHP    = Balance.bambooHP(layerIdx)
+	local segHP    = Balance.bambooSegHP(layerIdx)
 	local respTime = Balance.BAMBOO_RESPAWN[layerIdx]
 	local h        = layer.bambooH
 	local th       = layer.bambooThick
+	local segCount = #segGroups
 
+	local segsLeft   = segCount
+	local accum      = 0      -- carried-over damage toward the next segment
 	local extraSegs  = 0
 	local extraParts = {}
 	local growToken  = 0
 
 	local function setTransp(t)
-		for _, v in ipairs(visuals) do v.part.Transparency = t end
+		for _, group in ipairs(segGroups) do
+			for _, v in ipairs(group) do v.part.Transparency = t end
+		end
 		for _, p in ipairs(extraParts) do pcall(function() p.Transparency = t end) end
-	end
-	local function resetColors()
-		for _, v in ipairs(visuals) do v.part.Color = v.color end
 	end
 	local function clearExtra()
 		extraSegs = 0
@@ -163,11 +172,20 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, ba
 		table.clear(extraParts)
 	end
 
+	-- Hitbox shrinks with the stalk so clicks target what's actually left
+	local function updateHitbox()
+		local remaining = math.max(segsLeft, 0) * segH
+		if remaining > 0 then
+			hitbox.Size = Vector3.new(th * 2.5, remaining, th * 2.5)
+			hitbox.Position = Vector3.new(bx, baseY + remaining / 2, bz)
+		end
+	end
+
 	local function growAnim()
 		setTransp(1)
-		for _, v in ipairs(visuals) do
-			v.part.Transparency = 0
-			task.wait(0.035)
+		for _, group in ipairs(segGroups) do
+			for _, v in ipairs(group) do v.part.Transparency = 0 end
+			task.wait(0.04)
 		end
 	end
 
@@ -178,7 +196,9 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, ba
 			while true do
 				task.wait(10)
 				if tok ~= growToken or not hitbox.Parent then return end
-				if hitbox:GetAttribute("IsDead") or extraSegs >= 4 then return end
+				if hitbox:GetAttribute("IsDead") then return end
+				-- Only intact stalks keep growing (extra segments = bonus loot)
+				if segsLeft < segCount or extraSegs >= 4 then continue end
 				extraSegs += 1
 				local segY = baseY + h + (extraSegs - 0.5) * segH
 				local seg  = Instance.new("Part")
@@ -228,66 +248,92 @@ local function registerBamboo(hitbox, layerIdx, visuals, segH, model, bx, bz, ba
 		local combo  = trackCombo(player)
 		local damage = computeDamage(player, damageOverride)
 
-		bambooHP[hitbox] = (bambooHP[hitbox] or maxHP) - damage
-
-		-- Tint toward orange as HP drops
-		local frac = math.max(0, bambooHP[hitbox]) / maxHP
-		for _, v in ipairs(visuals) do
-			v.part.Color = v.color:Lerp(Color3.fromRGB(255, 80, 0), 1 - frac)
+		-- Damage accumulates; every segHP one piece falls off the top
+		accum += damage
+		local cuts = math.floor(accum / segHP)
+		if cuts < 1 then
+			-- Not through yet — feedback hit without a slice
+			broadcastHit(Vector3.new(bx, baseY + segsLeft * segH, bz),
+				layer.bambooColor, false, combo, damage, nil)
+			return
 		end
+		accum -= cuts * segHP
 
-		local died = bambooHP[hitbox] <= 0
-		local sliceInfo = died and {
-			slicePos  = hitbox.Position,
-			topHeight = h + extraSegs * segH,
+		-- Bonus growth segments fall first, then real segments top-down
+		local cutTotal = 0
+		while cuts > 0 and extraSegs > 0 do
+			local p = table.remove(extraParts)
+			if p then pcall(function() p:Destroy() end) end
+			extraSegs -= 1
+			cuts -= 1
+			cutTotal += 1
+		end
+		while cuts > 0 and segsLeft > 0 do
+			for _, v in ipairs(segGroups[segsLeft]) do v.part.Transparency = 1 end
+			segsLeft -= 1
+			cuts -= 1
+			cutTotal += 1
+		end
+		if cutTotal == 0 then return end
+		updateHitbox()
+
+		local died = segsLeft <= 0
+
+		-- The removed piece, for the client's flying-pieces effect
+		local removedH  = cutTotal * segH
+		local cutPlaneY = baseY + segsLeft * segH
+		local sliceInfo = {
+			slicePos  = Vector3.new(bx, cutPlaneY + removedH / 2, bz),
+			topHeight = removedH,
 			color     = layer.bambooColor,
 			thickness = th,
-		} or nil
+		}
 
-		broadcastHit(hitbox.Position, layer.bambooColor, died, combo, damage, sliceInfo)
+		-- Rewards per cut piece + a fell bonus for finishing the stalk
+		local mult        = Balance.comboMult(combo)
+		local rebirthMult = Balance.rebirthMult(pdata.rebirths or 0)
+		local coins = math.ceil(Balance.coinsPerCut(layerIdx) * cutTotal * mult * rebirthMult)
+		local xpAmt = Balance.xpPerCut(layerIdx) * cutTotal
+		if died then
+			coins += math.ceil(Balance.coinsPerFell(layerIdx) * mult * rebirthMult)
+			xpAmt += Balance.xpPerFell(layerIdx)
+			pdata.totalFelled = pdata.totalFelled + 1
+		end
+		pdata.coins = pdata.coins + coins
+
+		local leveledUp, newLevel = dataService.addXP(player, xpAmt)
+		if leveledUp then
+			for li2, ld in ipairs(Layers.DATA) do
+				if newLevel >= ld.requiredLevel and li2 > pdata.highestLayer then
+					pdata.highestLayer = li2
+					net.LayerUnlocked:FireClient(player, li2)
+				end
+			end
+		end
+		dataService.sendUpdate(player)
+
+		broadcastHit(sliceInfo.slicePos, layer.bambooColor, died, combo, damage, sliceInfo)
 
 		if died then
 			hitbox:SetAttribute("IsDead", true)
 			hitbox.CanCollide = false
 			setTransp(1)
-
-			local bonus = extraSegs
 			clearExtra()
-
-			local mult  = Balance.comboMult(combo)
-			local rebirthMult = Balance.rebirthMult(pdata.rebirths or 0)
-			local coins = math.ceil(Balance.coinsPerFell(layerIdx) * mult * rebirthMult) + bonus
-			local xpAmt = Balance.xpPerFell(layerIdx)
-
-			pdata.coins       = pdata.coins + coins
-			pdata.totalFelled = pdata.totalFelled + 1
-
-			local leveledUp, newLevel = dataService.addXP(player, xpAmt)
-			if leveledUp then
-				for li, ld in ipairs(Layers.DATA) do
-					if newLevel >= ld.requiredLevel and li > pdata.highestLayer then
-						pdata.highestLayer = li
-						net.LayerUnlocked:FireClient(player, li)
-					end
-				end
-			end
-
-			dataService.sendUpdate(player)
+			accum = 0
 
 			task.spawn(function()
 				task.wait(respTime)
 				if not hitbox.Parent then return end
-				bambooHP[hitbox] = maxHP
+				segsLeft = segCount
 				hitbox:SetAttribute("IsDead", false)
+				updateHitbox()
 				hitbox.CanCollide = true
-				resetColors()
 				growAnim()
 				startGrowth()
 			end)
 		end
 	end
 
-	bambooHP[hitbox]     = maxHP
 	chopHandlers[hitbox] = handler
 	startGrowth()
 end

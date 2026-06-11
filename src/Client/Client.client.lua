@@ -43,10 +43,20 @@ InputCtrl.init(net, EffectsCtrl, UICtrl)
 -- known-good ids so every zone always ends up with music.
 local TweenService = game:GetService("TweenService")
 
-local TRACK_HUB    = { "rbxassetid://1841647093" }                          -- ruhig
-local TRACK_FOREST = { "rbxassetid://1843463175", "rbxassetid://1841647093" } -- Grün/Gold
-local TRACK_MYSTIC = { "rbxassetid://9046897116", "rbxassetid://1843463175" } -- Kristall/Schatten
-local TRACK_EPIC   = { "rbxassetid://1837879082", "rbxassetid://9046897116" } -- Vulkan/Himmel
+-- ▼▼ HIER eigene Musik-IDs eintragen (erste ladbare ID gewinnt) ▼▼
+local TRACK_HUB    = {  -- gemütlich/fröhlich
+	"rbxassetid://9043887091", "rbxassetid://9046863017", "rbxassetid://1843463175",
+}
+local TRACK_FOREST = {  -- hell, entspannt (Grüner/Goldener Hain)
+	"rbxassetid://9046896990", "rbxassetid://9045766818", "rbxassetid://1843463175",
+}
+local TRACK_MYSTIC = {  -- geheimnisvoll (Kristall/Schatten)
+	"rbxassetid://9046897116", "rbxassetid://1843463175",
+}
+local TRACK_EPIC   = {  -- treibend (Vulkan/Himmel)
+	"rbxassetid://9046515361", "rbxassetid://1837879082",
+}
+local MUSIC_VOLUME = 0.27
 
 local function zoneTracks(layerIdx)
 	if not layerIdx or layerIdx == 0 then return TRACK_HUB end
@@ -94,7 +104,7 @@ local function playZoneMusic(layerIdx)
 				end
 				currentMusic = music
 				music:Play()
-				TweenService:Create(music, TweenInfo.new(1.2), { Volume = 0.35 }):Play()
+				TweenService:Create(music, TweenInfo.new(1.2), { Volume = MUSIC_VOLUME }):Play()
 				return
 			end
 			music:Destroy()
@@ -182,9 +192,10 @@ net.HitEffect.OnClientEvent:Connect(function(hitPos, color, died, combo, damage,
 	EffectsCtrl.shake(died and 1.25 or 0.38)
 	EffectsCtrl.spawnFragments(hitPos, color, died and 9 or 3)
 
-	if died then
+	-- Every cut (not just the final fell) shows flying pieces + slice sound
+	if sliceInfo then
 		EffectsCtrl.spawnFallingTops(sliceInfo)
-		EffectsCtrl.playSliceSound((sliceInfo and sliceInfo.slicePos) or hitPos)
+		EffectsCtrl.playSliceSound(sliceInfo.slicePos or hitPos)
 	end
 
 	if combo then UICtrl.showCombo(combo) end

@@ -129,8 +129,8 @@ function EffectsController.spawnFallingTops(sliceInfo)
 		{ Transparency = 1, Size = flash.Size * 1.6 }):Play()
 	Debris:AddItem(flash, 0.2)
 
-	-- Stalk segments fly apart (top pieces get flung further)
-	local pieces = math.clamp(math.floor(topH / 3 + 0.5), 3, 7)
+	-- The cut piece breaks into its segments (1 piece per ~3 studs cut)
+	local pieces = math.clamp(math.floor(topH / 3 + 0.5), 1, 7)
 	local segLen = topH / pieces
 	local baseY  = pos.Y - topH / 2
 	for i = 1, pieces do
