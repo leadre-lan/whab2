@@ -60,7 +60,15 @@ spawnLocation.Color = Color3.fromRGB(163, 162, 165)
 spawnLocation.Parent = workspace
 
 -- ─── DataStore ────────────────────────────────────────────────────────────────
-local dataStore = DataStoreService:GetDataStore("BambooSlasher_v2")
+-- GetDataStore throws in Studio when the place isn't published; fall back to
+-- session-only data so the game still runs.
+local dataStoreOk, dataStore = pcall(function()
+	return DataStoreService:GetDataStore("BambooSlasher_v2")
+end)
+if not dataStoreOk then
+	warn("[BambooSlasher] DataStore nicht verfuegbar (Spiel nicht veroeffentlicht) - Fortschritt wird nur in dieser Session gespeichert.")
+	dataStore = nil
+end
 local playerData = {}
 
 local function defaultData()
@@ -83,6 +91,10 @@ local function mergeWithDefault(data)
 end
 
 local function loadData(player)
+	if not dataStore then
+		playerData[player] = defaultData()
+		return
+	end
 	local success, result = pcall(function()
 		return dataStore:GetAsync("player_" .. player.UserId)
 	end)
@@ -94,6 +106,7 @@ local function loadData(player)
 end
 
 local function saveData(player)
+	if not dataStore then return end
 	local data = playerData[player]
 	if not data then return end
 	pcall(function()
