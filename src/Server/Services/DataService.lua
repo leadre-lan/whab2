@@ -1,146 +1,130 @@
--- DataService.lua — Player data management with DataStore + session fallback
+-- DataService.lua — Laden/Speichern/Replizieren der Spielerdaten
 local DataService = {}
 
-local DataStoreService = game:GetService("DataStoreService")
 local Players          = game:GetService("Players")
+local DataStoreService = game:GetService("DataStoreService")
 local RS               = game:GetService("ReplicatedStorage")
 
-local Balance = require(RS:WaitForChild("Shared"):WaitForChild("Balance"))
-
-local DS_KEY       = "BambooSlasher_v4"
-local SAVE_INTERVAL = 60
+local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 
 local store = nil
-do
-	local ok, s = pcall(function()
-		return DataStoreService:GetDataStore(DS_KEY)
-	end)
-	if ok then
-		store = s
-	else
-		warn("[DataService] DataStore unavailable – session-only mode")
-	end
-end
+pcall(function()
+	store = DataStoreService:GetDataStore("HatchSnipers_v1")
+end)
 
-local playerData = {}   -- [player] = data table
-local net        = nil  -- set by init()
+local cache = {}   -- [player] = data
+
+local net = nil
 
 local function defaultData()
 	return {
-		dataVersion   = 4,
-		coins         = 0,
-		xp            = 0,
-		level         = 1,
-		totalFelled   = 0,
-		totalMined    = 0,
-		totalKills    = 0,
-		stats = {
-			sharpness = 0,
-			speed     = 0,
-			luck      = 0,
-			range     = 0,
-			stamina   = 0,
-			dodge     = 0,
-		},
-		swordTier     = 1,
-		materials     = {},     -- { ["mat1"] = 12, ... } keyed by layer
-		highestLayer  = 1,
-		rebirths      = 0,
-		rebirthTokens = 0,
-		fame          = 0,
-		elo           = 1000,
-		pvpWins       = 0,
-		pvpLosses     = 0,
-		lastDaily     = 0,      -- os.time of last daily reward
+		credits   = Config.START_CREDITS,
+		skins     = { standard = 1 },   -- jeder startet mit dem Standard-Skin
+		equipped  = "standard",
+		kills     = 0,
+		wins      = 0,
+		hatches   = 0,
+		luckUntil = 0,
+		lastDaily = 0,
 	}
 end
 
-local function deepMerge(base, incoming)
-	if type(incoming) ~= "table" then return base end
-	for k, v in pairs(base) do
-		if incoming[k] == nil then
-			incoming[k] = v
-		elseif type(v) == "table" and type(incoming[k]) == "table" then
-			incoming[k] = deepMerge(v, incoming[k])
+function DataService.load(player)
+	if cache[player] then return cache[player] end
+	local data = defaultData()
+	if store then
+		local ok, saved = pcall(function()
+			return store:GetAsync("p_" .. player.UserId)
+		end)
+		if ok and type(saved) == "table" then
+			-- fehlende Felder auffüllen (Schema-Migrationen)
+			for k, v in pairs(defaultData()) do
+				if saved[k] == nil then saved[k] = v end
+			end
+			if type(saved.skins) ~= "table" or not next(saved.skins) then
+				saved.skins = { standard = 1 }
+			end
+			data = saved
 		end
 	end
-	return incoming
+	cache[player] = data
+	DataService.sendUpdate(player)
+	return data
+end
+
+function DataService.get(player)
+	return cache[player]
+end
+
+function DataService.getOrLoad(player)
+	return cache[player] or DataService.load(player)
+end
+
+function DataService.flush(player)
+	local data = cache[player]
+	cache[player] = nil
+	if data and store then
+		pcall(function()
+			store:SetAsync("p_" .. player.UserId, data)
+		end)
+	end
+end
+
+function DataService.sendUpdate(player)
+	local data = cache[player]
+	if data and net then
+		net.UpdateData:FireClient(player, data)
+	end
+end
+
+function DataService.addCredits(player, amount)
+	local data = cache[player]
+	if not data then return end
+	data.credits = math.max(0, data.credits + amount)
+	DataService.sendUpdate(player)
 end
 
 function DataService.init(netRef)
 	net = netRef
+
+	Players.PlayerRemoving:Connect(DataService.flush)
+
+	-- Auto-Save alle 60s
 	task.spawn(function()
 		while true do
-			task.wait(SAVE_INTERVAL)
-			for _, player in ipairs(Players:GetPlayers()) do
-				DataService.save(player)
+			task.wait(60)
+			if store then
+				for player, data in pairs(cache) do
+					pcall(function()
+						store:SetAsync("p_" .. player.UserId, data)
+					end)
+				end
 			end
 		end
 	end)
-end
 
-function DataService.load(player)
-	local loaded = nil
-	if store then
-		local ok, result = pcall(function()
-			return store:GetAsync("p_" .. player.UserId)
-		end)
-		if ok and type(result) == "table" then
-			loaded = deepMerge(defaultData(), result)
+	-- Passives Einkommen (Spielzeit-Drip)
+	task.spawn(function()
+		while true do
+			task.wait(Config.DRIP_INTERVAL)
+			for player, data in pairs(cache) do
+				data.credits = data.credits + Config.DRIP_AMOUNT
+				DataService.sendUpdate(player)
+			end
 		end
-	end
-	playerData[player] = loaded or defaultData()
-end
-
-function DataService.save(player)
-	if not store then return end
-	local d = playerData[player]
-	if not d then return end
-	pcall(function()
-		store:SetAsync("p_" .. player.UserId, d)
 	end)
-end
 
-function DataService.get(player)
-	return playerData[player]
-end
+	game:BindToClose(function()
+		if store then
+			for player, data in pairs(cache) do
+				pcall(function()
+					store:SetAsync("p_" .. player.UserId, data)
+				end)
+			end
+		end
+	end)
 
--- Like get(), but loads on demand if the PlayerAdded race lost the data.
--- May yield (DataStore); only call from handlers that are allowed to yield.
-local loading = {}
-function DataService.getOrLoad(player)
-	if playerData[player] then return playerData[player] end
-	if not player.Parent then return nil end
-	if loading[player] then
-		repeat task.wait() until not loading[player]
-		return playerData[player]
-	end
-	loading[player] = true
-	DataService.load(player)
-	loading[player] = nil
-	return playerData[player]
-end
-
-function DataService.flush(player)
-	DataService.save(player)
-	playerData[player] = nil
-end
-
-function DataService.sendUpdate(player)
-	local d = playerData[player]
-	if d and net then
-		net.UpdateData:FireClient(player, d)
-	end
-end
-
--- Adds XP, recalculates level; returns (didLevelUp, newLevel)
-function DataService.addXP(player, amount)
-	local d = playerData[player]
-	if not d then return false, 1 end
-	local oldLevel = d.level
-	d.xp    = d.xp + amount
-	d.level = Balance.levelFromXP(d.xp)
-	return d.level > oldLevel, d.level
+	print("[DataService] bereit.")
 end
 
 return DataService

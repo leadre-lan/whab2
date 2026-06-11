@@ -1,29 +1,26 @@
 {
-  "name": "BambooSlasher",
+  "name": "HatchSnipers",
   "tree": {
     "$className": "DataModel",
-    "Workspace": {
-      "$className": "Workspace",
-      "$properties": { "StreamingEnabled": true }
-    },
     "Lighting": {
       "$className": "Lighting",
       "$properties": {
         "Technology": "Future",
         "GlobalShadows": true,
-        "Brightness": 2.2,
+        "Brightness": 1.6,
         "EnvironmentDiffuseScale": 0.5,
-        "EnvironmentSpecularScale": 0.5
+        "EnvironmentSpecularScale": 0.6
       }
     },
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
       "Shared": {
         "$className": "Folder",
-        "Balance":  { "$path": "src/Shared/Balance.lua" },
-        "UITheme":  { "$path": "src/Shared/UITheme.lua" },
-        "Layers":   { "$path": "src/Shared/Layers.lua" },
-        "Assets":   { "$path": "src/Shared/Assets.lua" }
+        "Config":        { "$path": "src/Shared/Config.lua" },
+        "Skins":         { "$path": "src/Shared/Skins.lua" },
+        "Assets":        { "$path": "src/Shared/Assets.lua" },
+        "UITheme":       { "$path": "src/Shared/UITheme.lua" },
+        "SniperBuilder": { "$path": "src/Shared/SniperBuilder.lua" }
       }
     },
     "ServerScriptService": {
@@ -31,16 +28,12 @@
       "Server": { "$path": "src/Server/Server.server.lua" },
       "Services": {
         "$className": "Folder",
-        "DataService":    { "$path": "src/Server/Services/DataService.lua" },
-        "WorldGenerator": { "$path": "src/Server/Services/WorldGenerator.lua" },
-        "WorldService":   { "$path": "src/Server/Services/WorldService.lua" },
-        "StatService":    { "$path": "src/Server/Services/StatService.lua" },
-        "HubService":     { "$path": "src/Server/Services/HubService.lua" },
-        "MonsterService": { "$path": "src/Server/Services/MonsterService.lua" },
-        "CombatService":  { "$path": "src/Server/Services/CombatService.lua" },
-        "ForgeService":   { "$path": "src/Server/Services/ForgeService.lua" },
-        "RebirthService": { "$path": "src/Server/Services/RebirthService.lua" },
-        "ArenaService":   { "$path": "src/Server/Services/ArenaService.lua" }
+        "DataService":   { "$path": "src/Server/Services/DataService.lua" },
+        "EggService":    { "$path": "src/Server/Services/EggService.lua" },
+        "WeaponService": { "$path": "src/Server/Services/WeaponService.lua" },
+        "ArenaService":  { "$path": "src/Server/Services/ArenaService.lua" },
+        "LobbyService":  { "$path": "src/Server/Services/LobbyService.lua" },
+        "TradeService":  { "$path": "src/Server/Services/TradeService.lua" }
       }
     },
     "StarterPlayer": {
@@ -52,7 +45,7 @@
           "$className": "Folder",
           "EffectsController": { "$path": "src/Client/Controllers/EffectsController.lua" },
           "UIController":      { "$path": "src/Client/Controllers/UIController.lua" },
-          "InputController":   { "$path": "src/Client/Controllers/InputController.lua" }
+          "WeaponController":  { "$path": "src/Client/Controllers/WeaponController.lua" }
         }
       }
     }

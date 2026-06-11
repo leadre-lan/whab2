@@ -1,111 +1,49 @@
--- Config.lua (ModuleScript in ReplicatedStorage)
--- Shared configuration for Bamboo Slasher
-
+-- Config.lua — Alle Spielwerte von Hatch Snipers an einem Ort.
 local Config = {}
 
--- ─── Bamboo Types (1-5) ────────────────────────────────────────────────────────
-Config.BAMBOO_TYPES = {
-	[1] = {
-		name        = "Junger Bambus",
-		health      = 3,
-		coins       = 1,
-		color       = Color3.fromRGB(134, 200, 90),
-		thickness   = 1.4,
-		height      = 14,
-		respawnTime = 4,
-	},
-	[2] = {
-		name        = "Gruener Bambus",
-		health      = 6,
-		coins       = 2,
-		color       = Color3.fromRGB(72, 160, 60),
-		thickness   = 1.7,
-		height      = 18,
-		respawnTime = 6,
-	},
-	[3] = {
-		name        = "Goldener Bambus",
-		health      = 12,
-		coins       = 5,
-		color       = Color3.fromRGB(210, 185, 50),
-		thickness   = 2.0,
-		height      = 22,
-		respawnTime = 10,
-	},
-	[4] = {
-		name        = "Roter Bambus",
-		health      = 22,
-		coins       = 10,
-		color       = Color3.fromRGB(190, 60, 50),
-		thickness   = 2.4,
-		height      = 26,
-		respawnTime = 15,
-	},
-	[5] = {
-		name        = "Kristall Bambus",
-		health      = 40,
-		coins       = 20,
-		color       = Color3.fromRGB(100, 210, 230),
-		thickness   = 2.8,
-		height      = 32,
-		respawnTime = 20,
+-- ── Währung / Economy ─────────────────────────────────────────────────────────
+Config.CURRENCY_NAME   = "Credits"
+Config.START_CREDITS   = 1000        -- reicht für den ersten Pull sofort
+Config.KILL_REWARD     = 25
+Config.WIN_REWARD      = 100
+Config.LOSS_REWARD     = 30
+Config.DAILY_REWARD    = 500
+Config.DAILY_COOLDOWN  = 20 * 3600   -- 20h
+Config.DRIP_AMOUNT     = 5           -- passives Einkommen …
+Config.DRIP_INTERVAL   = 30          -- … alle 30s Spielzeit
+
+-- ── Arena / Match ─────────────────────────────────────────────────────────────
+Config.ARENA_COUNT     = 4
+Config.ARENA_BASE_X    = 1200
+Config.ARENA_SPACING   = 400
+Config.KILLS_TO_WIN    = 5
+Config.MATCH_TIME      = 150         -- Sekunden, danach gewinnt der Führende
+Config.RESPAWN_DELAY   = 2.5
+Config.COUNTDOWN       = 3
+
+-- ── Waffe (IMMER gleich für alle Skins — 100% skill-basiert) ──────────────────
+Config.SHOT_COOLDOWN   = 1.4         -- Bolt-Action-Takt
+Config.SHOT_RANGE      = 800
+Config.LOBBY_SHOOTING  = true        -- in der Lobby knallt's, aber ohne Schaden
+
+-- ── Eier ──────────────────────────────────────────────────────────────────────
+-- Ein massives Omega-Ei in der Lobby-Mitte; weitere Eier einfach ergänzen
+-- (EggService + UI sind komplett config-getrieben).
+Config.EGGS = {
+	omega = {
+		name  = "Omega-Ei",
+		cost  = 750,
+		color = Color3.fromRGB(150, 80, 255),
 	},
 }
 
--- ─── Swords (levels 1-10) ─────────────────────────────────────────────────────
-Config.SWORDS = {
-	[1]  = { name = "Holzschwert",        damage = 1,   cost = 0,     color = Color3.fromRGB(180, 130, 70)  },
-	[2]  = { name = "Steinschwert",       damage = 2,   cost = 25,    color = Color3.fromRGB(160, 160, 160) },
-	[3]  = { name = "Eisenschwert",       damage = 4,   cost = 75,    color = Color3.fromRGB(200, 210, 220) },
-	[4]  = { name = "Goldschwert",        damage = 7,   cost = 200,   color = Color3.fromRGB(240, 200, 50)  },
-	[5]  = { name = "Diamantschwert",     damage = 12,  cost = 500,   color = Color3.fromRGB(80, 220, 230)  },
-	[6]  = { name = "Rubin Klinge",       damage = 20,  cost = 1200,  color = Color3.fromRGB(220, 50, 70)   },
-	[7]  = { name = "Smaragdklinge",      damage = 32,  cost = 3000,  color = Color3.fromRGB(50, 200, 100)  },
-	[8]  = { name = "Mondklinge",         damage = 50,  cost = 7500,  color = Color3.fromRGB(180, 160, 240) },
-	[9]  = { name = "Sonnenklinge",       damage = 80,  cost = 18000, color = Color3.fromRGB(255, 180, 50)  },
-	[10] = { name = "Legendaere Klinge",  damage = 130, cost = 50000, color = Color3.fromRGB(255, 80, 200)  },
-}
-
--- Global swing cooldown in seconds
-Config.SWING_DELAY = 0.5
-
--- ─── Zones (5 zones, 130 studs apart on X axis) ───────────────────────────────
-Config.ZONES = {
-	[1] = {
-		name          = "Anfaenger Wald",
-		bambooTypeId  = 1,
-		count         = 18,
-		requiredLevel = 1,
-		offsetX       = 0,
-	},
-	[2] = {
-		name          = "Gruener Hain",
-		bambooTypeId  = 2,
-		count         = 20,
-		requiredLevel = 2,
-		offsetX       = 130,
-	},
-	[3] = {
-		name          = "Goldener Hain",
-		bambooTypeId  = 3,
-		count         = 22,
-		requiredLevel = 4,
-		offsetX       = 260,
-	},
-	[4] = {
-		name          = "Rotes Dickicht",
-		bambooTypeId  = 4,
-		count         = 20,
-		requiredLevel = 6,
-		offsetX       = 390,
-	},
-	[5] = {
-		name          = "Kristallwald",
-		bambooTypeId  = 5,
-		count         = 18,
-		requiredLevel = 8,
-		offsetX       = 520,
-	},
-}
+-- ── Monetarisierung (IDs im Creator-Dashboard anlegen und hier eintragen;
+--     0 = deaktiviert, Buttons melden dann "nicht konfiguriert") ───────────────
+Config.LUCK_PRODUCT_ID  = 0          -- Dev-Product: Luck Potion
+Config.LUCK_DURATION    = 15 * 60    -- 15 Minuten
+Config.LUCK_MULTIPLIER  = 2          -- verdoppelt die Nicht-Common-Gewichte
+Config.TRADER_PASS_ID   = 0          -- Gamepass: mehr Trade-Slots
+Config.TRADE_SLOTS      = 3          -- ohne Gamepass
+Config.TRADE_SLOTS_PASS = 6          -- mit Trader-Gamepass
 
 return Config

@@ -1,263 +1,141 @@
--- EffectsController.lua — All juice: shake, fragments, numbers, slice, sounds
+-- EffectsController.lua — Tracer, Screenflash, Godly-Puls, Ei-Schweben, Juice
 local EffectsController = {}
 
-local TweenService = game:GetService("TweenService")
-local RunService   = game:GetService("RunService")
-local Debris       = game:GetService("Debris")
-local RS           = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
+local RunService        = game:GetService("RunService")
+local Debris            = game:GetService("Debris")
+local CollectionService = game:GetService("CollectionService")
+local RS                = game:GetService("ReplicatedStorage")
 
-local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
+local Skins  = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
 
-local camera   = workspace.CurrentCamera
 local shakeAmt = 0
 
--- ── Camera Shake ──────────────────────────────────────────────────────────────
+-- ── Kamera-Shake ──────────────────────────────────────────────────────────────
+-- CurrentCamera bei jedem Frame neu holen — die Instanz wechselt bei Respawns
 RunService.RenderStepped:Connect(function(dt)
 	if shakeAmt <= 0 then return end
+	local camera = workspace.CurrentCamera
+	if not camera then return end
 	shakeAmt = math.max(0, shakeAmt - dt * shakeAmt * 6)
 	camera.CFrame = camera.CFrame * CFrame.new(
 		(math.random() - 0.5) * 2 * shakeAmt,
 		(math.random() - 0.5) * 2 * shakeAmt,
-		(math.random() - 0.5) * 2 * shakeAmt)
+		0)
 end)
 
 function EffectsController.shake(intensity)
 	shakeAmt = math.max(shakeAmt, intensity)
 end
 
--- ── Flying Fragments ──────────────────────────────────────────────────────────
-function EffectsController.spawnFragments(position, color, count)
-	count = count or 4
-	for _ = 1, count do
-		local frag = Instance.new("Part")
-		frag.Size   = Vector3.new(0.28, 0.28, 0.28)
-		frag.Material = Enum.Material.SmoothPlastic
-		frag.Color    = color or Color3.fromRGB(100, 180, 80)
-		frag.Anchored = false
-		frag.CanCollide = false
-		frag.CastShadow = false
-		frag.Position = position + Vector3.new(
-			(math.random() - 0.5) * 2,
-			math.random() * 1.5,
-			(math.random() - 0.5) * 2)
-		frag.AssemblyLinearVelocity = Vector3.new(
-			(math.random() - 0.5) * 26,
-			math.random() * 22 + 8,
-			(math.random() - 0.5) * 26)
-		frag.Parent = workspace
+-- ── Tracer (Beam zwischen Mündung und Einschlag, Skin-Farbe) ──────────────────
+function EffectsController.spawnTracer(fromPos, toPos, skinId, didKill)
+	-- Nur rendern, wenn es in der Nähe passiert
+	local camera = workspace.CurrentCamera
+	if not camera or (camera.CFrame.Position - fromPos).Magnitude > 600 then return end
 
-		TweenService:Create(frag,
-			TweenInfo.new(0.65, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Transparency = 1 }):Play()
-		Debris:AddItem(frag, 0.7)
-	end
+	local skin = Skins.BY_ID[skinId] or Skins.BY_ID.standard
+	local fx = Skins.fxFor(skin.tier)
+
+	local dist = (toPos - fromPos).Magnitude
+	local beam = Instance.new("Part")
+	beam.Size = Vector3.new(fx.pulse and 0.22 or 0.1, fx.pulse and 0.22 or 0.1, dist)
+	beam.CFrame = CFrame.lookAt(fromPos, toPos) * CFrame.new(0, 0, -dist / 2)
+	beam.Material = Enum.Material.Neon
+	beam.Color = fx.neon and skin.accent or Color3.fromRGB(255, 240, 200)
+	beam.Transparency = 0.15
+	beam.Anchored = true
+	beam.CanCollide = false
+	beam.CanQuery = false
+	beam.CastShadow = false
+	beam.Parent = workspace
+	TweenService:Create(beam, TweenInfo.new(0.22), { Transparency = 1 }):Play()
+	Debris:AddItem(beam, 0.25)
+
+	-- Einschlag-Funken
+	local hitFx = Instance.new("Part")
+	hitFx.Size = Vector3.new(0.4, 0.4, 0.4)
+	hitFx.Position = toPos
+	hitFx.Material = Enum.Material.Neon
+	hitFx.Color = didKill and Color3.fromRGB(255, 70, 70) or beam.Color
+	hitFx.Shape = Enum.PartType.Ball
+	hitFx.Anchored = true
+	hitFx.CanCollide = false
+	hitFx.CanQuery = false
+	hitFx.CastShadow = false
+	hitFx.Parent = workspace
+	TweenService:Create(hitFx, TweenInfo.new(0.3),
+		{ Transparency = 1, Size = Vector3.new(2.4, 2.4, 2.4) }):Play()
+	Debris:AddItem(hitFx, 0.35)
 end
 
--- ── Floating Damage Numbers ───────────────────────────────────────────────────
-function EffectsController.spawnDamageNum(position, damage, isCrit)
-	local part = Instance.new("Part")
-	part.Size   = Vector3.new(0.1, 0.1, 0.1)
-	part.Transparency = 1
-	part.Anchored = true
-	part.CanCollide = false
-	part.CastShadow = false
-	part.Position = position + Vector3.new((math.random() - 0.5) * 2.5, 3.5, 0)
-	part.Parent   = workspace
-
-	local bb = Instance.new("BillboardGui")
-	bb.Size  = UDim2.new(0, isCrit and 96 or 70, 0, isCrit and 58 or 44)
-	bb.AlwaysOnTop = true
-	bb.Parent = part
-
-	local lbl = Instance.new("TextLabel")
-	lbl.Size  = UDim2.new(1, 0, 1, 0)
-	lbl.BackgroundTransparency = 1
-	lbl.Text  = isCrit and ("💥 " .. damage .. "!") or tostring(damage)
-	lbl.TextColor3 = isCrit and Color3.fromRGB(255, 148, 32) or Color3.fromRGB(255, 255, 255)
-	lbl.TextSize = isCrit and 28 or 20
-	lbl.Font  = Enum.Font.GothamBold
-	lbl.TextStrokeTransparency = 0.4
-	lbl.Parent = bb
-
-	TweenService:Create(part,
-		TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Position = part.Position + Vector3.new(0, 4.5, 0) }):Play()
-	TweenService:Create(lbl,
-		TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-		{ TextTransparency = 1 }):Play()
-	Debris:AddItem(part, 1.2)
+-- ── Screenflash (Godly-Treffer "verändert den Bildschirm des Gegners") ────────
+local flashGui = nil
+function EffectsController.screenFlash(screenGui, color)
+	if flashGui then flashGui:Destroy() end
+	local f = Instance.new("Frame")
+	f.Size = UDim2.new(1, 0, 1, 0)
+	f.BackgroundColor3 = color or Color3.fromRGB(255, 60, 90)
+	f.BackgroundTransparency = 0.25
+	f.BorderSizePixel = 0
+	f.ZIndex = 50
+	f.Parent = screenGui
+	flashGui = f
+	TweenService:Create(f, TweenInfo.new(0.45, Enum.EasingStyle.Quad), { BackgroundTransparency = 1 }):Play()
+	Debris:AddItem(f, 0.5)
+	EffectsController.shake(1.6)
 end
 
--- ── Slash Arc ─────────────────────────────────────────────────────────────────
-function EffectsController.spawnSlashArc(rootCFrame, color)
-	local arc = Instance.new("Part")
-	arc.Size   = Vector3.new(3.8, 0.06, 0.9)
-	arc.Material = Enum.Material.Neon
-	arc.Color    = color or Color3.fromRGB(255, 255, 255)
-	arc.Transparency = 0.15
-	arc.Anchored = true
-	arc.CanCollide = false
-	arc.CastShadow = false
-	arc.CFrame = rootCFrame * CFrame.new(0, 0.6, -3.2) * CFrame.Angles(0, 0, math.rad(-32))
-	arc.Parent = workspace
+-- ── Godly/Mythical-Puls + Omega-Ei-Schweben (getaggte Parts, lokal animiert) ──
+task.spawn(function()
+	local t = 0
+	local eggBase = {}   -- [part] = Y-Basis
+	RunService.Heartbeat:Connect(function(dt)
+		t += dt
 
-	TweenService:Create(arc,
-		TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Transparency = 1 }):Play()
-	Debris:AddItem(arc, 0.18)
-end
-
--- ── Falling Cut-Top Pieces ────────────────────────────────────────────────────
--- The felled stalk breaks into ALL of its segments — every swing shows a real
--- multi-cut, like slicing through with a sharp knife.
-function EffectsController.spawnFallingTops(sliceInfo)
-	if not sliceInfo then return end
-	local pos   = sliceInfo.slicePos
-	local color = sliceInfo.color or Color3.fromRGB(100, 180, 80)
-	local th    = sliceInfo.thickness or 1.5
-	local topH  = sliceInfo.topHeight or 10
-
-	-- White slice flash at the cut plane
-	local flash = Instance.new("Part")
-	flash.Size = Vector3.new(th * 3.5, 0.08, th * 3.5)
-	flash.Material = Enum.Material.Neon
-	flash.Color = Color3.fromRGB(255, 255, 255)
-	flash.Transparency = 0.1
-	flash.Anchored = true
-	flash.CanCollide = false
-	flash.CastShadow = false
-	flash.CFrame = CFrame.new(pos) * CFrame.Angles(0, math.random() * math.pi, math.rad(math.random(-12, 12)))
-	flash.Parent = workspace
-	TweenService:Create(flash, TweenInfo.new(0.16, Enum.EasingStyle.Quad),
-		{ Transparency = 1, Size = flash.Size * 1.6 }):Play()
-	Debris:AddItem(flash, 0.2)
-
-	-- The cut piece breaks into its segments (1 piece per ~3 studs cut)
-	local pieces = math.clamp(math.floor(topH / 3 + 0.5), 1, 7)
-	local segLen = topH / pieces
-	local baseY  = pos.Y - topH / 2
-	for i = 1, pieces do
-		local piece = Instance.new("Part")
-		piece.Shape = Enum.PartType.Cylinder
-		piece.Size  = Vector3.new(math.max(1, segLen - 0.15), th, th)
-		piece.Material = Enum.Material.SmoothPlastic
-		piece.Color    = color
-		piece.Anchored = false
-		piece.CanCollide = false
-		piece.CastShadow = false
-		piece.CFrame = CFrame.new(
-				pos.X + (math.random() - 0.5) * 0.8,
-				baseY + (i - 0.5) * segLen,
-				pos.Z + (math.random() - 0.5) * 0.8)
-			* CFrame.Angles(0, math.random() * math.pi, math.rad(90))
-		local ang  = math.random() * math.pi * 2
-		local kick = 8 + i * 2.5   -- higher pieces fly harder
-		piece.AssemblyLinearVelocity = Vector3.new(
-			math.cos(ang) * kick,
-			6 + i * 2 + math.random() * 4,
-			math.sin(ang) * kick)
-		piece.AssemblyAngularVelocity = Vector3.new(
-			(math.random() - 0.5) * 24,
-			(math.random() - 0.5) * 24,
-			(math.random() - 0.5) * 24)
-		piece.Parent = workspace
-
-		TweenService:Create(piece,
-			TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ Transparency = 1 }):Play()
-		Debris:AddItem(piece, 1.3)
-	end
-end
-
--- ── Sounds (Asset-Library, siehe Shared/Assets.lua) ──────────────────────────
-function EffectsController.playSliceSound(position)
-	Assets.playAt(position, Assets.SFX.Slice, 0.9, 1.0, 1.25)
-end
-
--- Treffer-Sound je nach Ziel-Art; der Server schickt kind über HitEffect mit
-function EffectsController.playHitSound(kind, position, died)
-	if kind == "rock" then
-		if died then
-			Assets.playAt(position, Assets.SFX.RockBreak, 0.9, 0.95, 1.1)
-		else
-			Assets.playAt(position, Assets.SFX.RockHit, 0.7, 0.9, 1.2)
+		for _, p in ipairs(CollectionService:GetTagged("PulseFX")) do
+			if p.Parent then
+				local base = Color3.new(
+					p:GetAttribute("PulseR") or 1,
+					p:GetAttribute("PulseG") or 1,
+					p:GetAttribute("PulseB") or 1)
+				if p:GetAttribute("PulseRainbow") then
+					p.Color = Color3.fromHSV((t * 0.25) % 1, 0.85, 1)
+				else
+					local pulse = 0.5 + 0.5 * math.sin(t * 4)
+					p.Color = base:Lerp(Color3.fromRGB(255, 255, 255), pulse * 0.45)
+				end
+			end
 		end
-	elseif kind == "monster" then
-		if died then
-			Assets.playAt(position, Assets.SFX.MonsterDeath, 0.85, 0.95, 1.1)
-		else
-			Assets.playAt(position, Assets.SFX.MonsterHit, 0.55, 1.0, 1.3)
+
+		for _, p in ipairs(CollectionService:GetTagged("EggFloat")) do
+			if p.Parent and p.Anchored then
+				if not eggBase[p] then eggBase[p] = p.Position.Y end
+				local cf = p.CFrame
+				p.CFrame = CFrame.new(cf.Position.X, eggBase[p] + math.sin(t * 1.2) * 0.6, cf.Position.Z)
+					* CFrame.Angles(0, t * 0.35, 0)
+			end
 		end
-	elseif kind == "hurt" then
-		-- Spieler wurde getroffen: dumpfer, tiefer
-		Assets.playAt(position, Assets.SFX.RockHit, 0.6, 0.55, 0.7)
+	end)
+end)
+
+-- ── Hatch-Konfetti (beim Reveal seltener Skins) ───────────────────────────────
+function EffectsController.confetti(screenGui, color, count)
+	for _ = 1, count or 24 do
+		local c = Instance.new("Frame")
+		c.Size = UDim2.new(0, math.random(6, 12), 0, math.random(6, 12))
+		c.Position = UDim2.new(math.random(), 0, -0.05, 0)
+		c.BackgroundColor3 = (math.random() < 0.5) and color or Color3.fromHSV(math.random(), 0.8, 1)
+		c.BorderSizePixel = 0
+		c.Rotation = math.random(0, 360)
+		c.ZIndex = 40
+		c.Parent = screenGui
+		TweenService:Create(c, TweenInfo.new(1.4 + math.random() * 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+			Position = UDim2.new(c.Position.X.Scale + (math.random() - 0.5) * 0.2, 0, 1.1, 0),
+			Rotation = c.Rotation + math.random(-220, 220),
+		}):Play()
+		Debris:AddItem(c, 2.4)
 	end
-end
-
--- ── Coin Magnet Popup ─────────────────────────────────────────────────────────
-function EffectsController.spawnCoinPopup(screenGui, amount)
-	if amount <= 0 then return end
-	Assets.play2D(Assets.SFX.Coin, 0.35, 1.1 + math.random() * 0.25)
-	local lbl = Instance.new("TextLabel")
-	lbl.Size  = UDim2.new(0, 180, 0, 38)
-	lbl.Position = UDim2.new(0, 12, 0, 110)
-	lbl.BackgroundTransparency = 1
-	lbl.TextColor3 = Color3.fromRGB(255, 228, 55)
-	lbl.TextSize = 24
-	lbl.Font  = Enum.Font.GothamBold
-	lbl.Text  = "+" .. amount .. " 🎋"
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.ZIndex = 12
-	lbl.Parent = screenGui
-
-	TweenService:Create(lbl,
-		TweenInfo.new(1.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Position = UDim2.new(0, 12, 0, 68), TextTransparency = 1 }):Play()
-	Debris:AddItem(lbl, 1.4)
-end
-
--- ── Level-Up Flash ────────────────────────────────────────────────────────────
-function EffectsController.showLevelUp(screenGui, newLevel)
-	Assets.play2D(Assets.SFX.Chime, 0.7)
-	local lbl = Instance.new("TextLabel")
-	lbl.Size  = UDim2.new(0, 500, 0, 90)
-	lbl.Position = UDim2.new(0.5, -250, 0.4, 0)
-	lbl.BackgroundTransparency = 1
-	lbl.TextColor3 = Color3.fromRGB(255, 228, 55)
-	lbl.TextSize = 62
-	lbl.Font  = Enum.Font.GothamBold
-	lbl.TextStrokeTransparency = 0.2
-	lbl.Text  = "LEVEL " .. newLevel .. "! ⭐"
-	lbl.TextXAlignment = Enum.TextXAlignment.Center
-	lbl.ZIndex = 25
-	lbl.Parent = screenGui
-
-	TweenService:Create(lbl,
-		TweenInfo.new(1.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ TextTransparency = 1, Position = UDim2.new(0.5, -250, 0.3, 0) }):Play()
-	Debris:AddItem(lbl, 2)
-end
-
--- ── Layer Unlock Flash ────────────────────────────────────────────────────────
-function EffectsController.showLayerUnlocked(screenGui, layerName, layerColor)
-	Assets.play2D(Assets.SFX.ChimeSoft, 0.65)
-	local lbl = Instance.new("TextLabel")
-	lbl.Size  = UDim2.new(0, 560, 0, 80)
-	lbl.Position = UDim2.new(0.5, -280, 0.35, 0)
-	lbl.BackgroundTransparency = 1
-	lbl.TextColor3 = layerColor or Color3.fromRGB(100, 210, 100)
-	lbl.TextSize = 44
-	lbl.Font  = Enum.Font.GothamBold
-	lbl.TextStrokeTransparency = 0.25
-	lbl.Text  = "🔓 " .. layerName .. " freigeschaltet!"
-	lbl.TextXAlignment = Enum.TextXAlignment.Center
-	lbl.ZIndex = 25
-	lbl.Parent = screenGui
-
-	TweenService:Create(lbl,
-		TweenInfo.new(2.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ TextTransparency = 1, Position = UDim2.new(0.5, -280, 0.25, 0) }):Play()
-	Debris:AddItem(lbl, 2.5)
 end
 
 return EffectsController
