@@ -4,17 +4,34 @@
     "$className": "DataModel",
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
-      "Config": { "$path": "src/Shared/Config.lua" }
+      "Shared": {
+        "$className": "Folder",
+        "Balance":  { "$path": "src/Shared/Balance.lua" },
+        "UITheme":  { "$path": "src/Shared/UITheme.lua" },
+        "Layers":   { "$path": "src/Shared/Layers.lua" }
+      }
     },
     "ServerScriptService": {
       "$className": "ServerScriptService",
-      "Server": { "$path": "src/Server/Server.server.lua" }
+      "Server": { "$path": "src/Server/Server.server.lua" },
+      "Services": {
+        "$className": "Folder",
+        "DataService":  { "$path": "src/Server/Services/DataService.lua" },
+        "WorldService": { "$path": "src/Server/Services/WorldService.lua" },
+        "StatService":  { "$path": "src/Server/Services/StatService.lua" }
+      }
     },
     "StarterPlayer": {
       "$className": "StarterPlayer",
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",
-        "Client": { "$path": "src/Client/Client.client.lua" }
+        "Client": { "$path": "src/Client/Client.client.lua" },
+        "Controllers": {
+          "$className": "Folder",
+          "EffectsController": { "$path": "src/Client/Controllers/EffectsController.lua" },
+          "UIController":      { "$path": "src/Client/Controllers/UIController.lua" },
+          "InputController":   { "$path": "src/Client/Controllers/InputController.lua" }
+        }
       }
     }
   }
