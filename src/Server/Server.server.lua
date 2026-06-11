@@ -174,16 +174,6 @@ local zonesFolder = Instance.new("Folder")
 zonesFolder.Name = "Zones"
 zonesFolder.Parent = workspace
 
-local function respawnBamboo(part, bambooType)
-	task.wait(bambooType.respawnTime)
-	if not part or not part.Parent then return end
-	bambooHealth[part] = bambooType.health
-	part:SetAttribute("IsDead", false)
-	part.Color = bambooType.color
-	part.Transparency = 0
-	part.CanCollide = true
-end
-
 for _, zone in ipairs(Config.ZONES) do
 	local bambooType = Config.BAMBOO_TYPES[zone.bambooTypeId]
 	local zoneX      = zone.offsetX
@@ -245,59 +235,150 @@ for _, zone in ipairs(Config.ZONES) do
 	levelLabel.Text = "⚔ Level " .. zone.requiredLevel .. " erforderlich"
 	levelLabel.Parent = billboard
 
-	-- Spawn bamboo stalks
+	-- Spawn bamboo stalks (each is a Model: invisible hitbox + segmented visuals)
 	for i = 1, zone.count do
 		local rx = rng:NextNumber(-48, 48)
 		local rz = rng:NextNumber(-48, 48)
 		local h  = bambooType.height
 		local th = bambooType.thickness
+		local baseX, baseZ = zoneX + rx, rz
 
-		local part = Instance.new("Part")
-		part.Name = "Bamboo"
-		-- Upright block: X=thickness, Y=height, Z=thickness
-		part.Size = Vector3.new(th, h, th)
-		-- Bottom of bamboo sits on platform surface (platform top is at y=1)
-		part.Position = Vector3.new(zoneX + rx, 1 + h / 2, rz)
-		part.Material = Enum.Material.SmoothPlastic
-		part.Color = bambooType.color
-		part.Anchored = true
-		part.CanCollide = true
-		part:SetAttribute("IsBamboo", true)
-		part:SetAttribute("IsDead", false)
-		part:SetAttribute("BambooTypeId", zone.bambooTypeId)
-		part.Parent = zoneFolder
+		local model = Instance.new("Model")
+		model.Name = "Bamboo"
 
-		bambooHealth[part] = bambooType.health
+		-- Invisible hitbox covering the whole stalk (this is what gets clicked)
+		local hitbox = Instance.new("Part")
+		hitbox.Name = "Hitbox"
+		hitbox.Size = Vector3.new(th * 2.5, h, th * 2.5)
+		hitbox.Position = Vector3.new(baseX, 1 + h / 2, baseZ)
+		hitbox.Transparency = 1
+		hitbox.Anchored = true
+		hitbox.CanCollide = true
+		hitbox:SetAttribute("IsBamboo", true)
+		hitbox:SetAttribute("IsDead", false)
+		hitbox.Parent = model
+		model.PrimaryPart = hitbox
+
+		-- Visual segments: stacked cylinders with darker node rings between them
+		-- (cylinder Parts lie along the X axis, so rotate 90° around Z to stand up)
+		local visuals = {}   -- { {part=Part, color=Color3}, ... } bottom to top
+		local segCount = math.max(3, math.floor(h / 3))
+		local segH = h / segCount
+		local nodeColor = Color3.new(
+			bambooType.color.R * 0.55,
+			bambooType.color.G * 0.55,
+			bambooType.color.B * 0.55)
+
+		for s = 1, segCount do
+			local segY = 1 + (s - 0.5) * segH
+			local seg = Instance.new("Part")
+			seg.Name = "Segment"
+			seg.Shape = Enum.PartType.Cylinder
+			seg.Size = Vector3.new(segH - 0.1, th, th)
+			seg.CFrame = CFrame.new(baseX, segY, baseZ) * CFrame.Angles(0, 0, math.rad(90))
+			seg.Material = Enum.Material.SmoothPlastic
+			seg.Color = bambooType.color
+			seg.Anchored = true
+			seg.CanCollide = false
+			seg.Parent = model
+			table.insert(visuals, { part = seg, color = bambooType.color })
+
+			-- Node ring on top of each segment (except the last)
+			if s < segCount then
+				local ring = Instance.new("Part")
+				ring.Name = "Node"
+				ring.Shape = Enum.PartType.Cylinder
+				ring.Size = Vector3.new(0.2, th * 1.18, th * 1.18)
+				ring.CFrame = CFrame.new(baseX, 1 + s * segH, baseZ) * CFrame.Angles(0, 0, math.rad(90))
+				ring.Material = Enum.Material.SmoothPlastic
+				ring.Color = nodeColor
+				ring.Anchored = true
+				ring.CanCollide = false
+				ring.Parent = model
+				table.insert(visuals, { part = ring, color = nodeColor })
+			end
+		end
+
+		-- Leaves at the top (thin angled slabs)
+		local leafColor = Color3.fromRGB(70, 150, 50)
+		for l = 1, 3 do
+			local angle = (l / 3) * math.pi * 2 + rng:NextNumber(0, 1)
+			local leaf = Instance.new("Part")
+			leaf.Name = "Leaf"
+			leaf.Size = Vector3.new(2.4, 0.1, 0.8)
+			leaf.CFrame = CFrame.new(baseX, 1 + h - 0.5, baseZ)
+				* CFrame.Angles(0, angle, math.rad(-35))
+				* CFrame.new(1.2, 0, 0)
+			leaf.Material = Enum.Material.Grass
+			leaf.Color = leafColor
+			leaf.Anchored = true
+			leaf.CanCollide = false
+			leaf.Parent = model
+			table.insert(visuals, { part = leaf, color = leafColor })
+		end
+
+		model.Parent = zoneFolder
+		bambooHealth[hitbox] = bambooType.health
 
 		-- Hit + break sounds (rbxasset builtins always load, unlike marketplace IDs)
 		local hitSound = Instance.new("Sound")
 		hitSound.Name = "HitSound"
 		hitSound.SoundId = "rbxasset://sounds/snap.mp3"
 		hitSound.Volume = 0.8
-		hitSound.Parent = part
+		hitSound.Parent = hitbox
 
 		local breakSound = Instance.new("Sound")
 		breakSound.Name = "BreakSound"
 		breakSound.SoundId = "rbxasset://sounds/electronicpingshort.wav"
 		breakSound.Volume = 1
-		breakSound.Parent = part
+		breakSound.Parent = hitbox
 
 		-- ClickDetector so client doesn't need raycasts
 		local clickDetector = Instance.new("ClickDetector")
 		clickDetector.MaxActivationDistance = 20
-		clickDetector.Parent = part
+		clickDetector.Parent = hitbox
 
 		-- Capture loop variables explicitly
-		local capturedPart       = part
 		local capturedBambooType = bambooType
 		local capturedZone       = zone
+
+		local function setAllTransparency(value)
+			for _, v in ipairs(visuals) do
+				v.part.Transparency = value
+			end
+		end
+
+		local function resetColors()
+			for _, v in ipairs(visuals) do
+				v.part.Color = v.color
+			end
+		end
+
+		-- Grow animation: segments appear bottom-to-top
+		local function growBamboo()
+			setAllTransparency(1)
+			for _, v in ipairs(visuals) do
+				v.part.Transparency = 0
+				task.wait(0.05)
+			end
+		end
+
+		local function respawnThis()
+			task.wait(capturedBambooType.respawnTime)
+			if not hitbox.Parent then return end
+			bambooHealth[hitbox] = capturedBambooType.health
+			hitbox:SetAttribute("IsDead", false)
+			hitbox.CanCollide = true
+			resetColors()
+			growBamboo()
+		end
 
 		clickDetector.MouseClick:Connect(function(player)
 			local data = playerData[player]
 			if not data then return end
 
 			-- Must be alive
-			if capturedPart:GetAttribute("IsDead") then return end
+			if hitbox:GetAttribute("IsDead") then return end
 
 			-- Zone level requirement
 			if data.swordLevel < capturedZone.requiredLevel then
@@ -306,7 +387,7 @@ for _, zone in ipairs(Config.ZONES) do
 			end
 
 			-- Per-player per-bamboo cooldown
-			local cdKey = tostring(player.UserId) .. "_" .. tostring(capturedPart)
+			local cdKey = tostring(player.UserId) .. "_" .. tostring(hitbox)
 			local now   = os.clock()
 			local last  = playerCooldowns[cdKey]
 			if last and (now - last) < Config.SWING_DELAY then return end
@@ -315,27 +396,29 @@ for _, zone in ipairs(Config.ZONES) do
 			-- Deal damage
 			local sword  = Config.SWORDS[data.swordLevel]
 			local damage = sword and sword.damage or 1
-			bambooHealth[capturedPart] = bambooHealth[capturedPart] - damage
+			bambooHealth[hitbox] = bambooHealth[hitbox] - damage
 			hitSound:Play()
 
-			-- Lerp color toward orange as health drops
+			-- Lerp all visuals toward orange as health drops
 			local maxHealth  = capturedBambooType.health
-			local healthFrac = math.max(0, bambooHealth[capturedPart]) / maxHealth
-			capturedPart.Color = capturedBambooType.color:Lerp(Color3.fromRGB(255, 80, 0), 1 - healthFrac)
+			local healthFrac = math.max(0, bambooHealth[hitbox]) / maxHealth
+			for _, v in ipairs(visuals) do
+				v.part.Color = v.color:Lerp(Color3.fromRGB(255, 80, 0), 1 - healthFrac)
+			end
 
 			-- Check if destroyed
-			if bambooHealth[capturedPart] <= 0 then
-				capturedPart:SetAttribute("IsDead", true)
-				capturedPart.Transparency = 1
-				capturedPart.CanCollide   = false
+			if bambooHealth[hitbox] <= 0 then
+				hitbox:SetAttribute("IsDead", true)
+				hitbox.CanCollide = false
+				setAllTransparency(1)
 				breakSound:Play()
 
 				data.coins        = data.coins + capturedBambooType.coins
 				data.totalChopped = data.totalChopped + 1
 				sendUpdate(player)
 
-				-- Schedule respawn
-				task.spawn(respawnBamboo, capturedPart, capturedBambooType)
+				-- Schedule respawn (with grow animation)
+				task.spawn(respawnThis)
 			end
 		end)
 	end

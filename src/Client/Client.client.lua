@@ -5,6 +5,7 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local SoundService      = game:GetService("SoundService")
+local UserInputService  = game:GetService("UserInputService")
 
 local player      = Players.LocalPlayer
 local playerGui   = player:WaitForChild("PlayerGui")
@@ -59,6 +60,22 @@ task.spawn(function()
 end)
 
 -- ─── Sword Tool ───────────────────────────────────────────────────────────────
+local currentTool = nil
+local swinging    = false
+
+-- Weld a cosmetic part onto the handle at a relative offset
+local function attachPart(handle, part, offsetCFrame)
+	part.CFrame = handle.CFrame * offsetCFrame
+	part.Anchored = false
+	part.CanCollide = false
+	part.Massless = true
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = handle
+	weld.Part1 = part
+	weld.Parent = part
+	part.Parent = handle.Parent
+end
+
 local function buildSword(level)
 	local sword = Config.SWORDS[level]
 	if not sword then return end
@@ -81,15 +98,59 @@ local function buildSword(level)
 	tool.RequiresHandle = true
 	tool.CanBeDropped = false
 	tool.ToolTip = sword.name
+	-- Hold the grip section, blade pointing up
+	tool.GripPos     = Vector3.new(0, -0.3, 0)
+	tool.GripForward = Vector3.new(0, 0, -1)
+	tool.GripRight   = Vector3.new(1, 0, 0)
+	tool.GripUp      = Vector3.new(0, 1, 0)
 
-	-- Handle (the visible blade)
+	-- Handle = the grip (brown)
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.15, 2.5, 0.15)
-	handle.Material = Enum.Material.Neon
-	handle.Color = sword.color
+	handle.Size = Vector3.new(0.3, 1.1, 0.3)
+	handle.Material = Enum.Material.Wood
+	handle.Color = Color3.fromRGB(90, 60, 35)
 	handle.CanCollide = false
 	handle.Parent = tool
+
+	-- Pommel (bottom knob)
+	local pommel = Instance.new("Part")
+	pommel.Name = "Pommel"
+	pommel.Shape = Enum.PartType.Ball
+	pommel.Size = Vector3.new(0.4, 0.4, 0.4)
+	pommel.Material = Enum.Material.Metal
+	pommel.Color = Color3.fromRGB(120, 120, 130)
+	attachPart(handle, pommel, CFrame.new(0, -0.6, 0))
+
+	-- Guard (crossguard above the grip)
+	local guard = Instance.new("Part")
+	guard.Name = "Guard"
+	guard.Size = Vector3.new(1.1, 0.18, 0.4)
+	guard.Material = Enum.Material.Metal
+	guard.Color = Color3.fromRGB(110, 110, 120)
+	attachPart(handle, guard, CFrame.new(0, 0.62, 0))
+
+	-- Blade (colored per sword level)
+	local blade = Instance.new("Part")
+	blade.Name = "Blade"
+	blade.Size = Vector3.new(0.18, 2.6, 0.55)
+	blade.Material = Enum.Material.Metal
+	blade.Color = sword.color
+	attachPart(handle, blade, CFrame.new(0, 2.0, 0))
+
+	-- Tip (wedge)
+	local tip = Instance.new("WedgePart")
+	tip.Name = "Tip"
+	tip.Size = Vector3.new(0.18, 0.5, 0.55)
+	tip.Material = Enum.Material.Metal
+	tip.Color = sword.color
+	attachPart(handle, tip, CFrame.new(0, 3.55, 0))
+
+	-- Glow on the blade for higher-level swords
+	if level >= 5 then
+		blade.Material = Enum.Material.Neon
+		tip.Material = Enum.Material.Neon
+	end
 
 	-- Swing sound
 	local swingSound = Instance.new("Sound")
@@ -98,23 +159,52 @@ local function buildSword(level)
 	swingSound.Volume = 0.6
 	swingSound.Parent = handle
 
-	-- Animate on activation
-	tool.Activated:Connect(function()
-		swingSound:Play()
-		local originalColor = handle.Color
-		handle.Color = Color3.fromRGB(255, 255, 255)
-		task.wait(0.1)
-		-- Only restore if not destroyed between ticks
-		if handle and handle.Parent then
-			handle.Color = originalColor
-		end
-	end)
+	currentTool = tool
 
 	-- Give to player
 	if backpack then
 		tool.Parent = backpack
 	end
 end
+
+-- Swing animation: rotate the tool grip forward and back (chop motion)
+local function swingSword()
+	if swinging then return end
+	local tool = currentTool
+	local character = player.Character
+	if not tool or not character or tool.Parent ~= character then return end
+
+	swinging = true
+	local handle = tool:FindFirstChild("Handle")
+	local swingSound = handle and handle:FindFirstChild("SwingSound")
+	if swingSound then swingSound:Play() end
+
+	local originalGrip = tool.Grip
+	local steps = 5
+	-- Chop forward
+	for s = 1, steps do
+		tool.Grip = originalGrip * CFrame.Angles(math.rad(-110 * s / steps), 0, 0)
+		task.wait(0.015)
+	end
+	-- Return
+	for s = steps - 1, 0, -1 do
+		tool.Grip = originalGrip * CFrame.Angles(math.rad(-110 * s / steps), 0, 0)
+		task.wait(0.02)
+	end
+	tool.Grip = originalGrip
+	swinging = false
+end
+
+-- Trigger the swing on ANY left click while the sword is equipped.
+-- (Tool.Activated does not fire when the cursor is over a ClickDetector,
+-- so we listen to raw input instead.)
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		swingSword()
+	end
+end)
 
 -- ─── HUD Setup ────────────────────────────────────────────────────────────────
 local screenGui = Instance.new("ScreenGui")
