@@ -13,13 +13,14 @@ netFolder.Parent = ReplicatedStorage
 local REMOTE_NAMES = {
 	-- Server → Client
 	"UpdateData", "Notify", "PlaySFX",
-	"HatchResult", "OpenEgg",
+	"HatchResult", "OpenEgg", "OpenWager", "OpenTrade",
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	-- Client → Server
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
 	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
+	"BuyPrime", "ClaimWeekly",
 }
 
 local net = {}
@@ -40,6 +41,7 @@ local ArenaService  = require(Services:WaitForChild("ArenaService"))
 local BotService    = require(Services:WaitForChild("BotService"))
 local LobbyService  = require(Services:WaitForChild("LobbyService"))
 local TradeService  = require(Services:WaitForChild("TradeService"))
+local PrimeService  = require(Services:WaitForChild("PrimeService"))
 
 -- Ein kaputter Service darf nie den ganzen Server killen
 local function safeInit(name, fn, ...)
@@ -54,11 +56,13 @@ safeInit("WeaponService", WeaponService.init, DataService, net)
 safeInit("ArenaService",  ArenaService.init, DataService, WeaponService, net)
 safeInit("BotService",    BotService.init, net)
 safeInit("EggService",    EggService.init, DataService, net)
-safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, net)
+safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, DataService, net)
 safeInit("TradeService",  TradeService.init, DataService, WeaponService, net)
+safeInit("PrimeService",  PrimeService.init, DataService, WeaponService, net)
 
 WeaponService.setArenaService(ArenaService)
 ArenaService.setBotService(BotService)
+TradeService.onTicker = LobbyService.pushTicker
 
 -- ── Player-Lifecycle ──────────────────────────────────────────────────────────
 local function onPlayerAdded(player)

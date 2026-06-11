@@ -32,19 +32,28 @@ local function hatch(player, eggId)
 	data.credits = data.credits - egg.cost
 	data.hatches = (data.hatches or 0) + 1
 
-	local skin = Skins.roll(rng, luckActive(data), Config.LUCK_MULTIPLIER)
+	-- Pity: nach PITY_LEGENDARY Pulls ohne Legendary+ ist der nächste garantiert
+	data.pullsSinceLegendary = (data.pullsSinceLegendary or 0) + 1
+	local forced = data.pullsSinceLegendary >= Config.PITY_LEGENDARY
+
+	local skin = Skins.roll(rng, luckActive(data), Config.LUCK_MULTIPLIER, forced and 3 or nil)
+	if Skins.TIERS[skin.tier].order >= 3 then
+		data.pullsSinceLegendary = 0
+	end
+
 	data.skins[skin.id] = (data.skins[skin.id] or 0) + 1
 	dataService.sendUpdate(player)
 
-	-- Client spielt die Hatch-Animation (Drumroll → Cracks → Reveal)
-	net.HatchResult:FireClient(player, skin.id, data.skins[skin.id])
+	-- Client spielt den Case-Spinner (Spin → Reveal → "GEWONNEN!")
+	net.HatchResult:FireClient(player, skin.id, data.skins[skin.id],
+		math.max(0, Config.PITY_LEGENDARY - data.pullsSinceLegendary))
 
 	-- Godly+/Mythical: der ganze Server soll es sehen — DAS ist der Flex
 	if FLEX_TIERS[skin.tier] then
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= player then
 				net.Notify:FireClient(p,
-					"🌌 " .. player.Name .. " hat " .. skin.name .. " [" .. skin.tier .. "] gezogen!")
+					"🌌 " .. player.Name .. " hat " .. skin.name .. " [" .. Skins.TIERS[skin.tier].label .. "] gezogen!")
 			end
 		end
 	end

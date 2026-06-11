@@ -3,6 +3,9 @@
 -- den Trader-Gamepass (Config.TRADER_PASS_ID).
 local TradeService = {}
 
+-- Callback für den Live-Ticker der Handelshalle (vom Server-Wiring gesetzt)
+TradeService.onTicker = nil
+
 local Players            = game:GetService("Players")
 local RS                 = game:GetService("ReplicatedStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -102,6 +105,23 @@ local function executeTrade(session)
 	end
 	transfer(session.a, session.b, session.offers[session.a])
 	transfer(session.b, session.a, session.offers[session.b])
+
+	-- Live-Ticker der Handelshalle: das hochwertigste Item des Trades
+	if TradeService.onTicker then
+		local best, bestOrder = nil, 0
+		for _, offer in ipairs({ session.offers[session.a], session.offers[session.b] }) do
+			for _, id in ipairs(offer) do
+				local s = Skins.BY_ID[id]
+				if s and Skins.TIERS[s.tier].order > bestOrder then
+					best, bestOrder = s, Skins.TIERS[s.tier].order
+				end
+			end
+		end
+		if best then
+			TradeService.onTicker(("ZULETZT GEHANDELT: %s [%s]  ·  %s ⇄ %s")
+				:format(best.name, Skins.TIERS[best.tier].label, session.a.Name, session.b.Name))
+		end
+	end
 
 	for _, p in ipairs({ session.a, session.b }) do
 		sessions[p] = nil

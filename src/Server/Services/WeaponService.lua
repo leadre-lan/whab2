@@ -125,6 +125,44 @@ function WeaponService.giveWeapon(player)
 	local tool = SniperBuilder.buildTool(skin)
 	tool.Parent = bp
 
+	-- Charakter-Aura: Godly+ bekommt eine wirbelnde Skin-Aura, Prime goldenen
+	-- Glanz dazu — der Status-Flex ist in der Lobby sofort sichtbar
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root then
+		local old = root:FindFirstChild("FlexAura")
+		if old then old:Destroy() end
+		local att = Instance.new("Attachment")
+		att.Name = "FlexAura"
+		att.Position = Vector3.new(0, -1.5, 0)
+		att.Parent = root
+
+		local fx = Skins.fxFor(skin.tier)
+		if fx.pulse then
+			local pe = Instance.new("ParticleEmitter")
+			pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			pe.Rate = 14
+			pe.Lifetime = NumberRange.new(0.8, 1.6)
+			pe.Speed = NumberRange.new(1.5, 3)
+			pe.SpreadAngle = Vector2.new(35, 35)
+			pe.Size = NumberSequence.new(0.3)
+			pe.Color = ColorSequence.new(skin.accent)
+			pe.LightEmission = 1
+			pe.Parent = att
+		end
+		if data.prime then
+			local pe = Instance.new("ParticleEmitter")
+			pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			pe.Rate = 6
+			pe.Lifetime = NumberRange.new(1, 2)
+			pe.Speed = NumberRange.new(0.8, 1.6)
+			pe.SpreadAngle = Vector2.new(20, 20)
+			pe.Size = NumberSequence.new(0.22)
+			pe.Color = ColorSequence.new(Color3.fromRGB(255, 210, 90))
+			pe.LightEmission = 1
+			pe.Parent = att
+		end
+	end
+
 	-- Auto-Equip
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if hum then

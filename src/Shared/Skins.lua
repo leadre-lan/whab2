@@ -14,11 +14,11 @@ local Skins = {}
 -- Drop-Gewichte pro Tier (Summe egal, wird normalisiert; UI zeigt Prozente).
 -- Luck Potion multipliziert alle Nicht-Common-Gewichte mit Config.LUCK_MULTIPLIER.
 Skins.TIERS = {
-	Common    = { weight = 60,  color = Color3.fromRGB(170, 175, 185), order = 1 },
-	Rare      = { weight = 28,  color = Color3.fromRGB(70, 150, 255),  order = 2 },
-	Legendary = { weight = 9.5, color = Color3.fromRGB(255, 170, 30),  order = 3 },
-	Godly     = { weight = 2,   color = Color3.fromRGB(255, 60, 90),   order = 4 },
-	Mythical  = { weight = 0.5, color = Color3.fromRGB(255, 0, 255),   order = 5 },
+	Common    = { weight = 60,  color = Color3.fromRGB(170, 175, 185), order = 1, label = "GEWÖHNLICH" },
+	Rare      = { weight = 28,  color = Color3.fromRGB(70, 150, 255),  order = 2, label = "SELTEN" },
+	Legendary = { weight = 9.5, color = Color3.fromRGB(255, 170, 30),  order = 3, label = "LEGENDE" },
+	Godly     = { weight = 2,   color = Color3.fromRGB(255, 60, 90),   order = 4, label = "GÖTTLICH" },
+	Mythical  = { weight = 0.5, color = Color3.fromRGB(255, 0, 255),   order = 5, label = "MYTHOLOGISCH" },
 }
 
 -- body = Hauptfarbe, accent = Lauf/Scope/Glow-Farbe.
@@ -48,20 +48,34 @@ Skins.CATALOG = {
 	{ id = "toxin",     name = "Toxin",         tier = "Legendary", body = Color3.fromRGB(28, 35, 22),  accent = Color3.fromRGB(190, 255, 40) },
 
 	-- ── Godly ──
-	{ id = "galaxie",   name = "Galaxie",       tier = "Godly", body = Color3.fromRGB(30, 15, 60),  accent = Color3.fromRGB(150, 80, 255) },
-	{ id = "drachen",   name = "Drachenglut",   tier = "Godly", body = Color3.fromRGB(50, 12, 12),  accent = Color3.fromRGB(255, 90, 30) },
-	{ id = "frost",     name = "Frostgeist",    tier = "Godly", body = Color3.fromRGB(15, 35, 50),  accent = Color3.fromRGB(140, 235, 255) },
+	{ id = "galaxie",    name = "Galaxie",       tier = "Godly", body = Color3.fromRGB(30, 15, 60),   accent = Color3.fromRGB(150, 80, 255) },
+	{ id = "drachen",    name = "Drachenglut",   tier = "Godly", body = Color3.fromRGB(50, 12, 12),   accent = Color3.fromRGB(255, 90, 30) },
+	{ id = "frost",      name = "Frostgeist",    tier = "Godly", body = Color3.fromRGB(15, 35, 50),   accent = Color3.fromRGB(140, 235, 255) },
+	{ id = "neondrache", name = "Neon Drache",   tier = "Godly", body = Color3.fromRGB(190, 155, 70), accent = Color3.fromRGB(80, 230, 255),
+		flavor = "GEBOREN IM PLASMAFEUER" },
 
 	-- ── Mythical ──
 	{ id = "singularitaet", name = "Singularität", tier = "Mythical", body = Color3.fromRGB(10, 10, 14), accent = Color3.fromRGB(255, 255, 255) },
+	{ id = "voidaura",      name = "Void-Aura",    tier = "Mythical", body = Color3.fromRGB(16, 8, 26),  accent = Color3.fromRGB(170, 60, 255),
+		flavor = "1% DER 1%" },
+
+	-- ── Prime-exklusiv (nicht im Case-Pool — kommt mit Prime Status) ──
+	{ id = "primeaegis", name = "Prime: Ägis", tier = "Godly", body = Color3.fromRGB(235, 235, 245), accent = Color3.fromRGB(255, 200, 60),
+		obtain = "prime", flavor = "PRIME-EXKLUSIV" },
 }
 
 -- ── Abgeleitete Lookups ───────────────────────────────────────────────────────
 Skins.BY_ID = {}
-local tierCounts = {}
+local tierCounts = {}   -- nur Case-Pool-Skins (Prime-Exklusive zählen nicht)
 for _, skin in ipairs(Skins.CATALOG) do
 	Skins.BY_ID[skin.id] = skin
-	tierCounts[skin.tier] = (tierCounts[skin.tier] or 0) + 1
+	if not skin.obtain then
+		tierCounts[skin.tier] = (tierCounts[skin.tier] or 0) + 1
+	end
+end
+
+function Skins.inCasePool(skin)
+	return skin.obtain == nil
 end
 
 -- Effekt-Flags pro Tier (zentral, damit alle Skins eines Tiers konsistent sind)
@@ -83,7 +97,7 @@ end
 -- verlangt offengelegte Wahrscheinlichkeiten bei bezahlten Zufalls-Items).
 function Skins.chanceOf(skinId, luckActive, luckMult)
 	local skin = Skins.BY_ID[skinId]
-	if not skin then return 0 end
+	if not skin or skin.obtain then return 0 end   -- nicht im Case-Pool
 	local total = 0
 	for tierName, tier in pairs(Skins.TIERS) do
 		local w = tier.weight
@@ -96,17 +110,20 @@ function Skins.chanceOf(skinId, luckActive, luckMult)
 end
 
 -- Gewichteter Pull (Server). rng = Random-Instanz.
-function Skins.roll(rng, luckActive, luckMult)
+-- minOrder (optional): Pity-Garantie — nur Tiers ab dieser Stufe (z.B. 3 = Legendary+)
+function Skins.roll(rng, luckActive, luckMult, minOrder)
 	local total = 0
 	local weights = {}
 	for tierName, tier in pairs(Skins.TIERS) do
-		local w = tier.weight
-		if luckActive and tierName ~= "Common" then w = w * luckMult end
-		weights[tierName] = w
-		total = total + w
+		if not minOrder or tier.order >= minOrder then
+			local w = tier.weight
+			if luckActive and tierName ~= "Common" then w = w * luckMult end
+			weights[tierName] = w
+			total = total + w
+		end
 	end
 	local pick = rng:NextNumber() * total
-	local chosenTier = "Common"
+	local chosenTier = minOrder and "Legendary" or "Common"
 	for tierName, w in pairs(weights) do
 		pick = pick - w
 		if pick <= 0 then
@@ -114,10 +131,12 @@ function Skins.roll(rng, luckActive, luckMult)
 			break
 		end
 	end
-	-- Innerhalb des Tiers: gleichverteilt
+	-- Innerhalb des Tiers: gleichverteilt (nur Case-Pool-Skins)
 	local pool = {}
 	for _, skin in ipairs(Skins.CATALOG) do
-		if skin.tier == chosenTier then table.insert(pool, skin) end
+		if skin.tier == chosenTier and Skins.inCasePool(skin) then
+			table.insert(pool, skin)
+		end
 	end
 	return pool[rng:NextInteger(1, #pool)]
 end

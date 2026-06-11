@@ -8,12 +8,13 @@ local Lighting     = game:GetService("Lighting")
 local netFolder = RS:WaitForChild("Net")
 local REMOTE_NAMES = {
 	"UpdateData", "Notify", "PlaySFX",
-	"HatchResult", "OpenEgg",
+	"HatchResult", "OpenEgg", "OpenWager", "OpenTrade",
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
 	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
+	"BuyPrime", "ClaimWeekly",
 }
 local net = {}
 for _, name in ipairs(REMOTE_NAMES) do
@@ -139,8 +140,16 @@ net.OpenEgg.OnClientEvent:Connect(function()
 	UICtrl.openEgg()
 end)
 
-net.HatchResult.OnClientEvent:Connect(function(skinId)
-	UICtrl.playHatch(skinId)
+net.OpenWager.OnClientEvent:Connect(function()
+	UICtrl.openWager()
+end)
+
+net.OpenTrade.OnClientEvent:Connect(function()
+	UICtrl.openTradeList()
+end)
+
+net.HatchResult.OnClientEvent:Connect(function(skinId, count, pityLeft)
+	UICtrl.playHatch(skinId, count, pityLeft)
 end)
 
 net.ShotFired.OnClientEvent:Connect(function(fromPos, toPos, skinId, didKill)

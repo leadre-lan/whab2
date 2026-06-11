@@ -198,16 +198,47 @@ Config.BOT_MOVE_EVERY  = { 2.5, 5 }  -- Sekunden zwischen Positionswechseln
 Config.BOT_KILL_REWARD = 10          -- reduzierte Rewards im Training
 Config.BOT_WIN_REWARD  = 40
 
--- ── Eier ──────────────────────────────────────────────────────────────────────
--- Ein massives Omega-Ei in der Lobby-Mitte; weitere Eier einfach ergänzen
+-- ── Cases ─────────────────────────────────────────────────────────────────────
+-- Das Omega-Gehäuse in der Lobby-Mitte; weitere Cases einfach ergänzen
 -- (EggService + UI sind komplett config-getrieben).
 Config.EGGS = {
 	omega = {
-		name  = "Omega-Ei",
+		name  = "Omega-Gehäuse",
 		cost  = 750,
 		color = Color3.fromRGB(150, 80, 255),
 	},
 }
+
+-- Pity-System: spätestens nach so vielen Pulls ohne Legendary+ ist der
+-- nächste Pull garantiert Legendary oder besser (Zähler in der Case-UI)
+Config.PITY_LEGENDARY = 45
+
+-- ── Wager-Duelle (1v1 um Credits) ─────────────────────────────────────────────
+Config.WAGER_OPTIONS = { 0, 50, 100, 250, 500 }   -- 0 = Casual
+
+-- ── Rang-System (ELO; gespeist aus 1v1-PvP, Bot-Matches zählen nicht) ─────────
+Config.ELO_START = 1000
+Config.ELO_K     = 40
+Config.RANKS = {
+	{ min = 0,    name = "Silber I",       color = Color3.fromRGB(170, 175, 185) },
+	{ min = 850,  name = "Silber II",      color = Color3.fromRGB(180, 185, 195) },
+	{ min = 950,  name = "Silber Elite",   color = Color3.fromRGB(205, 210, 220) },
+	{ min = 1050, name = "Gold Nova I",    color = Color3.fromRGB(235, 195, 80) },
+	{ min = 1150, name = "Gold Nova II",   color = Color3.fromRGB(245, 205, 90) },
+	{ min = 1250, name = "Gold Nova III",  color = Color3.fromRGB(255, 215, 100) },
+	{ min = 1350, name = "Meister-Wächter",color = Color3.fromRGB(120, 200, 255) },
+	{ min = 1500, name = "Adler-Meister",  color = Color3.fromRGB(90, 150, 255) },
+	{ min = 1650, name = "Übermacht",      color = Color3.fromRGB(190, 90, 255) },
+	{ min = 1800, name = "GLOBAL ELITE",   color = Color3.fromRGB(255, 70, 200) },
+}
+
+function Config.rankFor(rating)
+	local best = Config.RANKS[1]
+	for _, r in ipairs(Config.RANKS) do
+		if rating >= r.min then best = r end
+	end
+	return best
+end
 
 -- ── Monetarisierung (IDs im Creator-Dashboard anlegen und hier eintragen;
 --     0 = deaktiviert, Buttons melden dann "nicht konfiguriert") ───────────────
@@ -217,6 +248,12 @@ Config.LUCK_MULTIPLIER  = 2          -- verdoppelt die Nicht-Common-Gewichte
 Config.TRADER_PASS_ID   = 0          -- Gamepass: mehr Trade-Slots
 Config.TRADE_SLOTS      = 3          -- ohne Gamepass
 Config.TRADE_SLOTS_PASS = 6          -- mit Trader-Gamepass
+
+-- Prime Status (Gamepass): exklusiver Skin + Aura, Rang-Boost, Weekly-Reward
+Config.PRIME_PASS_ID    = 0
+Config.PRIME_PRICE_TEXT = "1200 Robux"
+Config.PRIME_WEEKLY     = 1500       -- Credits pro Woche
+Config.PRIME_RANK_BOOST = 1.25       -- +25% ELO-Gewinn (keine stärkeren Waffen!)
 
 return Config
 ]]></string>
@@ -241,11 +278,11 @@ local Skins = {}
 -- Drop-Gewichte pro Tier (Summe egal, wird normalisiert; UI zeigt Prozente).
 -- Luck Potion multipliziert alle Nicht-Common-Gewichte mit Config.LUCK_MULTIPLIER.
 Skins.TIERS = {
-	Common    = { weight = 60,  color = Color3.fromRGB(170, 175, 185), order = 1 },
-	Rare      = { weight = 28,  color = Color3.fromRGB(70, 150, 255),  order = 2 },
-	Legendary = { weight = 9.5, color = Color3.fromRGB(255, 170, 30),  order = 3 },
-	Godly     = { weight = 2,   color = Color3.fromRGB(255, 60, 90),   order = 4 },
-	Mythical  = { weight = 0.5, color = Color3.fromRGB(255, 0, 255),   order = 5 },
+	Common    = { weight = 60,  color = Color3.fromRGB(170, 175, 185), order = 1, label = "GEWÖHNLICH" },
+	Rare      = { weight = 28,  color = Color3.fromRGB(70, 150, 255),  order = 2, label = "SELTEN" },
+	Legendary = { weight = 9.5, color = Color3.fromRGB(255, 170, 30),  order = 3, label = "LEGENDE" },
+	Godly     = { weight = 2,   color = Color3.fromRGB(255, 60, 90),   order = 4, label = "GÖTTLICH" },
+	Mythical  = { weight = 0.5, color = Color3.fromRGB(255, 0, 255),   order = 5, label = "MYTHOLOGISCH" },
 }
 
 -- body = Hauptfarbe, accent = Lauf/Scope/Glow-Farbe.
@@ -275,20 +312,34 @@ Skins.CATALOG = {
 	{ id = "toxin",     name = "Toxin",         tier = "Legendary", body = Color3.fromRGB(28, 35, 22),  accent = Color3.fromRGB(190, 255, 40) },
 
 	-- ── Godly ──
-	{ id = "galaxie",   name = "Galaxie",       tier = "Godly", body = Color3.fromRGB(30, 15, 60),  accent = Color3.fromRGB(150, 80, 255) },
-	{ id = "drachen",   name = "Drachenglut",   tier = "Godly", body = Color3.fromRGB(50, 12, 12),  accent = Color3.fromRGB(255, 90, 30) },
-	{ id = "frost",     name = "Frostgeist",    tier = "Godly", body = Color3.fromRGB(15, 35, 50),  accent = Color3.fromRGB(140, 235, 255) },
+	{ id = "galaxie",    name = "Galaxie",       tier = "Godly", body = Color3.fromRGB(30, 15, 60),   accent = Color3.fromRGB(150, 80, 255) },
+	{ id = "drachen",    name = "Drachenglut",   tier = "Godly", body = Color3.fromRGB(50, 12, 12),   accent = Color3.fromRGB(255, 90, 30) },
+	{ id = "frost",      name = "Frostgeist",    tier = "Godly", body = Color3.fromRGB(15, 35, 50),   accent = Color3.fromRGB(140, 235, 255) },
+	{ id = "neondrache", name = "Neon Drache",   tier = "Godly", body = Color3.fromRGB(190, 155, 70), accent = Color3.fromRGB(80, 230, 255),
+		flavor = "GEBOREN IM PLASMAFEUER" },
 
 	-- ── Mythical ──
 	{ id = "singularitaet", name = "Singularität", tier = "Mythical", body = Color3.fromRGB(10, 10, 14), accent = Color3.fromRGB(255, 255, 255) },
+	{ id = "voidaura",      name = "Void-Aura",    tier = "Mythical", body = Color3.fromRGB(16, 8, 26),  accent = Color3.fromRGB(170, 60, 255),
+		flavor = "1% DER 1%" },
+
+	-- ── Prime-exklusiv (nicht im Case-Pool — kommt mit Prime Status) ──
+	{ id = "primeaegis", name = "Prime: Ägis", tier = "Godly", body = Color3.fromRGB(235, 235, 245), accent = Color3.fromRGB(255, 200, 60),
+		obtain = "prime", flavor = "PRIME-EXKLUSIV" },
 }
 
 -- ── Abgeleitete Lookups ───────────────────────────────────────────────────────
 Skins.BY_ID = {}
-local tierCounts = {}
+local tierCounts = {}   -- nur Case-Pool-Skins (Prime-Exklusive zählen nicht)
 for _, skin in ipairs(Skins.CATALOG) do
 	Skins.BY_ID[skin.id] = skin
-	tierCounts[skin.tier] = (tierCounts[skin.tier] or 0) + 1
+	if not skin.obtain then
+		tierCounts[skin.tier] = (tierCounts[skin.tier] or 0) + 1
+	end
+end
+
+function Skins.inCasePool(skin)
+	return skin.obtain == nil
 end
 
 -- Effekt-Flags pro Tier (zentral, damit alle Skins eines Tiers konsistent sind)
@@ -310,7 +361,7 @@ end
 -- verlangt offengelegte Wahrscheinlichkeiten bei bezahlten Zufalls-Items).
 function Skins.chanceOf(skinId, luckActive, luckMult)
 	local skin = Skins.BY_ID[skinId]
-	if not skin then return 0 end
+	if not skin or skin.obtain then return 0 end   -- nicht im Case-Pool
 	local total = 0
 	for tierName, tier in pairs(Skins.TIERS) do
 		local w = tier.weight
@@ -323,17 +374,20 @@ function Skins.chanceOf(skinId, luckActive, luckMult)
 end
 
 -- Gewichteter Pull (Server). rng = Random-Instanz.
-function Skins.roll(rng, luckActive, luckMult)
+-- minOrder (optional): Pity-Garantie — nur Tiers ab dieser Stufe (z.B. 3 = Legendary+)
+function Skins.roll(rng, luckActive, luckMult, minOrder)
 	local total = 0
 	local weights = {}
 	for tierName, tier in pairs(Skins.TIERS) do
-		local w = tier.weight
-		if luckActive and tierName ~= "Common" then w = w * luckMult end
-		weights[tierName] = w
-		total = total + w
+		if not minOrder or tier.order >= minOrder then
+			local w = tier.weight
+			if luckActive and tierName ~= "Common" then w = w * luckMult end
+			weights[tierName] = w
+			total = total + w
+		end
 	end
 	local pick = rng:NextNumber() * total
-	local chosenTier = "Common"
+	local chosenTier = minOrder and "Legendary" or "Common"
 	for tierName, w in pairs(weights) do
 		pick = pick - w
 		if pick <= 0 then
@@ -341,10 +395,12 @@ function Skins.roll(rng, luckActive, luckMult)
 			break
 		end
 	end
-	-- Innerhalb des Tiers: gleichverteilt
+	-- Innerhalb des Tiers: gleichverteilt (nur Case-Pool-Skins)
 	local pool = {}
 	for _, skin in ipairs(Skins.CATALOG) do
-		if skin.tier == chosenTier then table.insert(pool, skin) end
+		if skin.tier == chosenTier and Skins.inCasePool(skin) then
+			table.insert(pool, skin)
+		end
 	end
 	return pool[rng:NextInteger(1, #pool)]
 end
@@ -667,13 +723,14 @@ netFolder.Parent = ReplicatedStorage
 local REMOTE_NAMES = {
 	-- Server → Client
 	"UpdateData", "Notify", "PlaySFX",
-	"HatchResult", "OpenEgg",
+	"HatchResult", "OpenEgg", "OpenWager", "OpenTrade",
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	-- Client → Server
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
 	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
+	"BuyPrime", "ClaimWeekly",
 }
 
 local net = {}
@@ -694,6 +751,7 @@ local ArenaService  = require(Services:WaitForChild("ArenaService"))
 local BotService    = require(Services:WaitForChild("BotService"))
 local LobbyService  = require(Services:WaitForChild("LobbyService"))
 local TradeService  = require(Services:WaitForChild("TradeService"))
+local PrimeService  = require(Services:WaitForChild("PrimeService"))
 
 -- Ein kaputter Service darf nie den ganzen Server killen
 local function safeInit(name, fn, ...)
@@ -708,11 +766,13 @@ safeInit("WeaponService", WeaponService.init, DataService, net)
 safeInit("ArenaService",  ArenaService.init, DataService, WeaponService, net)
 safeInit("BotService",    BotService.init, net)
 safeInit("EggService",    EggService.init, DataService, net)
-safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, net)
+safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, DataService, net)
 safeInit("TradeService",  TradeService.init, DataService, WeaponService, net)
+safeInit("PrimeService",  PrimeService.init, DataService, WeaponService, net)
 
 WeaponService.setArenaService(ArenaService)
 ArenaService.setBotService(BotService)
+TradeService.onTicker = LobbyService.pushTicker
 
 -- ── Player-Lifecycle ──────────────────────────────────────────────────────────
 local function onPlayerAdded(player)
@@ -757,7 +817,7 @@ local dataService = nil
 local botService  = nil   -- via setBotService (Server-Wiring)
 local net         = nil
 
-local queue          = {}    -- Array von Playern
+local queue          = {}    -- Array von { player, wager }
 local playerMatch    = {}    -- [player] = match
 local arenaFree      = {}    -- [idx] = true/false
 local arenaSpawns    = {}    -- [idx] = { CFrame, CFrame }
@@ -894,6 +954,32 @@ local function sendStateForPlayer(p, match, winner)
 	})
 end
 
+-- ELO-Update nach einem PvP-Match (Bot-Matches zählen nicht).
+-- Prime-Spieler bekommen +25% auf GEWINNE (nie stärkere Waffen).
+local function updateRatings(winner, loser)
+	local dw, dl = dataService.get(winner), dataService.get(loser)
+	if not dw or not dl then return end
+	local rw, rl = dw.rating or Config.ELO_START, dl.rating or Config.ELO_START
+	local expected = 1 / (1 + 10 ^ ((rl - rw) / 400))
+	local gain = Config.ELO_K * (1 - expected)
+	if dw.prime then gain = gain * Config.PRIME_RANK_BOOST end
+
+	local oldRankW = Config.rankFor(rw).name
+	local oldRankL = Config.rankFor(rl).name
+	dw.rating = math.floor(rw + gain + 0.5)
+	dl.rating = math.max(0, math.floor(rl - Config.ELO_K * (1 - expected) + 0.5))
+
+	local newRankW = Config.rankFor(dw.rating)
+	if newRankW.name ~= oldRankW and winner.Parent then
+		net.Notify:FireClient(winner, "🏅 RANG AUF: " .. newRankW.name .. "!")
+		net.PlaySFX:FireClient(winner, "Chime", 0.8, 1.2)
+	end
+	local newRankL = Config.rankFor(dl.rating)
+	if newRankL.name ~= oldRankL and loser.Parent then
+		net.Notify:FireClient(loser, "📉 Rang ab: " .. newRankL.name)
+	end
+end
+
 local function endMatch(match, winner)
 	if match.ended then return end
 	match.ended = true
@@ -903,6 +989,22 @@ local function endMatch(match, winner)
 		playerMatch[p] = nil
 	end
 	arenaFree[match.arenaIdx] = true
+
+	-- Wager-Topf: Sieger bekommt alles; kein Sieger → Einsatz zurück
+	local pot = (match.wager or 0) * 2
+	if winner and pot > 0 then
+		dataService.addCredits(winner, pot)
+	elseif not winner and (match.wager or 0) > 0 then
+		for _, p in ipairs(match.players) do
+			if p.Parent then dataService.addCredits(p, match.wager) end
+		end
+	end
+
+	-- Rang nur bei klarem Ergebnis
+	if winner then
+		local loser = (winner == match.players[1]) and match.players[2] or match.players[1]
+		updateRatings(winner, loser)
+	end
 
 	for _, p in ipairs(match.players) do
 		if p.Parent then
@@ -915,11 +1017,12 @@ local function endMatch(match, winner)
 			if won then
 				local d = dataService.get(p)
 				if d then d.wins += 1 end
-				dataService.sendUpdate(p)
 			end
+			dataService.sendUpdate(p)
 			net.PlaySFX:FireClient(p, won and "Chime" or "ChimeSoft", 0.7)
+			local potText = (won and pot > 0) and ("  💰 Pot: +" .. pot) or ""
 			net.Notify:FireClient(p, won
-				and ("🏆 Sieg! +" .. Config.WIN_REWARD .. " " .. Config.CURRENCY_NAME)
+				and ("🏆 Sieg! +" .. Config.WIN_REWARD .. " " .. Config.CURRENCY_NAME .. potText)
 				or ("💀 Niederlage. +" .. Config.LOSS_REWARD .. " " .. Config.CURRENCY_NAME))
 			sendStateForPlayer(p, match, winner)
 			teleport(p, lobbyCFrame())
@@ -930,7 +1033,8 @@ local function endMatch(match, winner)
 	task.defer(tryStartMatchesRef)
 end
 
-local function startMatch(a, b)
+local function startMatch(a, b, wager)
+	wager = wager or 0
 	local arenaIdx = nil
 	for i = 1, Config.ARENA_COUNT do
 		if arenaFree[i] then
@@ -940,9 +1044,26 @@ local function startMatch(a, b)
 	end
 	if not arenaIdx then
 		-- keine Arena frei → zurück in die Queue (vorne); Aufrufer stoppt die Schleife
-		table.insert(queue, 1, b)
-		table.insert(queue, 1, a)
+		table.insert(queue, 1, { player = b, wager = wager })
+		table.insert(queue, 1, { player = a, wager = wager })
 		return false
+	end
+
+	-- Wager-Escrow: beide zahlen JETZT ein (Auszahlung in endMatch)
+	if wager > 0 then
+		local da, db = dataService.get(a), dataService.get(b)
+		if not da or da.credits < wager or not db or db.credits < wager then
+			local broke = (not da or da.credits < wager) and a or b
+			local other = (broke == a) and b or a
+			if broke.Parent then
+				net.Notify:FireClient(broke, "Zu wenig " .. Config.CURRENCY_NAME .. " für den Wager!")
+				net.QueueState:FireClient(broke, false)
+			end
+			table.insert(queue, 1, { player = other, wager = wager })
+			return true   -- kein Arena-Verbrauch, weiter matchen
+		end
+		dataService.addCredits(a, -wager)
+		dataService.addCredits(b, -wager)
 	end
 	arenaFree[arenaIdx] = false
 
@@ -950,6 +1071,7 @@ local function startMatch(a, b)
 		arenaIdx = arenaIdx,
 		players  = { a, b },
 		score    = { [a] = 0, [b] = 0 },
+		wager    = wager,
 		live     = false,
 		ended    = false,
 		endTime  = os.clock() + Config.MATCH_TIME + Config.COUNTDOWN,
@@ -1004,21 +1126,35 @@ local function startMatch(a, b)
 	return true
 end
 
+-- Paart Spieler mit GLEICHEM Wager-Einsatz (0 = Casual-Pool)
 local function tryStartMatches()
-	while #queue >= 2 do
-		local a = table.remove(queue, 1)
-		local b = table.remove(queue, 1)
-		if not a.Parent then
-			if b.Parent then table.insert(queue, 1, b) end
-		elseif not b.Parent then
-			table.insert(queue, 1, a)
-		elseif not alive(a) then
-			table.insert(queue, b)
-		elseif not alive(b) then
-			table.insert(queue, a)
-		elseif startMatch(a, b) == false then
+	while true do
+		-- tote Einträge entsorgen
+		for i = #queue, 1, -1 do
+			local e = queue[i]
+			if not e.player.Parent or not alive(e.player) then
+				table.remove(queue, i)
+			end
+		end
+
+		-- erstes Paar mit gleichem Einsatz suchen
+		local i1, i2 = nil, nil
+		for a = 1, #queue do
+			for b = a + 1, #queue do
+				if queue[a].wager == queue[b].wager then
+					i1, i2 = a, b
+					break
+				end
+			end
+			if i1 then break end
+		end
+		if not i1 then return end
+
+		local eB = table.remove(queue, i2)   -- höheren Index zuerst entfernen
+		local eA = table.remove(queue, i1)
+		if startMatch(eA.player, eB.player, eA.wager) == false then
 			-- keine Arena frei: warten, bis eine frei wird
-			break
+			return
 		end
 	end
 end
@@ -1114,8 +1250,8 @@ function ArenaService.startBotMatch(player)
 		return
 	end
 	-- aus der PvP-Queue nehmen
-	for i, p in ipairs(queue) do
-		if p == player then
+	for i, e in ipairs(queue) do
+		if e.player == player then
 			table.remove(queue, i)
 			net.QueueState:FireClient(player, false)
 			break
@@ -1233,18 +1369,56 @@ function ArenaService.onKill(killer, victim)
 	end)
 end
 
-function ArenaService.toggleQueue(player)
+function ArenaService.isQueued(player)
+	for _, e in ipairs(queue) do
+		if e.player == player then return true end
+	end
+	return false
+end
+
+function ArenaService.getActiveDuelCount()
+	local seen, count = {}, 0
+	for _, match in pairs(playerMatch) do
+		if not seen[match] and match.live and not match.ended then
+			seen[match] = true
+			count += 1
+		end
+	end
+	return count
+end
+
+-- wager: einer der Config.WAGER_OPTIONS-Beträge (Default 0 = Casual)
+function ArenaService.toggleQueue(player, wager)
 	if playerMatch[player] then return end
-	for i, p in ipairs(queue) do
-		if p == player then
+	for i, e in ipairs(queue) do
+		if e.player == player then
 			table.remove(queue, i)
 			net.Notify:FireClient(player, "🚪 Queue verlassen.")
 			net.QueueState:FireClient(player, false)
 			return
 		end
 	end
-	table.insert(queue, player)
-	net.Notify:FireClient(player, "⚔ In der 1v1-Queue… (" .. #queue .. " wartend)")
+
+	wager = (type(wager) == "number") and math.floor(wager) or 0
+	local valid = false
+	for _, w in ipairs(Config.WAGER_OPTIONS) do
+		if w == wager then
+			valid = true
+			break
+		end
+	end
+	if not valid then wager = 0 end
+
+	local data = dataService.get(player)
+	if wager > 0 and (not data or data.credits < wager) then
+		net.Notify:FireClient(player, "Zu wenig " .. Config.CURRENCY_NAME .. " für diesen Wager!")
+		return
+	end
+
+	table.insert(queue, { player = player, wager = wager })
+	net.Notify:FireClient(player, wager > 0
+		and ("⚔ Wager-Queue: " .. wager .. " " .. Config.CURRENCY_NAME .. " — Sieger nimmt alles!")
+		or ("⚔ In der 1v1-Queue… (" .. #queue .. " wartend)"))
 	net.QueueState:FireClient(player, true)
 	tryStartMatches()
 end
@@ -1262,8 +1436,8 @@ function ArenaService.init(ds, _ws, netRef)
 		buildArena(i, folder)
 	end
 
-	net.QueueJoin.OnServerEvent:Connect(function(player)
-		ArenaService.toggleQueue(player)
+	net.QueueJoin.OnServerEvent:Connect(function(player, wager)
+		ArenaService.toggleQueue(player, wager)
 	end)
 
 	net.QueueBot.OnServerEvent:Connect(function(player)
@@ -1287,8 +1461,8 @@ function ArenaService.init(ds, _ws, netRef)
 	end
 
 	Players.PlayerRemoving:Connect(function(player)
-		for i, p in ipairs(queue) do
-			if p == player then
+		for i, e in ipairs(queue) do
+			if e.player == player then
 				table.remove(queue, i)
 				break
 			end
@@ -1585,6 +1759,9 @@ local function defaultData()
 		hatches   = 0,
 		luckUntil = 0,
 		lastDaily = 0,
+		rating    = Config.ELO_START,   -- Rang (1v1-ELO)
+		pullsSinceLegendary = 0,        -- Pity-Zähler fürs Omega-Gehäuse
+		lastWeekly = 0,                 -- Prime-Weekly
 	}
 end
 
@@ -1634,6 +1811,11 @@ function DataService.sendUpdate(player)
 	if data and net then
 		net.UpdateData:FireClient(player, data)
 	end
+end
+
+-- Für Bestenliste/Leaderboard: über alle geladenen Spieler iterieren
+function DataService.eachPlayer()
+	return pairs(cache)
 end
 
 function DataService.addCredits(player, amount)
@@ -1727,19 +1909,28 @@ local function hatch(player, eggId)
 	data.credits = data.credits - egg.cost
 	data.hatches = (data.hatches or 0) + 1
 
-	local skin = Skins.roll(rng, luckActive(data), Config.LUCK_MULTIPLIER)
+	-- Pity: nach PITY_LEGENDARY Pulls ohne Legendary+ ist der nächste garantiert
+	data.pullsSinceLegendary = (data.pullsSinceLegendary or 0) + 1
+	local forced = data.pullsSinceLegendary >= Config.PITY_LEGENDARY
+
+	local skin = Skins.roll(rng, luckActive(data), Config.LUCK_MULTIPLIER, forced and 3 or nil)
+	if Skins.TIERS[skin.tier].order >= 3 then
+		data.pullsSinceLegendary = 0
+	end
+
 	data.skins[skin.id] = (data.skins[skin.id] or 0) + 1
 	dataService.sendUpdate(player)
 
-	-- Client spielt die Hatch-Animation (Drumroll → Cracks → Reveal)
-	net.HatchResult:FireClient(player, skin.id, data.skins[skin.id])
+	-- Client spielt den Case-Spinner (Spin → Reveal → "GEWONNEN!")
+	net.HatchResult:FireClient(player, skin.id, data.skins[skin.id],
+		math.max(0, Config.PITY_LEGENDARY - data.pullsSinceLegendary))
 
 	-- Godly+/Mythical: der ganze Server soll es sehen — DAS ist der Flex
 	if FLEX_TIERS[skin.tier] then
 		for _, p in ipairs(Players:GetPlayers()) do
 			if p ~= player then
 				net.Notify:FireClient(p,
-					"🌌 " .. player.Name .. " hat " .. skin.name .. " [" .. skin.tier .. "] gezogen!")
+					"🌌 " .. player.Name .. " hat " .. skin.name .. " [" .. Skins.TIERS[skin.tier].label .. "] gezogen!")
 			end
 		end
 	end
@@ -1818,7 +2009,12 @@ return EggService
       <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">LobbyService</string>
-          <string name="Source"><![CDATA[-- LobbyService.lua — Cyber-Lobby: Omega-Ei in der Mitte, Queue-Pad, Daily-Terminal
+          <string name="Source"><![CDATA[-- LobbyService.lua — Neon-Cyber-Mythos-Hauptlobby:
+--   Mitte-Rechts: Omega-Gehäuse (Case-Opening, schwebendes Artefakt)
+--   Links:        COMPETITIVE 5V5 Portal + Rangschild + RANGTABELLE
+--   Rechts:       1v1 SNIPER-ARENA Terminal (AKTIVE DUELLE, Wager) + Pads
+--   Hinten:       Prachtvolle Treppe → obere Ebene "HANDELSHALLE" (+ Live-Ticker)
+--   Vorne-Links:  BESTENLISTE (Kills/Pulls/Rang)
 local LobbyService = {}
 
 local RS                = game:GetService("ReplicatedStorage")
@@ -1830,12 +2026,18 @@ local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local arenaService = nil
 local eggService   = nil
+local dataService  = nil
 local net          = nil
 
-local NEON   = Color3.fromRGB(150, 80, 255)
-local CYAN   = Color3.fromRGB(70, 200, 255)
-local DARK   = Color3.fromRGB(22, 24, 34)
-local FLOOR  = Color3.fromRGB(32, 34, 48)
+local CYAN    = Color3.fromRGB(70, 200, 255)
+local MAGENTA = Color3.fromRGB(255, 70, 200)
+local PURPLE  = Color3.fromRGB(150, 80, 255)
+local GOLD    = Color3.fromRGB(255, 200, 60)
+local DARK    = Color3.fromRGB(20, 22, 32)
+local STONE   = Color3.fromRGB(58, 56, 70)
+local FLOOR   = Color3.fromRGB(16, 17, 26)
+
+local tickerLabel = nil   -- Live-Ticker der Handelshalle
 
 local function part(props, parent)
 	local p = Instance.new("Part")
@@ -1846,16 +2048,18 @@ local function part(props, parent)
 	p.Anchored = true
 	p.CanCollide = props.collide ~= false
 	if props.transparency then p.Transparency = props.transparency end
+	if props.reflectance then p.Reflectance = props.reflectance end
+	if props.shape then p.Shape = props.shape end
 	if props.name then p.Name = props.name end
 	p.Parent = parent
 	return p
 end
 
-local function billboard(parent, offset, title, subtitle, color)
+local function billboard(parent, offset, title, subtitle, color, width)
 	local bb = Instance.new("BillboardGui")
-	bb.Size = UDim2.new(0, 220, 0, 70)
+	bb.Size = UDim2.new(0, width or 240, 0, 70)
 	bb.StudsOffset = offset
-	bb.MaxDistance = 120
+	bb.MaxDistance = 160
 	bb.Parent = parent
 
 	local tl = Instance.new("TextLabel")
@@ -1882,130 +2086,256 @@ local function billboard(parent, offset, title, subtitle, color)
 	end
 end
 
-local function buildMegaEgg(folder)
+-- SurfaceGui-Textpanel (Terminals, Boards)
+local function surfacePanel(parent, face, lines)
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = face
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 30
+	sg.Parent = parent
+
+	local labels = {}
+	local n = #lines
+	for i, line in ipairs(lines) do
+		local tl = Instance.new("TextLabel")
+		tl.Size = UDim2.new(1, -12, 1 / n, -4)
+		tl.Position = UDim2.new(0, 6, (i - 1) / n, 2)
+		tl.BackgroundTransparency = 1
+		tl.Text = line.text
+		tl.TextColor3 = line.color or Color3.fromRGB(225, 230, 245)
+		tl.TextScaled = true
+		tl.Font = line.font or Enum.Font.Gotham
+		tl.TextXAlignment = line.align or Enum.TextXAlignment.Center
+		tl.Parent = sg
+		labels[i] = tl
+	end
+	return labels
+end
+
+-- "Antike Glyphen": Reihe kleiner Neon-Formen (Balken/Ringe/Punkte) auf Stein
+local function glyphRow(parent, originCF, count, color, rng)
+	for i = 0, count - 1 do
+		local kind = rng:NextInteger(1, 3)
+		local cf = originCF * CFrame.new(i * 1.4, 0, 0)
+		if kind == 1 then
+			part({ size = Vector3.new(0.18, rng:NextNumber(0.6, 1.1), 0.12), cframe = cf,
+				material = Enum.Material.Neon, color = color, transparency = 0.25, collide = false }, parent)
+		elseif kind == 2 then
+			part({ size = Vector3.new(0.55, 0.55, 0.12), cframe = cf * CFrame.Angles(0, 0, math.rad(45)),
+				material = Enum.Material.Neon, color = color, transparency = 0.35, collide = false }, parent)
+		else
+			part({ size = Vector3.new(0.3, 0.3, 0.12), cframe = cf, shape = Enum.PartType.Ball,
+				material = Enum.Material.Neon, color = color, transparency = 0.2, collide = false }, parent)
+		end
+	end
+end
+
+-- ── Omega-Gehäuse (Case-Opening-Terminal, Mitte-Rechts) ───────────────────────
+local function buildOmegaCase(folder)
 	local egg = Config.EGGS.omega
-	local center = Vector3.new(0, 0, 15)
+	local center = Vector3.new(18, 0, 8)
 
-	-- Podest
-	part({ size = Vector3.new(18, 1.2, 18), pos = center + Vector3.new(0, 0.6, 0),
-		material = Enum.Material.Slate, color = DARK }, folder)
-	part({ size = Vector3.new(15, 0.4, 15), pos = center + Vector3.new(0, 1.4, 0),
-		material = Enum.Material.Neon, color = egg.color, transparency = 0.35, collide = false }, folder)
+	-- Podest mit "Zahnrädern" (flache Zylinder)
+	part({ size = Vector3.new(20, 1.4, 20), pos = center + Vector3.new(0, 0.7, 0),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	for a = 0, 3 do
+		local ang = a / 4 * math.pi * 2
+		part({ size = Vector3.new(0.8, 3.2, 3.2),
+			cframe = CFrame.new(center + Vector3.new(math.cos(ang) * 8, 1.5, math.sin(ang) * 8))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			shape = Enum.PartType.Cylinder,
+			material = Enum.Material.Metal, color = Color3.fromRGB(90, 85, 105) }, folder)
+	end
+	part({ size = Vector3.new(16, 0.4, 16), pos = center + Vector3.new(0, 1.6, 0),
+		material = Enum.Material.Neon, color = egg.color, transparency = 0.4, collide = false }, folder)
 
-	-- Das massive Omega-Ei (Sphere-Mesh vertikal gestreckt)
-	local shell = part({ size = Vector3.new(10, 10, 10), pos = center + Vector3.new(0, 8.5, 0),
-		material = Enum.Material.SmoothPlastic, color = egg.color, name = "OmegaEgg" }, folder)
-	local mesh = Instance.new("SpecialMesh")
-	mesh.MeshType = Enum.MeshType.Sphere
-	mesh.Scale = Vector3.new(1, 1.35, 1)
-	mesh.Parent = shell
-	shell.Reflectance = 0.08
-	-- Client-Animation (Schweben/Drehen) via Tag — kostet den Server nichts
-	CollectionService:AddTag(shell, "EggFloat")
-
-	-- Leucht-Ringe um das Ei
-	for i, y in ipairs({ 6.2, 8.5, 10.8 }) do
-		local ring = part({
-			size = Vector3.new(0.35, 11 - math.abs(i - 2) * 3, 11 - math.abs(i - 2) * 3),
-			cframe = CFrame.new(center + Vector3.new(0, y, 0)) * CFrame.Angles(0, 0, math.rad(90)),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.25, collide = false,
-		}, folder)
-		-- Ringe NICHT taggen: die Float-Animation überschreibt die Orientierung,
-		-- gekippte Zylinder würden dadurch aufrecht springen
-		ring.Shape = Enum.PartType.Cylinder
+	-- Das schwebende Artefakt-Gehäuse (Würfel + Neon-Kanten, dreht/schwebt client-seitig)
+	local case = part({ size = Vector3.new(7, 7, 7), pos = center + Vector3.new(0, 9, 0),
+		material = Enum.Material.Slate, color = DARK, reflectance = 0.1, name = "OmegaCase" }, folder)
+	CollectionService:AddTag(case, "EggFloat")
+	for _, off in ipairs({
+		Vector3.new(3.5, 0, 3.5), Vector3.new(-3.5, 0, 3.5),
+		Vector3.new(3.5, 0, -3.5), Vector3.new(-3.5, 0, -3.5),
+	}) do
+		local edge = part({ size = Vector3.new(0.35, 7.4, 0.35), pos = case.Position + off,
+			material = Enum.Material.Neon, color = egg.color, collide = false }, folder)
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = case
+		w.Part1 = edge
+		w.Parent = edge
+		edge.Anchored = false
+	end
+	for _, dy in ipairs({ 3.7, -3.7 }) do
+		local frame = part({ size = Vector3.new(7.6, 0.35, 7.6), pos = case.Position + Vector3.new(0, dy, 0),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.2, collide = false }, folder)
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = case
+		w.Part1 = frame
+		w.Parent = frame
+		frame.Anchored = false
 	end
 
-	-- Orbit-Partikel
+	-- Statische Leucht-Ringe (gekippt — bewusst NICHT getaggt, s. EggFloat-Handler)
+	for i, tilt in ipairs({ 18, -14 }) do
+		part({
+			size = Vector3.new(0.3, 13 + i * 2, 13 + i * 2),
+			cframe = CFrame.new(center + Vector3.new(0, 9, 0))
+				* CFrame.Angles(math.rad(tilt), 0, math.rad(90 + tilt)),
+			shape = Enum.PartType.Cylinder,
+			material = Enum.Material.Neon, color = (i == 1) and CYAN or MAGENTA,
+			transparency = 0.45, collide = false,
+		}, folder)
+	end
+
+	-- Holo-Projektion + Partikel + Licht
 	local att = Instance.new("Attachment")
-	att.Parent = shell
+	att.Parent = case
 	local pe = Instance.new("ParticleEmitter")
 	pe.Texture = Assets.PARTICLES.Sparkles
-	pe.Rate = 8
+	pe.Rate = 10
 	pe.Lifetime = NumberRange.new(1.5, 3)
-	pe.Speed = NumberRange.new(1, 2.5)
+	pe.Speed = NumberRange.new(1.5, 3)
 	pe.SpreadAngle = Vector2.new(180, 180)
 	pe.Size = NumberSequence.new(0.35)
 	pe.Color = ColorSequence.new(egg.color, CYAN)
 	pe.LightEmission = 1
 	pe.Parent = att
-
 	local light = Instance.new("PointLight")
 	light.Color = egg.color
-	light.Range = 28
-	light.Brightness = 1.4
-	light.Parent = shell
+	light.Range = 30
+	light.Brightness = 1.6
+	light.Parent = case
 
-	billboard(shell, Vector3.new(0, 9, 0),
-		"🥚 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
+	billboard(case, Vector3.new(0, 7.5, 0),
+		"📦 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
 
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Ei öffnen"
+	prompt.ActionText = "Gehäuse öffnen"
 	prompt.ObjectText = egg.name
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 18
+	prompt.MaxActivationDistance = 20
 	prompt.RequiresLineOfSight = false
-	prompt.Parent = shell
+	prompt.Parent = case
 	prompt.Triggered:Connect(function(player)
 		net.OpenEgg:FireClient(player, "omega")
 	end)
 end
 
-local function buildLobby(folder)
-	-- Boden + Neon-Grid
-	part({ size = Vector3.new(180, 2, 180), pos = Vector3.new(0, -1, 0),
-		material = Enum.Material.Slate, color = FLOOR, name = "LobbyFloor" }, folder)
-	for i = -3, 3 do
-		part({ size = Vector3.new(0.5, 0.15, 180), pos = Vector3.new(i * 25, 0.05, 0),
-			material = Enum.Material.Neon, color = NEON, transparency = 0.55, collide = false }, folder)
-		part({ size = Vector3.new(180, 0.15, 0.5), pos = Vector3.new(0, 0.05, i * 25),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.65, collide = false }, folder)
-	end
+-- ── COMPETITIVE 5V5 Portal + Rang (Links) ─────────────────────────────────────
+local function buildPortal5v5(folder, rng)
+	local cx, cz = -45, 25
 
-	-- Begrenzung + Neon-Türme als Skyline
-	for _, w in ipairs({
-		{ Vector3.new(180, 18, 2), Vector3.new(0, 9, -90) },
-		{ Vector3.new(180, 18, 2), Vector3.new(0, 9, 90) },
-		{ Vector3.new(2, 18, 180), Vector3.new(-90, 9, 0) },
-		{ Vector3.new(2, 18, 180), Vector3.new(90, 9, 0) },
-	}) do
-		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+	-- Massive Stein-Pfeiler + verzierter Bogen
+	for side = -1, 1, 2 do
+		local pillar = part({ size = Vector3.new(5, 26, 5), pos = Vector3.new(cx + side * 11, 13, cz),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		glyphRow(folder, CFrame.new(pillar.Position + Vector3.new(-0.7, -6, -2.7)) * CFrame.Angles(0, 0, math.rad(90)),
+			6, PURPLE, rng)
 	end
-	local towerRng = Random.new(7)
-	for a = 0, 11 do
-		local ang = a / 12 * math.pi * 2
-		local d = 120 + towerRng:NextNumber(0, 60)
-		local h = towerRng:NextNumber(40, 110)
-		local tower = part({
-			size = Vector3.new(towerRng:NextNumber(12, 24), h, towerRng:NextNumber(12, 24)),
-			pos = Vector3.new(math.cos(ang) * d, h / 2 - 4, math.sin(ang) * d),
-			material = Enum.Material.Concrete, color = DARK,
+	part({ size = Vector3.new(28, 4, 5.5), pos = Vector3.new(cx, 27, cz),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	part({ size = Vector3.new(29, 0.6, 6), pos = Vector3.new(cx, 29.2, cz),
+		material = Enum.Material.Neon, color = PURPLE, transparency = 0.3, collide = false }, folder)
+
+	-- Wirbelndes Energieportal (zwei Ebenen + Partikel)
+	local portal = part({ size = Vector3.new(17, 22, 0.6), pos = Vector3.new(cx, 12, cz),
+		material = Enum.Material.Neon, color = PURPLE, transparency = 0.35, collide = false, name = "Portal5v5" }, folder)
+	part({ size = Vector3.new(14, 18, 0.4), pos = Vector3.new(cx, 12, cz + 0.3),
+		material = Enum.Material.Neon, color = CYAN, transparency = 0.6, collide = false }, folder)
+	local patt = Instance.new("Attachment")
+	patt.Parent = portal
+	local pswirl = Instance.new("ParticleEmitter")
+	pswirl.Texture = Assets.PARTICLES.Smoke
+	pswirl.Rate = 14
+	pswirl.Lifetime = NumberRange.new(1.4, 2.6)
+	pswirl.Speed = NumberRange.new(2, 5)
+	pswirl.SpreadAngle = Vector2.new(180, 180)
+	pswirl.Size = NumberSequence.new(2.4)
+	pswirl.Color = ColorSequence.new(PURPLE, CYAN)
+	pswirl.LightEmission = 0.8
+	pswirl.Parent = patt
+	local plight = Instance.new("PointLight")
+	plight.Color = PURPLE
+	plight.Range = 34
+	plight.Brightness = 1.8
+	plight.Parent = portal
+
+	billboard(portal, Vector3.new(0, 13.5, 0),
+		"COMPETITIVE: 5V5 BOMBEN-DEFUSAL", "Matchmaking in Entwicklung — Rang steigt im 1v1!", PURPLE, 340)
+
+	-- Anker für das client-seitige Rangschild ("DEIN RANG: …" sieht jeder nur für sich)
+	local anchor = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(cx, 7.5, cz - 7),
+		transparency = 1, collide = false, name = "RankShieldAnchor" }, folder)
+	anchor.CanQuery = false
+
+	-- Touch-Hinweis
+	local touchCd = {}
+	portal.Touched:Connect(function(hit)
+		local player = hit and hit.Parent and Players:GetPlayerFromCharacter(hit.Parent)
+		if not player then return end
+		if os.clock() - (touchCd[player] or 0) < 4 then return end
+		touchCd[player] = os.clock()
+		net.Notify:FireClient(player, "🚧 5v5 Bomben-Defusal kommt bald — dein Rang steigt im 1v1!")
+	end)
+
+	-- RANGTABELLE-Terminal (rechts neben dem Portal)
+	local board = part({ size = Vector3.new(0.8, 13, 9), pos = Vector3.new(cx + 19, 7.5, cz - 2),
+		material = Enum.Material.Slate, color = DARK }, folder)
+	local lines = { { text = "RANGTABELLE:", color = GOLD, font = Enum.Font.GothamBold } }
+	for i = #Config.RANKS, 1, -1 do
+		local r = Config.RANKS[i]
+		table.insert(lines, { text = r.name .. "  (" .. r.min .. "+)", color = r.color })
+	end
+	surfacePanel(board, Enum.NormalId.Right, lines)
+end
+
+-- ── 1v1 SNIPER-ARENA Terminal + Pads (Rechts) ─────────────────────────────────
+local duelCountLabel = nil
+
+local function buildArenaTerminal(folder, rng)
+	local cx, cz = 52, 22
+
+	-- Glyphen-Steinwand mit stilisierten Scope-Symbolen
+	local wall = part({ size = Vector3.new(2, 18, 30), pos = Vector3.new(cx + 10, 9, cz),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	for i = 0, 2 do
+		local ring = part({
+			size = Vector3.new(0.3, 3.4, 3.4),
+			cframe = CFrame.new(wall.Position + Vector3.new(-1.2, 3 + (i % 2) * 4, -9 + i * 9))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			shape = Enum.PartType.Cylinder,
+			material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80),
+			transparency = 0.35, collide = false,
 		}, folder)
-		-- Leuchtkanten
-		part({
-			size = Vector3.new(tower.Size.X + 0.4, 0.6, tower.Size.Z + 0.4),
-			pos = tower.Position + Vector3.new(0, h / 2 - 1, 0),
-			material = Enum.Material.Neon,
-			color = (a % 2 == 0) and NEON or CYAN,
-			collide = false,
-		}, folder)
+		-- Fadenkreuz im Ring
+		part({ size = Vector3.new(0.15, 4.2, 0.2), pos = ring.Position + Vector3.new(-0.1, 0, 0),
+			material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.45, collide = false }, folder)
+		part({ size = Vector3.new(0.15, 0.2, 4.2), pos = ring.Position + Vector3.new(-0.1, 0, 0),
+			material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.45, collide = false }, folder)
 	end
+	glyphRow(folder, CFrame.new(wall.Position + Vector3.new(-1.2, -7, -10)) * CFrame.Angles(0, math.rad(90), 0),
+		8, Color3.fromRGB(235, 65, 80), rng)
 
-	-- Spawn
-	local spawnLoc = Instance.new("SpawnLocation")
-	spawnLoc.Name = "LobbySpawn"
-	spawnLoc.Size = Vector3.new(12, 1, 12)
-	spawnLoc.Position = Vector3.new(0, 0.5, -55)
-	spawnLoc.Anchored = true
-	spawnLoc.Neutral = true
-	spawnLoc.Color = Color3.fromRGB(45, 48, 66)
-	spawnLoc.Parent = folder
+	-- Terminal mit Live-Anzeige
+	local term = part({ size = Vector3.new(1, 8, 10), pos = Vector3.new(cx + 5, 4, cz),
+		material = Enum.Material.Metal, color = DARK }, folder)
+	billboard(term, Vector3.new(0, 6, 0), "1v1 SNIPER-ARENA", nil, Color3.fromRGB(255, 90, 100), 280)
+	local labels = surfacePanel(term, Enum.NormalId.Left, {
+		{ text = "1v1 SNIPER-ARENA", color = Color3.fromRGB(255, 90, 100), font = Enum.Font.GothamBold },
+		{ text = "AKTIVE DUELLE: 0", color = CYAN },
+		{ text = "NÄCHSTER WAGER: WÄHLEN.", color = GOLD },
+		{ text = "Rotes Pad: PvP  ·  Blaues Pad: Bot", color = Color3.fromRGB(200, 205, 220) },
+	})
+	duelCountLabel = labels[2]
 
-	-- ── Queue-Pad (drauftreten = 1v1-Queue) ──
-	local pad = part({ size = Vector3.new(10, 0.5, 10), pos = Vector3.new(55, 0.25, 0),
-		material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.25,
+	-- ── Queue-Pad (rot): öffnet die Wager-Wahl / verlässt die Queue ──
+	local pad = part({ size = Vector3.new(11, 0.5, 11), pos = Vector3.new(cx - 8, 0.25, cz + 6),
+		material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.2,
 		name = "QueuePad" }, folder)
-	billboard(pad, Vector3.new(0, 6, 0), "⚔ 1v1 SNIPER-ARENA", "Drauftreten: Queue (rein/raus)", Color3.fromRGB(255, 90, 100))
+	part({ size = Vector3.new(12, 0.2, 12), pos = pad.Position + Vector3.new(0, 0.2, 0),
+		material = Enum.Material.Neon, color = Color3.fromRGB(255, 130, 140), transparency = 0.7, collide = false }, folder)
+	billboard(pad, Vector3.new(0, 5.5, 0), "⚔ 1v1 PVP", "Drauftreten: Wager wählen", Color3.fromRGB(255, 90, 100))
 
 	local padCooldown = {}
 	local function padTouch(callback)
@@ -2020,26 +2350,221 @@ local function buildLobby(folder)
 		end
 	end
 	pad.Touched:Connect(padTouch(function(player)
-		arenaService.toggleQueue(player)
+		if arenaService.isQueued(player) then
+			arenaService.toggleQueue(player)   -- verlassen
+		else
+			net.OpenWager:FireClient(player)   -- Einsatz wählen → Client sendet QueueJoin
+		end
 	end))
 
-	-- ── Bot-Pad (Training gegen den Bot, reduzierte Rewards) ──
-	local botPad = part({ size = Vector3.new(10, 0.5, 10), pos = Vector3.new(55, 0.25, -22),
+	-- ── Bot-Pad (blau): Training ──
+	local botPad = part({ size = Vector3.new(11, 0.5, 11), pos = Vector3.new(cx - 8, 0.25, cz - 10),
 		material = Enum.Material.Neon, color = CYAN, transparency = 0.25,
 		name = "BotPad" }, folder)
-	billboard(botPad, Vector3.new(0, 6, 0), "🤖 1v1 VS BOT", "Drauftreten: Training starten", CYAN)
+	billboard(botPad, Vector3.new(0, 5.5, 0), "🤖 1v1 VS BOT", "Drauftreten: Training starten", CYAN)
 	botPad.Touched:Connect(padTouch(function(player)
 		arenaService.startBotMatch(player)
 	end))
+end
 
-	-- ── Daily-Terminal ──
-	local terminal = part({ size = Vector3.new(3, 6, 1.6), pos = Vector3.new(-55, 3, 0),
+-- ── Handelshalle (obere Ebene, hinten) + Treppe + Live-Ticker ─────────────────
+local function buildHandelshalle(folder, rng)
+	local cz = 78
+	local Y = 12
+
+	-- Prachtvolle Treppe (Mitte)
+	local steps = 10
+	for i = 1, steps do
+		part({ size = Vector3.new(18, 1.2, 3.4),
+			pos = Vector3.new(0, i * (Y / steps) - 0.6, 52 + i * 3),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		if i % 2 == 0 then
+			part({ size = Vector3.new(18.4, 0.15, 0.5),
+				pos = Vector3.new(0, i * (Y / steps), 52 + i * 3 + 1.6),
+				material = Enum.Material.Neon, color = (i % 4 == 0) and CYAN or MAGENTA,
+				transparency = 0.35, collide = false }, folder)
+		end
+	end
+
+	-- Plattform + Geländer
+	part({ size = Vector3.new(90, 2, 40), pos = Vector3.new(0, Y - 1, cz + 8),
+		material = Enum.Material.Slate, color = FLOOR, reflectance = 0.15 }, folder)
+	for _, side in ipairs({ -1, 1 }) do
+		part({ size = Vector3.new(0.6, 3, 40), pos = Vector3.new(side * 45, Y + 1.5, cz + 8),
+			material = Enum.Material.Slate, color = STONE }, folder)
+	end
+	part({ size = Vector3.new(34, 3, 0.6), pos = Vector3.new(-27, Y + 1.5, cz - 12),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	part({ size = Vector3.new(34, 3, 0.6), pos = Vector3.new(27, Y + 1.5, cz - 12),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	part({ size = Vector3.new(90, 0.25, 0.7), pos = Vector3.new(0, Y + 3.1, cz + 8 - 20),
+		material = Enum.Material.Neon, color = GOLD, transparency = 0.4, collide = false }, folder)
+
+	-- Schild
+	local sign = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(0, Y + 10, cz + 4),
+		transparency = 1, collide = false }, folder)
+	billboard(sign, Vector3.new(0, 0, 0), "⇆ HANDELSPLATZ", "Kiosk: E zum Handeln  ·  >3 Items: Trader-Pass", GOLD, 300)
+
+	-- Handelskioske (Stein + glühendes Metall + Holo-Panel)
+	for k = -1, 1 do
+		local kx = k * 26
+		part({ size = Vector3.new(8, 3.4, 3), pos = Vector3.new(kx, Y + 1.7, cz + 14),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		part({ size = Vector3.new(8.4, 0.3, 3.4), pos = Vector3.new(kx, Y + 3.5, cz + 14),
+			material = Enum.Material.Neon, color = GOLD, transparency = 0.3, collide = false }, folder)
+		local holo = part({ size = Vector3.new(6, 3, 0.25), pos = Vector3.new(kx, Y + 6, cz + 14),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.55, collide = false }, folder)
+		surfacePanel(holo, Enum.NormalId.Front, {
+			{ text = "HANDELSPLATZ", color = Color3.fromRGB(240, 245, 255), font = Enum.Font.GothamBold },
+			{ text = "E: Trade starten", color = Color3.fromRGB(215, 225, 240) },
+		})
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Handeln"
+		prompt.ObjectText = "Handelskiosk"
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = holo
+		prompt.Triggered:Connect(function(player)
+			net.OpenTrade:FireClient(player)
+		end)
+	end
+
+	-- Live-Ticker (massives integriertes Terminal an der Rückwand)
+	local tickerBoard = part({ size = Vector3.new(34, 5, 0.8), pos = Vector3.new(0, Y + 9, cz + 26),
+		material = Enum.Material.Slate, color = DARK }, folder)
+	local labels = surfacePanel(tickerBoard, Enum.NormalId.Front, {
+		{ text = "● LIVE-TICKER", color = MAGENTA, font = Enum.Font.GothamBold },
+		{ text = "ZULETZT GEHANDELT: —", color = Color3.fromRGB(225, 230, 245) },
+	})
+	tickerLabel = labels[2]
+	glyphRow(folder, CFrame.new(Vector3.new(-15, Y + 5.6, cz + 25.4)), 22, PURPLE, rng)
+end
+
+-- ── Bestenliste (Vorne-Links) ─────────────────────────────────────────────────
+local lbLabels = nil
+
+local function buildLeaderboard(folder)
+	local board = part({ size = Vector3.new(0.8, 14, 18), pos = Vector3.new(-60, 8, -28),
+		material = Enum.Material.Slate, color = DARK }, folder)
+	part({ size = Vector3.new(1, 14.6, 18.6), pos = board.Position + Vector3.new(0.2, 0, 0),
+		material = Enum.Material.Neon, color = CYAN, transparency = 0.75, collide = false }, folder)
+
+	local lines = { { text = "BESTENLISTE (KILLS/PULLS/RANG)", color = GOLD, font = Enum.Font.GothamBold } }
+	for _ = 1, 8 do
+		table.insert(lines, { text = "—", color = Color3.fromRGB(210, 216, 232), align = Enum.TextXAlignment.Left })
+	end
+	lbLabels = surfacePanel(board, Enum.NormalId.Right, lines)
+end
+
+local function refreshLeaderboard()
+	if not lbLabels then return end
+	local rows = {}
+	for player, data in dataService.eachPlayer() do
+		table.insert(rows, {
+			name = player.Name,
+			kills = data.kills or 0,
+			pulls = data.hatches or 0,
+			rank = Config.rankFor(data.rating or Config.ELO_START),
+		})
+	end
+	table.sort(rows, function(a, b) return a.kills > b.kills end)
+	for i = 1, 8 do
+		local lbl = lbLabels[i + 1]
+		local r = rows[i]
+		if r then
+			lbl.Text = ("%d. %s  ·  %d Kills  ·  %d Pulls  ·  %s")
+				:format(i, r.name, r.kills, r.pulls, r.rank.name)
+			lbl.TextColor3 = r.rank.color
+		else
+			lbl.Text = "—"
+			lbl.TextColor3 = Color3.fromRGB(120, 126, 145)
+		end
+	end
+end
+
+-- ── Grundfläche, Bögen, Skyline ───────────────────────────────────────────────
+local function buildLobbyBase(folder, rng)
+	-- Hochglänzender, reflektierender Neon-Gitterboden
+	part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
+		material = Enum.Material.Glass, color = FLOOR, reflectance = 0.28, name = "LobbyFloor" }, folder)
+	for i = -4, 4 do
+		part({ size = Vector3.new(0.5, 0.12, 200), pos = Vector3.new(i * 22, 0.06, 10),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.5, collide = false }, folder)
+		part({ size = Vector3.new(200, 0.12, 0.5), pos = Vector3.new(0, 0.06, 10 + i * 22),
+			material = Enum.Material.Neon, color = MAGENTA, transparency = 0.6, collide = false }, folder)
+	end
+
+	-- Begrenzungswände
+	for _, w in ipairs({
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, -90) },
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, 110) },
+		{ Vector3.new(2, 20, 200), Vector3.new(-100, 10, 10) },
+		{ Vector3.new(2, 20, 200), Vector3.new(100, 10, 10) },
+	}) do
+		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+	end
+
+	-- Bögen über dem Hauptgang mit Glyphen + Datenstrom-Partikeln
+	for _, az in ipairs({ -30, 40 }) do
+		for side = -1, 1, 2 do
+			part({ size = Vector3.new(2.4, 14, 2.4), pos = Vector3.new(side * 14, 7, az),
+				material = Enum.Material.Slate, color = STONE }, folder)
+		end
+		local beam = part({ size = Vector3.new(31, 2.2, 2.4), pos = Vector3.new(0, 15, az),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		glyphRow(folder, CFrame.new(Vector3.new(-12, 15, az - 1.4)), 18,
+			(az < 0) and CYAN or MAGENTA, rng)
+		local att = Instance.new("Attachment")
+		att.Parent = beam
+		local stream = Instance.new("ParticleEmitter")
+		stream.Texture = Assets.PARTICLES.Sparkles
+		stream.Rate = 5
+		stream.Lifetime = NumberRange.new(2, 3.5)
+		stream.Speed = NumberRange.new(3, 5)
+		stream.SpreadAngle = Vector2.new(8, 8)
+		stream.Size = NumberSequence.new(0.2)
+		stream.Color = ColorSequence.new(CYAN, MAGENTA)
+		stream.LightEmission = 1
+		stream.Parent = att
+	end
+
+	-- Neon-Skyline
+	for a = 0, 13 do
+		local ang = a / 14 * math.pi * 2
+		local d = 135 + rng:NextNumber(0, 60)
+		local h = rng:NextNumber(45, 120)
+		local tower = part({
+			size = Vector3.new(rng:NextNumber(12, 26), h, rng:NextNumber(12, 26)),
+			pos = Vector3.new(math.cos(ang) * d, h / 2 - 4, 10 + math.sin(ang) * d),
+			material = Enum.Material.Concrete, color = DARK,
+		}, folder)
+		part({
+			size = Vector3.new(tower.Size.X + 0.4, 0.7, tower.Size.Z + 0.4),
+			pos = tower.Position + Vector3.new(0, h / 2 - 1, 0),
+			material = Enum.Material.Neon,
+			color = ({ CYAN, MAGENTA, PURPLE })[(a % 3) + 1],
+			collide = false,
+		}, folder)
+	end
+
+	-- Spawn (Süden, Blick in den Hauptgang)
+	local spawnLoc = Instance.new("SpawnLocation")
+	spawnLoc.Name = "LobbySpawn"
+	spawnLoc.Size = Vector3.new(14, 1, 14)
+	spawnLoc.Position = Vector3.new(0, 0.5, -65)
+	spawnLoc.Anchored = true
+	spawnLoc.Neutral = true
+	spawnLoc.Color = Color3.fromRGB(40, 43, 60)
+	spawnLoc.Parent = folder
+
+	-- Daily-Terminal (nahe Spawn)
+	local terminal = part({ size = Vector3.new(3, 6, 1.6), pos = Vector3.new(-18, 3, -55),
 		material = Enum.Material.Metal, color = DARK }, folder)
-	part({ size = Vector3.new(2.2, 3, 0.3), pos = Vector3.new(-55, 3.6, -0.75),
-		material = Enum.Material.Neon, color = Color3.fromRGB(255, 200, 45), collide = false }, folder)
+	part({ size = Vector3.new(2.2, 3, 0.3), pos = Vector3.new(-18, 3.6, -55.8),
+		material = Enum.Material.Neon, color = GOLD, collide = false }, folder)
 	billboard(terminal, Vector3.new(0, 4.5, 0), "🎁 DAILY", "E: +"
-		.. Config.DAILY_REWARD .. " " .. Config.CURRENCY_NAME .. " täglich", Color3.fromRGB(255, 200, 45))
-
+		.. Config.DAILY_REWARD .. " " .. Config.CURRENCY_NAME .. " täglich", GOLD)
 	local dailyPrompt = Instance.new("ProximityPrompt")
 	dailyPrompt.ActionText = "Abholen"
 	dailyPrompt.ObjectText = "Daily-Reward"
@@ -2050,13 +2575,21 @@ local function buildLobby(folder)
 	dailyPrompt.Triggered:Connect(function(player)
 		eggService.claimDaily(player)
 	end)
-
-	buildMegaEgg(folder)
 end
 
-function LobbyService.init(arenaSvc, eggSvc, netRef)
+-- ── Public ────────────────────────────────────────────────────────────────────
+
+-- Live-Ticker der Handelshalle aktualisieren (TradeService.onTicker)
+function LobbyService.pushTicker(text)
+	if tickerLabel then
+		tickerLabel.Text = text
+	end
+end
+
+function LobbyService.init(arenaSvc, eggSvc, ds, netRef)
 	arenaService = arenaSvc
 	eggService   = eggSvc
+	dataService  = ds
 	net          = netRef
 
 	local old = workspace:FindFirstChild("Lobby")
@@ -2065,8 +2598,26 @@ function LobbyService.init(arenaSvc, eggSvc, netRef)
 	folder.Name = "Lobby"
 	folder.Parent = workspace
 
-	buildLobby(folder)
-	print("[LobbyService] Lobby gebaut.")
+	local rng = Random.new(42)
+	buildLobbyBase(folder, rng)
+	buildOmegaCase(folder)
+	buildPortal5v5(folder, rng)
+	buildArenaTerminal(folder, rng)
+	buildHandelshalle(folder, rng)
+	buildLeaderboard(folder)
+
+	-- Live-Anzeigen: AKTIVE DUELLE + Bestenliste
+	task.spawn(function()
+		while folder.Parent do
+			if duelCountLabel then
+				duelCountLabel.Text = "AKTIVE DUELLE: " .. arenaService.getActiveDuelCount()
+			end
+			refreshLeaderboard()
+			task.wait(5)
+		end
+	end)
+
+	print("[LobbyService] Neon-Cyber-Mythos-Lobby gebaut.")
 end
 
 return LobbyService
@@ -2075,11 +2626,124 @@ return LobbyService
       </Item>
       <Item class="ModuleScript" referent="16">
         <Properties>
+          <string name="Name">PrimeService</string>
+          <string name="Source"><![CDATA[-- PrimeService.lua — Prime Status (Gamepass): exklusiver Skin + Aura,
+-- +25% Rang-Fortschritt, wöchentliche Belohnung. NIEMALS stärkere Waffen —
+-- Matches bleiben 100% skill-basiert.
+local PrimeService = {}
+
+local Players            = game:GetService("Players")
+local RS                 = game:GetService("ReplicatedStorage")
+local MarketplaceService = game:GetService("MarketplaceService")
+
+local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
+
+local dataService   = nil
+local weaponService = nil
+local net           = nil
+
+local function checkPrime(player)
+	if Config.PRIME_PASS_ID == 0 then return false end
+	local ok, owns = pcall(function()
+		return MarketplaceService:UserOwnsGamePassAsync(player.UserId, Config.PRIME_PASS_ID)
+	end)
+	return ok and owns or false
+end
+
+-- Prime erkennen + Vorteile gewähren (Exklusiv-Skin, Flag für Aura/Rang-Boost)
+local function applyPrime(player)
+	local data = dataService.get(player)
+	if not data or data.prime then return end
+	data.prime = true
+	if (data.skins.primeaegis or 0) < 1 then
+		data.skins.primeaegis = 1
+		net.Notify:FireClient(player, "👑 Prime aktiv! Exklusiv-Skin 'Prime: Ägis' freigeschaltet.")
+	end
+	dataService.sendUpdate(player)
+	weaponService.giveWeapon(player)   -- Aura aktualisieren
+end
+
+function PrimeService.init(ds, ws, netRef)
+	dataService   = ds
+	weaponService = ws
+	net           = netRef
+
+	local function onJoin(player)
+		task.spawn(function()
+			-- warten bis Daten geladen sind
+			local tries = 0
+			while not dataService.get(player) and tries < 50 and player.Parent do
+				task.wait(0.2)
+				tries += 1
+			end
+			if player.Parent and checkPrime(player) then
+				applyPrime(player)
+			end
+		end)
+	end
+	Players.PlayerAdded:Connect(onJoin)
+	for _, p in ipairs(Players:GetPlayers()) do
+		onJoin(p)
+	end
+
+	-- Kauf-Prompt aus dem Prime-Menü
+	net.BuyPrime.OnServerEvent:Connect(function(player)
+		if Config.PRIME_PASS_ID == 0 then
+			net.Notify:FireClient(player, "👑 Prime: Gamepass-ID noch nicht konfiguriert (Config.lua)")
+			return
+		end
+		pcall(function()
+			MarketplaceService:PromptGamePassPurchase(player, Config.PRIME_PASS_ID)
+		end)
+	end)
+
+	if Config.PRIME_PASS_ID ~= 0 then
+		MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passId, purchased)
+			if purchased and passId == Config.PRIME_PASS_ID then
+				applyPrime(player)
+			end
+		end)
+	end
+
+	-- Wöchentliche Prime-Belohnung
+	net.ClaimWeekly.OnServerEvent:Connect(function(player)
+		local data = dataService.get(player)
+		if not data then return end
+		if not data.prime then
+			net.Notify:FireClient(player, "👑 Weekly-Belohnung ist Prime-exklusiv.")
+			return
+		end
+		local now = os.time()
+		local remaining = 7 * 24 * 3600 - (now - (data.lastWeekly or 0))
+		if remaining > 0 then
+			net.Notify:FireClient(player,
+				"👑 Schon abgeholt! Wieder in ~" .. math.ceil(remaining / 3600 / 24) .. " Tagen")
+			return
+		end
+		data.lastWeekly = now
+		data.credits = data.credits + Config.PRIME_WEEKLY
+		dataService.sendUpdate(player)
+		net.PlaySFX:FireClient(player, "Coin")
+		net.Notify:FireClient(player, "👑 +" .. Config.PRIME_WEEKLY .. " " .. Config.CURRENCY_NAME .. " (Prime-Weekly)!")
+	end)
+
+	print("[PrimeService] bereit.")
+end
+
+return PrimeService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="17">
+        <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- TradeService.lua — Skin-Trading zwischen Spielern.
 -- Trading ist gratis; mehr als Config.TRADE_SLOTS Items pro Seite erfordert
 -- den Trader-Gamepass (Config.TRADER_PASS_ID).
 local TradeService = {}
+
+-- Callback für den Live-Ticker der Handelshalle (vom Server-Wiring gesetzt)
+TradeService.onTicker = nil
 
 local Players            = game:GetService("Players")
 local RS                 = game:GetService("ReplicatedStorage")
@@ -2181,6 +2845,23 @@ local function executeTrade(session)
 	transfer(session.a, session.b, session.offers[session.a])
 	transfer(session.b, session.a, session.offers[session.b])
 
+	-- Live-Ticker der Handelshalle: das hochwertigste Item des Trades
+	if TradeService.onTicker then
+		local best, bestOrder = nil, 0
+		for _, offer in ipairs({ session.offers[session.a], session.offers[session.b] }) do
+			for _, id in ipairs(offer) do
+				local s = Skins.BY_ID[id]
+				if s and Skins.TIERS[s.tier].order > bestOrder then
+					best, bestOrder = s, Skins.TIERS[s.tier].order
+				end
+			end
+		end
+		if best then
+			TradeService.onTicker(("ZULETZT GEHANDELT: %s [%s]  ·  %s ⇄ %s")
+				:format(best.name, Skins.TIERS[best.tier].label, session.a.Name, session.b.Name))
+		end
+	end
+
 	for _, p in ipairs({ session.a, session.b }) do
 		sessions[p] = nil
 		if p.Parent then
@@ -2277,7 +2958,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- WeaponService.lua — Server-autoritatives Schießen + Skin-Equip.
@@ -2406,6 +3087,44 @@ function WeaponService.giveWeapon(player)
 
 	local tool = SniperBuilder.buildTool(skin)
 	tool.Parent = bp
+
+	-- Charakter-Aura: Godly+ bekommt eine wirbelnde Skin-Aura, Prime goldenen
+	-- Glanz dazu — der Status-Flex ist in der Lobby sofort sichtbar
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root then
+		local old = root:FindFirstChild("FlexAura")
+		if old then old:Destroy() end
+		local att = Instance.new("Attachment")
+		att.Name = "FlexAura"
+		att.Position = Vector3.new(0, -1.5, 0)
+		att.Parent = root
+
+		local fx = Skins.fxFor(skin.tier)
+		if fx.pulse then
+			local pe = Instance.new("ParticleEmitter")
+			pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			pe.Rate = 14
+			pe.Lifetime = NumberRange.new(0.8, 1.6)
+			pe.Speed = NumberRange.new(1.5, 3)
+			pe.SpreadAngle = Vector2.new(35, 35)
+			pe.Size = NumberSequence.new(0.3)
+			pe.Color = ColorSequence.new(skin.accent)
+			pe.LightEmission = 1
+			pe.Parent = att
+		end
+		if data.prime then
+			local pe = Instance.new("ParticleEmitter")
+			pe.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+			pe.Rate = 6
+			pe.Lifetime = NumberRange.new(1, 2)
+			pe.Speed = NumberRange.new(0.8, 1.6)
+			pe.SpreadAngle = Vector2.new(20, 20)
+			pe.Size = NumberSequence.new(0.22)
+			pe.Color = ColorSequence.new(Color3.fromRGB(255, 210, 90))
+			pe.LightEmission = 1
+			pe.Parent = att
+		end
+	end
 
 	-- Auto-Equip
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -2549,15 +3268,15 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="18">
+  <Item class="StarterPlayer" referent="19">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="19">
+    <Item class="StarterPlayerScripts" referent="20">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="20">
+      <Item class="LocalScript" referent="21">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[-- Client.client.lua — Hatch Snipers: Entry Point, Musik, Lighting, Event-Routing
@@ -2570,12 +3289,13 @@ local Lighting     = game:GetService("Lighting")
 local netFolder = RS:WaitForChild("Net")
 local REMOTE_NAMES = {
 	"UpdateData", "Notify", "PlaySFX",
-	"HatchResult", "OpenEgg",
+	"HatchResult", "OpenEgg", "OpenWager", "OpenTrade",
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
 	"Shoot", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
+	"BuyPrime", "ClaimWeekly",
 }
 local net = {}
 for _, name in ipairs(REMOTE_NAMES) do
@@ -2701,8 +3421,16 @@ net.OpenEgg.OnClientEvent:Connect(function()
 	UICtrl.openEgg()
 end)
 
-net.HatchResult.OnClientEvent:Connect(function(skinId)
-	UICtrl.playHatch(skinId)
+net.OpenWager.OnClientEvent:Connect(function()
+	UICtrl.openWager()
+end)
+
+net.OpenTrade.OnClientEvent:Connect(function()
+	UICtrl.openTradeList()
+end)
+
+net.HatchResult.OnClientEvent:Connect(function(skinId, count, pityLeft)
+	UICtrl.playHatch(skinId, count, pityLeft)
 end)
 
 net.ShotFired.OnClientEvent:Connect(function(fromPos, toPos, skinId, didKill)
@@ -2750,11 +3478,11 @@ print("[HatchSnipers] Client bereit.")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="21">
+      <Item class="Folder" referent="22">
         <Properties>
           <string name="Name">Controllers</string>
         </Properties>
-        <Item class="ModuleScript" referent="22">
+        <Item class="ModuleScript" referent="23">
           <Properties>
             <string name="Name">EffectsController</string>
             <string name="Source"><![CDATA[-- EffectsController.lua — Tracer, Screenflash, Godly-Puls, Ei-Schweben, Juice
@@ -2919,7 +3647,7 @@ return EffectsController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="23">
+        <Item class="ModuleScript" referent="24">
           <Properties>
             <string name="Name">UIController</string>
             <string name="Source"><![CDATA[-- UIController.lua — HUD, Ei-/Inventar-UI (mit offengelegten Odds), Hatch-
@@ -2941,7 +3669,11 @@ local C = Theme.COLORS
 
 local net       = nil
 local effects   = nil
-local localData = { credits = 0, skins = { standard = 1 }, equipped = "standard", kills = 0, wins = 0, luckUntil = 0 }
+local localData = {
+	credits = 0, skins = { standard = 1 }, equipped = "standard",
+	kills = 0, wins = 0, hatches = 0, luckUntil = 0,
+	rating = 1000, pullsSinceLegendary = 0, prime = false,
+}
 
 -- ── ScreenGui ─────────────────────────────────────────────────────────────────
 local screenGui = Instance.new("ScreenGui")
@@ -3053,11 +3785,14 @@ Theme.applyCorner(hud, Theme.CORNER_LG)
 Theme.applyStroke(hud)
 hud.Parent = screenGui
 
+hud.Size = UDim2.new(0, 250, 0, 106)
 local creditsLabel = label(hud, "⨀ 0", UDim2.new(1, -16, 0, 30), UDim2.new(0, 12, 0, 6),
 	{ color = C.gold, textSize = 24, font = Theme.FONTS.display })
 local statsLabel = label(hud, "Kills: 0  ·  Siege: 0", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 38),
 	{ color = C.textDim, textSize = 14 })
-local luckLabel = label(hud, "", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 58),
+local rankLabel = label(hud, "RANG: —", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 58),
+	{ color = C.text, textSize = 14, font = Theme.FONTS.header })
+local luckLabel = label(hud, "", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 78),
 	{ color = C.green, textSize = 14 })
 
 -- ── Crosshair + Scope + Cooldown-Bar ──────────────────────────────────────────
@@ -3228,7 +3963,7 @@ local function buildSkinGrid()
 
 		label(tile, skin.name, UDim2.new(1, -10, 0, 18), UDim2.new(0, 6, 0, 4),
 			{ textSize = 13, font = Theme.FONTS.header })
-		label(tile, skin.tier, UDim2.new(1, -10, 0, 14), UDim2.new(0, 6, 0, 22),
+		label(tile, Skins.TIERS[skin.tier].label, UDim2.new(1, -10, 0, 14), UDim2.new(0, 6, 0, 22),
 			{ color = Skins.TIERS[skin.tier].color, textSize = 11 })
 		local oddsLbl = label(tile, "", UDim2.new(0, 70, 0, 14), UDim2.new(0, 6, 1, -19),
 			{ color = C.textDim, textSize = 11 })
@@ -3238,6 +3973,8 @@ local function buildSkinGrid()
 		tile.MouseButton1Click:Connect(function()
 			if (localData.skins[skin.id] or 0) > 0 then
 				net.EquipSkin:FireServer(skin.id)
+			elseif skin.obtain == "prime" then
+				UIController.showNotify("👑 Prime-exklusiv — über das Prime-Menü freischalten!")
 			else
 				UIController.showNotify("Noch nicht gezogen — Chance: "
 					.. string.format("%.2f", Skins.chanceOf(skin.id, false, Config.LUCK_MULTIPLIER)) .. "%")
@@ -3252,12 +3989,15 @@ buildSkinGrid()
 
 local function refreshEggWindow()
 	local luckOn = os.time() < (localData.luckUntil or 0)
-	oddsNote.Text = luckOn
-		and "⚗ LUCK AKTIV — Chancen auf seltene Skins verdoppelt! (Odds unten live)"
-		or "Drop-Chancen werden pro Skin angezeigt. Skins sind rein kosmetisch — Schaden ist immer gleich."
+	local pityLeft = math.max(0, Config.PITY_LEGENDARY - (localData.pullsSinceLegendary or 0))
+	oddsNote.Text = (luckOn
+		and "⚗ LUCK AKTIV — Chancen auf seltene Skins verdoppelt!"
+		or "Odds pro Skin sichtbar. Skins sind rein kosmetisch — Schaden ist immer gleich.")
+		.. "  ·  Pulls bis garantierte LEGENDE: " .. pityLeft
 	for skinId, t in pairs(skinTiles) do
 		local count = localData.skins[skinId] or 0
-		t.odds.Text = string.format("%.2f%%", Skins.chanceOf(skinId, luckOn, Config.LUCK_MULTIPLIER))
+		local chance = Skins.chanceOf(skinId, luckOn, Config.LUCK_MULTIPLIER)
+		t.odds.Text = chance > 0 and string.format("%.2f%%", chance) or "PRIME"
 		t.own.Text = count > 0 and ("x" .. count) or "—"
 		t.own.TextColor3 = count > 0 and C.green or C.textDim
 		t.tile.BackgroundColor3 = (localData.equipped == skinId) and Color3.fromRGB(45, 50, 75) or C.panel2
@@ -3270,65 +4010,153 @@ function UIController.openEgg()
 	eggWin.Visible = true
 end
 
--- ── Hatch-Animation (Drumroll → Cracks → Reveal) ──────────────────────────────
+-- ── Case-Spinner (CS-Style: Tile-Band dreht und bremst auf den Gewinn) ────────
 local hatchOverlay = Instance.new("Frame")
 hatchOverlay.Size = UDim2.new(1, 0, 1, 0)
-hatchOverlay.BackgroundColor3 = Color3.fromRGB(5, 5, 10)
-hatchOverlay.BackgroundTransparency = 0.25
+hatchOverlay.BackgroundColor3 = Color3.fromRGB(4, 4, 10)
+hatchOverlay.BackgroundTransparency = 0.2
 hatchOverlay.BorderSizePixel = 0
 hatchOverlay.Visible = false
 hatchOverlay.ZIndex = 35
 hatchOverlay.Parent = screenGui
 
-local hatchEgg = label(hatchOverlay, "🥚", UDim2.new(0, 200, 0, 200), UDim2.new(0.5, -100, 0.42, -100),
-	{ textSize = 130, align = Enum.TextXAlignment.Center })
-hatchEgg.ZIndex = 36
-local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 90), UDim2.new(0, 0, 0.68, 0),
-	{ textSize = 40, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 })
+label(hatchOverlay, "📦 " .. Config.EGGS.omega.name, UDim2.new(1, 0, 0, 40), UDim2.new(0, 0, 0.18, 0),
+	{ textSize = 30, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 }).ZIndex = 36
+
+-- Sichtfenster mit Tile-Band
+local TILE_W = 124
+local spinWindow = Instance.new("Frame")
+spinWindow.Size = UDim2.new(0, 640, 0, 110)
+spinWindow.Position = UDim2.new(0.5, -320, 0.36, 0)
+spinWindow.BackgroundColor3 = C.panel
+spinWindow.BorderSizePixel = 0
+spinWindow.ClipsDescendants = true
+spinWindow.ZIndex = 36
+Theme.applyCorner(spinWindow, Theme.CORNER_LG)
+Theme.applyStroke(spinWindow, C.accent, 2)
+spinWindow.Parent = hatchOverlay
+
+local spinStrip = Instance.new("Frame")
+spinStrip.Size = UDim2.new(0, TILE_W * 60, 1, -12)
+spinStrip.Position = UDim2.new(0, 0, 0, 6)
+spinStrip.BackgroundTransparency = 1
+spinStrip.ZIndex = 36
+spinStrip.Parent = spinWindow
+
+-- Mittelmarker
+local marker = Instance.new("Frame")
+marker.Size = UDim2.new(0, 3, 1, 6)
+marker.Position = UDim2.new(0.5, -1, 0, -3)
+marker.BackgroundColor3 = C.gold
+marker.BorderSizePixel = 0
+marker.ZIndex = 38
+marker.Parent = spinWindow
+
+local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 130), UDim2.new(0, 0, 0.56, 0),
+	{ textSize = 38, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 })
 hatchText.ZIndex = 36
+hatchText.TextWrapped = true
+
+local pityLabel = label(hatchOverlay, "", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0.78, 0),
+	{ color = C.textDim, textSize = 16, align = Enum.TextXAlignment.Center, stroke = 0.5 })
+pityLabel.ZIndex = 36
+
+local function makeSpinTile(skin, x)
+	local t = Instance.new("Frame")
+	t.Size = UDim2.new(0, TILE_W - 8, 1, 0)
+	t.Position = UDim2.new(0, x, 0, 0)
+	t.BackgroundColor3 = C.panel2
+	t.BorderSizePixel = 0
+	t.ZIndex = 37
+	Theme.applyCorner(t)
+	Theme.applyStroke(t, Skins.TIERS[skin.tier].color, 2)
+	t.Parent = spinStrip
+	local n = label(t, skin.name, UDim2.new(1, -8, 0, 44), UDim2.new(0, 4, 0, 14),
+		{ textSize = 15, font = Theme.FONTS.header, align = Enum.TextXAlignment.Center })
+	n.TextWrapped = true
+	n.ZIndex = 37
+	label(t, Skins.TIERS[skin.tier].label, UDim2.new(1, 0, 0, 16), UDim2.new(0, 0, 1, -26),
+		{ color = Skins.TIERS[skin.tier].color, textSize = 12, align = Enum.TextXAlignment.Center }).ZIndex = 37
+	return t
+end
+
+-- Gewichteter Zufalls-Skin fürs Band (nur Optik)
+local function randomStripSkin()
+	local r = math.random()
+	local tierName = (r < 0.62 and "Common") or (r < 0.90 and "Rare")
+		or (r < 0.975 and "Legendary") or (r < 0.995 and "Godly") or "Mythical"
+	local pool = {}
+	for _, s in ipairs(Skins.CATALOG) do
+		if s.tier == tierName and Skins.inCasePool(s) then table.insert(pool, s) end
+	end
+	return pool[math.random(1, #pool)]
+end
 
 local hatching = false
-function UIController.playHatch(skinId)
+function UIController.playHatch(skinId, _count, pityLeft)
 	local skin = Skins.BY_ID[skinId]
 	if not skin or hatching then
-		-- Fallback ohne Animation
-		if skin then UIController.showNotify("Gezogen: " .. skin.name .. " [" .. skin.tier .. "]") end
+		if skin then
+			UIController.showNotify("GEWONNEN: " .. skin.name .. " [" .. Skins.TIERS[skin.tier].label .. "]")
+		end
 		return
 	end
 	hatching = true
 	local tierColor = Skins.TIERS[skin.tier].color
 	local order = Skins.TIERS[skin.tier].order
 
+	-- Band aufbauen: 48 Tiles, der Gewinn liegt bei Index 42
+	spinStrip:ClearAllChildren()
+	local TARGET = 42
+	for i = 1, 48 do
+		makeSpinTile(i == TARGET and skin or randomStripSkin(), (i - 1) * TILE_W)
+	end
+
 	hatchOverlay.Visible = true
 	hatchText.Text = ""
-	hatchEgg.TextTransparency = 0
-	hatchEgg.Rotation = 0
+	pityLabel.Text = ""
 	Assets.play2D(Assets.SFX.DrumRoll, 0.5)
 
 	task.spawn(function()
-		-- Wackeln + Cracks (3 Stufen, je seltener desto länger die Spannung)
-		local shakes = 14 + order * 6
-		for i = 1, shakes do
-			hatchEgg.Rotation = math.sin(i * 1.7) * (6 + i * 0.8)
-			if i % 7 == 0 then
-				Assets.play2D((i % 14 == 0) and Assets.SFX.EggCrack2 or Assets.SFX.EggCrack, 0.8)
-				effects.shake(0.5)
+		-- Spin: schnell starten, hart abbremsen, exakt auf dem Gewinn landen
+		local windowCenter = 320
+		local jitter = (math.random() - 0.5) * (TILE_W * 0.4)
+		local targetX = -((TARGET - 0.5) * TILE_W - windowCenter + jitter)
+		local startX = 0
+		spinStrip.Position = UDim2.new(0, startX, 0, 6)
+
+		local dur = 3.6 + order * 0.3
+		local t0 = os.clock()
+		local lastTile = 0
+		while true do
+			local a = math.min(1, (os.clock() - t0) / dur)
+			local eased = 1 - (1 - a) ^ 3   -- Cubic-Out
+			local x = startX + (targetX - startX) * eased
+			spinStrip.Position = UDim2.new(0, x, 0, 6)
+
+			-- Tick-Sound bei jedem Tile-Übergang unterm Marker
+			local tileIdx = math.floor((windowCenter - x) / TILE_W)
+			if tileIdx ~= lastTile then
+				lastTile = tileIdx
+				Assets.play2D(Assets.SFX.Bolt, 0.25, 1.3 + a * 0.4)
 			end
-			task.wait(0.07)
+			if a >= 1 then break end
+			task.wait()
 		end
 
-		-- Reveal
-		Assets.play2D(Assets.SFX.EggCrack2, 1)
-		Assets.play2D(Assets.SFX.Chime, order >= 3 and 0.9 or 0.5, 0.9 + order * 0.1)
-		hatchEgg.TextTransparency = 1
-		hatchText.Text = skin.name .. "\n[" .. skin.tier .. "]"
+		-- Reveal: "GEWONNEN!"
+		Assets.play2D(Assets.SFX.EggCrack2, 0.9)
+		Assets.play2D(Assets.SFX.Chime, order >= 3 and 0.95 or 0.55, 0.9 + order * 0.1)
+		hatchText.Text = "GEWONNEN!\n" .. skin.name .. "\nSELTENHEIT: " .. Skins.TIERS[skin.tier].label
+			.. (skin.flavor and ("\n\"" .. skin.flavor .. "\"") or "")
 		hatchText.TextColor3 = tierColor
+		pityLabel.Text = "Pulls bis garantierte LEGENDE: " .. tostring(pityLeft or "—")
 		effects.shake(0.6 + order * 0.4)
 		if order >= 3 then
 			effects.confetti(screenGui, tierColor, 14 + order * 10)
 		end
 
-		task.wait(order >= 4 and 3.2 or 2.0)
+		task.wait(order >= 4 and 3.6 or 2.4)
 		hatchOverlay.Visible = false
 		hatching = false
 		refreshEggWindow()
@@ -3517,10 +4345,140 @@ function UIController.onTradeUpdate(payload)
 	end
 end
 
+-- ── Wager-Wahl (vor dem 1v1-Queue-Beitritt) ───────────────────────────────────
+local wagerWin = panel(UDim2.new(0, 340, 0, 96 + #Config.WAGER_OPTIONS * 0), UDim2.new(0.5, -170, 0.5, -120))
+wagerWin.Size = UDim2.new(0, 340, 0, 230)
+label(wagerWin, "⚔ NÄCHSTER WAGER: WÄHLEN.", UDim2.new(1, -20, 0, 28), UDim2.new(0, 12, 0, 10),
+	{ textSize = 18, font = Theme.FONTS.header })
+label(wagerWin, "Sieger nimmt den ganzen Pot. Gleicher Einsatz wird gematcht.",
+	UDim2.new(1, -20, 0, 30), UDim2.new(0, 12, 0, 38), { color = C.textDim, textSize = 13 }).TextWrapped = true
+button(wagerWin, "✕", UDim2.new(0, 28, 0, 28), UDim2.new(1, -36, 0, 8), C.panel2, function()
+	wagerWin.Visible = false
+end)
+for i, w in ipairs(Config.WAGER_OPTIONS) do
+	local col = (i - 1) % 3
+	local row = math.floor((i - 1) / 3)
+	button(wagerWin,
+		w == 0 and "CASUAL (0)" or (w .. " ⨀"),
+		UDim2.new(0, 100, 0, 38),
+		UDim2.new(0, 12 + col * 106, 0, 76 + row * 46),
+		w == 0 and C.panel2 or (w >= 250 and C.red or C.accent2),
+		function()
+			wagerWin.Visible = false
+			net.QueueJoin:FireServer(w)
+		end)
+end
+
+function UIController.openWager()
+	wagerWin.Visible = true
+end
+
+-- ── Prime-Status-Menü ─────────────────────────────────────────────────────────
+local primeWin = panel(UDim2.new(0, 420, 0, 360), UDim2.new(0.5, -210, 0.5, -180))
+Theme.applyStroke(primeWin, C.gold, 2)
+label(primeWin, "👑 PRIME STATUS AKTIVIEREN", UDim2.new(1, -60, 0, 32), UDim2.new(0, 16, 0, 12),
+	{ color = C.gold, textSize = 21, font = Theme.FONTS.display })
+button(primeWin, "✕", UDim2.new(0, 30, 0, 30), UDim2.new(1, -40, 0, 8), C.panel2, function()
+	primeWin.Visible = false
+end)
+local PRIME_BULLETS = {
+	"•  Prime-Matchmaking (nur Prime Spieler)",
+	"•  Prime-Exklusive Waffenskins und Auren",
+	"•  Verbesserter Rangfortschritt (+25% ELO)",
+	"•  Wöchentliche Prime-Belohnungen (" .. Config.PRIME_WEEKLY .. " " .. Config.CURRENCY_NAME .. ")",
+}
+for i, b in ipairs(PRIME_BULLETS) do
+	label(primeWin, b, UDim2.new(1, -32, 0, 26), UDim2.new(0, 20, 0, 48 + (i - 1) * 30),
+		{ textSize = 15 })
+end
+label(primeWin, "Fair bleibt fair: Prime gibt NIEMALS stärkere Waffen.",
+	UDim2.new(1, -32, 0, 22), UDim2.new(0, 20, 0, 178), { color = C.textDim, textSize = 12 })
+local primeBuyBtn = button(primeWin, "Kaufen für " .. Config.PRIME_PRICE_TEXT,
+	UDim2.new(0, 230, 0, 44), UDim2.new(0.5, -115, 0, 216), C.gold, function()
+		net.BuyPrime:FireServer()
+	end)
+primeBuyBtn.TextColor3 = Color3.fromRGB(30, 26, 10)
+primeBuyBtn.TextSize = 17
+local weeklyBtn = button(primeWin, "👑 Weekly abholen", UDim2.new(0, 230, 0, 36),
+	UDim2.new(0.5, -115, 0, 272), C.panel2, function()
+		net.ClaimWeekly:FireServer()
+	end)
+local primeStateLbl = label(primeWin, "", UDim2.new(1, 0, 0, 22), UDim2.new(0, 0, 1, -30),
+	{ color = C.textDim, textSize = 13, align = Enum.TextXAlignment.Center })
+
+local function refreshPrimeWindow()
+	if localData.prime then
+		primeBuyBtn.Text = "✔ PRIME AKTIV"
+		primeStateLbl.Text = "Danke für deinen Support — viel Spaß mit der Ägis!"
+		weeklyBtn.BackgroundColor3 = C.gold
+		weeklyBtn.TextColor3 = Color3.fromRGB(30, 26, 10)
+	else
+		primeBuyBtn.Text = "Kaufen für " .. Config.PRIME_PRICE_TEXT
+		primeStateLbl.Text = "Gamepass-ID in Config.lua eintragen, um Prime live zu schalten."
+		weeklyBtn.BackgroundColor3 = C.panel2
+		weeklyBtn.TextColor3 = C.text
+	end
+end
+
+-- ── Rangschild am 5v5-Portal (client-seitig — jeder sieht SEINEN Rang) ────────
+local rankShieldGui = nil
+local function ensureRankShield()
+	if rankShieldGui and rankShieldGui.Parent then return rankShieldGui end
+	local anchor = workspace:FindFirstChild("RankShieldAnchor", true)
+	if not anchor then return nil end
+
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 260, 0, 110)
+	bb.MaxDistance = 130
+	bb.Parent = anchor
+
+	local shield = Instance.new("Frame")
+	shield.Size = UDim2.new(1, 0, 1, 0)
+	shield.BackgroundColor3 = C.panel
+	shield.BackgroundTransparency = 0.25
+	shield.BorderSizePixel = 0
+	Theme.applyCorner(shield, Theme.CORNER_LG)
+	Theme.applyStroke(shield, C.gold, 2)
+	shield.Parent = bb
+
+	local t1 = label(shield, "DEIN RANG:", UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 0, 12),
+		{ color = C.textDim, textSize = 16, align = Enum.TextXAlignment.Center })
+	t1.Name = "RankTitle"
+	local t2 = label(shield, "—", UDim2.new(1, 0, 0, 44), UDim2.new(0, 0, 0, 44),
+		{ textSize = 28, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center })
+	t2.Name = "RankName"
+
+	rankShieldGui = bb
+	return bb
+end
+
+local function refreshRankShield()
+	local bb = ensureRankShield()
+	if not bb then return end
+	local rank = Config.rankFor(localData.rating or Config.ELO_START)
+	local nameLbl = bb:FindFirstChild("RankName", true)
+	if nameLbl then
+		nameLbl.Text = rank.name
+		nameLbl.TextColor3 = rank.color
+	end
+end
+
+-- ── Trade-Fenster von außen öffnen (Handelskiosk) ─────────────────────────────
+function UIController.openTradeList()
+	if sessionFrame.Visible then
+		tradeWin.Visible = true
+		return
+	end
+	refreshPlayerList()
+	playerList.Visible = true
+	sessionFrame.Visible = false
+	tradeWin.Visible = true
+end
+
 -- ── Bottom-Right Buttons ──────────────────────────────────────────────────────
 local btnBar = Instance.new("Frame")
-btnBar.Size = UDim2.new(0, 64, 0, 310)
-btnBar.Position = UDim2.new(1, -76, 1, -322)
+btnBar.Size = UDim2.new(0, 64, 0, 372)
+btnBar.Position = UDim2.new(1, -76, 1, -384)
 btnBar.BackgroundTransparency = 1
 btnBar.Parent = screenGui
 
@@ -3537,28 +4495,29 @@ local function barButton(emoji, tip, yOrder, cb)
 	return b
 end
 
-barButton("🥚", "Skins & Ei öffnen", 1, function()
+barButton("📦", "Omega-Gehäuse & Skins", 1, function()
 	refreshEggWindow()
 	eggWin.Visible = not eggWin.Visible
 end)
-barButton("🤝", "Trading", 2, function()
-	if sessionFrame.Visible then
-		tradeWin.Visible = true
-		return
+barButton("🤝", "Handelsplatz", 2, function()
+	if tradeWin.Visible then
+		tradeWin.Visible = false
+	else
+		UIController.openTradeList()
 	end
-	refreshPlayerList()
-	playerList.Visible = true
-	sessionFrame.Visible = false
-	tradeWin.Visible = not tradeWin.Visible
 end)
 barButton("🎁", "Daily Reward", 3, function()
 	net.ClaimDaily:FireServer()
 end)
-barButton("⚔", "1v1-Queue (oder rotes Pad)", 4, function()
-	net.QueueJoin:FireServer()
+barButton("⚔", "1v1 PvP — Wager wählen (oder rotes Pad)", 4, function()
+	UIController.openWager()
 end)
 barButton("🤖", "1v1 gegen den Bot (oder blaues Pad)", 5, function()
 	net.QueueBot:FireServer()
+end)
+barButton("👑", "Prime Status", 6, function()
+	refreshPrimeWindow()
+	primeWin.Visible = not primeWin.Visible
 end)
 
 -- ── Refresh ───────────────────────────────────────────────────────────────────
@@ -3568,6 +4527,12 @@ function UIController.refresh(data)
 	creditsLabel.Text = "⨀ " .. tostring(data.credits)
 	statsLabel.Text = "Kills: " .. (data.kills or 0) .. "  ·  Siege: " .. (data.wins or 0)
 		.. "  ·  Pulls: " .. (data.hatches or 0)
+
+	local rank = Config.rankFor(data.rating or Config.ELO_START)
+	rankLabel.Text = (data.prime and "👑 " or "") .. "RANG: " .. rank.name
+	rankLabel.TextColor3 = rank.color
+	refreshRankShield()
+	if primeWin.Visible then refreshPrimeWindow() end
 
 	local luckOn = os.time() < (data.luckUntil or 0)
 	luckLabel.Text = luckOn
@@ -3592,7 +4557,7 @@ return UIController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="25">
           <Properties>
             <string name="Name">WeaponController</string>
             <string name="Source"><![CDATA[-- WeaponController.lua — Schießen (Klick), Scope-Zoom (Rechtsklick), Cooldown-UI

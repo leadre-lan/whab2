@@ -17,7 +17,11 @@ local C = Theme.COLORS
 
 local net       = nil
 local effects   = nil
-local localData = { credits = 0, skins = { standard = 1 }, equipped = "standard", kills = 0, wins = 0, luckUntil = 0 }
+local localData = {
+	credits = 0, skins = { standard = 1 }, equipped = "standard",
+	kills = 0, wins = 0, hatches = 0, luckUntil = 0,
+	rating = 1000, pullsSinceLegendary = 0, prime = false,
+}
 
 -- ── ScreenGui ─────────────────────────────────────────────────────────────────
 local screenGui = Instance.new("ScreenGui")
@@ -129,11 +133,14 @@ Theme.applyCorner(hud, Theme.CORNER_LG)
 Theme.applyStroke(hud)
 hud.Parent = screenGui
 
+hud.Size = UDim2.new(0, 250, 0, 106)
 local creditsLabel = label(hud, "⨀ 0", UDim2.new(1, -16, 0, 30), UDim2.new(0, 12, 0, 6),
 	{ color = C.gold, textSize = 24, font = Theme.FONTS.display })
 local statsLabel = label(hud, "Kills: 0  ·  Siege: 0", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 38),
 	{ color = C.textDim, textSize = 14 })
-local luckLabel = label(hud, "", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 58),
+local rankLabel = label(hud, "RANG: —", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 58),
+	{ color = C.text, textSize = 14, font = Theme.FONTS.header })
+local luckLabel = label(hud, "", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 78),
 	{ color = C.green, textSize = 14 })
 
 -- ── Crosshair + Scope + Cooldown-Bar ──────────────────────────────────────────
@@ -304,7 +311,7 @@ local function buildSkinGrid()
 
 		label(tile, skin.name, UDim2.new(1, -10, 0, 18), UDim2.new(0, 6, 0, 4),
 			{ textSize = 13, font = Theme.FONTS.header })
-		label(tile, skin.tier, UDim2.new(1, -10, 0, 14), UDim2.new(0, 6, 0, 22),
+		label(tile, Skins.TIERS[skin.tier].label, UDim2.new(1, -10, 0, 14), UDim2.new(0, 6, 0, 22),
 			{ color = Skins.TIERS[skin.tier].color, textSize = 11 })
 		local oddsLbl = label(tile, "", UDim2.new(0, 70, 0, 14), UDim2.new(0, 6, 1, -19),
 			{ color = C.textDim, textSize = 11 })
@@ -314,6 +321,8 @@ local function buildSkinGrid()
 		tile.MouseButton1Click:Connect(function()
 			if (localData.skins[skin.id] or 0) > 0 then
 				net.EquipSkin:FireServer(skin.id)
+			elseif skin.obtain == "prime" then
+				UIController.showNotify("👑 Prime-exklusiv — über das Prime-Menü freischalten!")
 			else
 				UIController.showNotify("Noch nicht gezogen — Chance: "
 					.. string.format("%.2f", Skins.chanceOf(skin.id, false, Config.LUCK_MULTIPLIER)) .. "%")
@@ -328,12 +337,15 @@ buildSkinGrid()
 
 local function refreshEggWindow()
 	local luckOn = os.time() < (localData.luckUntil or 0)
-	oddsNote.Text = luckOn
-		and "⚗ LUCK AKTIV — Chancen auf seltene Skins verdoppelt! (Odds unten live)"
-		or "Drop-Chancen werden pro Skin angezeigt. Skins sind rein kosmetisch — Schaden ist immer gleich."
+	local pityLeft = math.max(0, Config.PITY_LEGENDARY - (localData.pullsSinceLegendary or 0))
+	oddsNote.Text = (luckOn
+		and "⚗ LUCK AKTIV — Chancen auf seltene Skins verdoppelt!"
+		or "Odds pro Skin sichtbar. Skins sind rein kosmetisch — Schaden ist immer gleich.")
+		.. "  ·  Pulls bis garantierte LEGENDE: " .. pityLeft
 	for skinId, t in pairs(skinTiles) do
 		local count = localData.skins[skinId] or 0
-		t.odds.Text = string.format("%.2f%%", Skins.chanceOf(skinId, luckOn, Config.LUCK_MULTIPLIER))
+		local chance = Skins.chanceOf(skinId, luckOn, Config.LUCK_MULTIPLIER)
+		t.odds.Text = chance > 0 and string.format("%.2f%%", chance) or "PRIME"
 		t.own.Text = count > 0 and ("x" .. count) or "—"
 		t.own.TextColor3 = count > 0 and C.green or C.textDim
 		t.tile.BackgroundColor3 = (localData.equipped == skinId) and Color3.fromRGB(45, 50, 75) or C.panel2
@@ -346,65 +358,153 @@ function UIController.openEgg()
 	eggWin.Visible = true
 end
 
--- ── Hatch-Animation (Drumroll → Cracks → Reveal) ──────────────────────────────
+-- ── Case-Spinner (CS-Style: Tile-Band dreht und bremst auf den Gewinn) ────────
 local hatchOverlay = Instance.new("Frame")
 hatchOverlay.Size = UDim2.new(1, 0, 1, 0)
-hatchOverlay.BackgroundColor3 = Color3.fromRGB(5, 5, 10)
-hatchOverlay.BackgroundTransparency = 0.25
+hatchOverlay.BackgroundColor3 = Color3.fromRGB(4, 4, 10)
+hatchOverlay.BackgroundTransparency = 0.2
 hatchOverlay.BorderSizePixel = 0
 hatchOverlay.Visible = false
 hatchOverlay.ZIndex = 35
 hatchOverlay.Parent = screenGui
 
-local hatchEgg = label(hatchOverlay, "🥚", UDim2.new(0, 200, 0, 200), UDim2.new(0.5, -100, 0.42, -100),
-	{ textSize = 130, align = Enum.TextXAlignment.Center })
-hatchEgg.ZIndex = 36
-local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 90), UDim2.new(0, 0, 0.68, 0),
-	{ textSize = 40, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 })
+label(hatchOverlay, "📦 " .. Config.EGGS.omega.name, UDim2.new(1, 0, 0, 40), UDim2.new(0, 0, 0.18, 0),
+	{ textSize = 30, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 }).ZIndex = 36
+
+-- Sichtfenster mit Tile-Band
+local TILE_W = 124
+local spinWindow = Instance.new("Frame")
+spinWindow.Size = UDim2.new(0, 640, 0, 110)
+spinWindow.Position = UDim2.new(0.5, -320, 0.36, 0)
+spinWindow.BackgroundColor3 = C.panel
+spinWindow.BorderSizePixel = 0
+spinWindow.ClipsDescendants = true
+spinWindow.ZIndex = 36
+Theme.applyCorner(spinWindow, Theme.CORNER_LG)
+Theme.applyStroke(spinWindow, C.accent, 2)
+spinWindow.Parent = hatchOverlay
+
+local spinStrip = Instance.new("Frame")
+spinStrip.Size = UDim2.new(0, TILE_W * 60, 1, -12)
+spinStrip.Position = UDim2.new(0, 0, 0, 6)
+spinStrip.BackgroundTransparency = 1
+spinStrip.ZIndex = 36
+spinStrip.Parent = spinWindow
+
+-- Mittelmarker
+local marker = Instance.new("Frame")
+marker.Size = UDim2.new(0, 3, 1, 6)
+marker.Position = UDim2.new(0.5, -1, 0, -3)
+marker.BackgroundColor3 = C.gold
+marker.BorderSizePixel = 0
+marker.ZIndex = 38
+marker.Parent = spinWindow
+
+local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 130), UDim2.new(0, 0, 0.56, 0),
+	{ textSize = 38, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 })
 hatchText.ZIndex = 36
+hatchText.TextWrapped = true
+
+local pityLabel = label(hatchOverlay, "", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0.78, 0),
+	{ color = C.textDim, textSize = 16, align = Enum.TextXAlignment.Center, stroke = 0.5 })
+pityLabel.ZIndex = 36
+
+local function makeSpinTile(skin, x)
+	local t = Instance.new("Frame")
+	t.Size = UDim2.new(0, TILE_W - 8, 1, 0)
+	t.Position = UDim2.new(0, x, 0, 0)
+	t.BackgroundColor3 = C.panel2
+	t.BorderSizePixel = 0
+	t.ZIndex = 37
+	Theme.applyCorner(t)
+	Theme.applyStroke(t, Skins.TIERS[skin.tier].color, 2)
+	t.Parent = spinStrip
+	local n = label(t, skin.name, UDim2.new(1, -8, 0, 44), UDim2.new(0, 4, 0, 14),
+		{ textSize = 15, font = Theme.FONTS.header, align = Enum.TextXAlignment.Center })
+	n.TextWrapped = true
+	n.ZIndex = 37
+	label(t, Skins.TIERS[skin.tier].label, UDim2.new(1, 0, 0, 16), UDim2.new(0, 0, 1, -26),
+		{ color = Skins.TIERS[skin.tier].color, textSize = 12, align = Enum.TextXAlignment.Center }).ZIndex = 37
+	return t
+end
+
+-- Gewichteter Zufalls-Skin fürs Band (nur Optik)
+local function randomStripSkin()
+	local r = math.random()
+	local tierName = (r < 0.62 and "Common") or (r < 0.90 and "Rare")
+		or (r < 0.975 and "Legendary") or (r < 0.995 and "Godly") or "Mythical"
+	local pool = {}
+	for _, s in ipairs(Skins.CATALOG) do
+		if s.tier == tierName and Skins.inCasePool(s) then table.insert(pool, s) end
+	end
+	return pool[math.random(1, #pool)]
+end
 
 local hatching = false
-function UIController.playHatch(skinId)
+function UIController.playHatch(skinId, _count, pityLeft)
 	local skin = Skins.BY_ID[skinId]
 	if not skin or hatching then
-		-- Fallback ohne Animation
-		if skin then UIController.showNotify("Gezogen: " .. skin.name .. " [" .. skin.tier .. "]") end
+		if skin then
+			UIController.showNotify("GEWONNEN: " .. skin.name .. " [" .. Skins.TIERS[skin.tier].label .. "]")
+		end
 		return
 	end
 	hatching = true
 	local tierColor = Skins.TIERS[skin.tier].color
 	local order = Skins.TIERS[skin.tier].order
 
+	-- Band aufbauen: 48 Tiles, der Gewinn liegt bei Index 42
+	spinStrip:ClearAllChildren()
+	local TARGET = 42
+	for i = 1, 48 do
+		makeSpinTile(i == TARGET and skin or randomStripSkin(), (i - 1) * TILE_W)
+	end
+
 	hatchOverlay.Visible = true
 	hatchText.Text = ""
-	hatchEgg.TextTransparency = 0
-	hatchEgg.Rotation = 0
+	pityLabel.Text = ""
 	Assets.play2D(Assets.SFX.DrumRoll, 0.5)
 
 	task.spawn(function()
-		-- Wackeln + Cracks (3 Stufen, je seltener desto länger die Spannung)
-		local shakes = 14 + order * 6
-		for i = 1, shakes do
-			hatchEgg.Rotation = math.sin(i * 1.7) * (6 + i * 0.8)
-			if i % 7 == 0 then
-				Assets.play2D((i % 14 == 0) and Assets.SFX.EggCrack2 or Assets.SFX.EggCrack, 0.8)
-				effects.shake(0.5)
+		-- Spin: schnell starten, hart abbremsen, exakt auf dem Gewinn landen
+		local windowCenter = 320
+		local jitter = (math.random() - 0.5) * (TILE_W * 0.4)
+		local targetX = -((TARGET - 0.5) * TILE_W - windowCenter + jitter)
+		local startX = 0
+		spinStrip.Position = UDim2.new(0, startX, 0, 6)
+
+		local dur = 3.6 + order * 0.3
+		local t0 = os.clock()
+		local lastTile = 0
+		while true do
+			local a = math.min(1, (os.clock() - t0) / dur)
+			local eased = 1 - (1 - a) ^ 3   -- Cubic-Out
+			local x = startX + (targetX - startX) * eased
+			spinStrip.Position = UDim2.new(0, x, 0, 6)
+
+			-- Tick-Sound bei jedem Tile-Übergang unterm Marker
+			local tileIdx = math.floor((windowCenter - x) / TILE_W)
+			if tileIdx ~= lastTile then
+				lastTile = tileIdx
+				Assets.play2D(Assets.SFX.Bolt, 0.25, 1.3 + a * 0.4)
 			end
-			task.wait(0.07)
+			if a >= 1 then break end
+			task.wait()
 		end
 
-		-- Reveal
-		Assets.play2D(Assets.SFX.EggCrack2, 1)
-		Assets.play2D(Assets.SFX.Chime, order >= 3 and 0.9 or 0.5, 0.9 + order * 0.1)
-		hatchEgg.TextTransparency = 1
-		hatchText.Text = skin.name .. "\n[" .. skin.tier .. "]"
+		-- Reveal: "GEWONNEN!"
+		Assets.play2D(Assets.SFX.EggCrack2, 0.9)
+		Assets.play2D(Assets.SFX.Chime, order >= 3 and 0.95 or 0.55, 0.9 + order * 0.1)
+		hatchText.Text = "GEWONNEN!\n" .. skin.name .. "\nSELTENHEIT: " .. Skins.TIERS[skin.tier].label
+			.. (skin.flavor and ("\n\"" .. skin.flavor .. "\"") or "")
 		hatchText.TextColor3 = tierColor
+		pityLabel.Text = "Pulls bis garantierte LEGENDE: " .. tostring(pityLeft or "—")
 		effects.shake(0.6 + order * 0.4)
 		if order >= 3 then
 			effects.confetti(screenGui, tierColor, 14 + order * 10)
 		end
 
-		task.wait(order >= 4 and 3.2 or 2.0)
+		task.wait(order >= 4 and 3.6 or 2.4)
 		hatchOverlay.Visible = false
 		hatching = false
 		refreshEggWindow()
@@ -593,10 +693,140 @@ function UIController.onTradeUpdate(payload)
 	end
 end
 
+-- ── Wager-Wahl (vor dem 1v1-Queue-Beitritt) ───────────────────────────────────
+local wagerWin = panel(UDim2.new(0, 340, 0, 96 + #Config.WAGER_OPTIONS * 0), UDim2.new(0.5, -170, 0.5, -120))
+wagerWin.Size = UDim2.new(0, 340, 0, 230)
+label(wagerWin, "⚔ NÄCHSTER WAGER: WÄHLEN.", UDim2.new(1, -20, 0, 28), UDim2.new(0, 12, 0, 10),
+	{ textSize = 18, font = Theme.FONTS.header })
+label(wagerWin, "Sieger nimmt den ganzen Pot. Gleicher Einsatz wird gematcht.",
+	UDim2.new(1, -20, 0, 30), UDim2.new(0, 12, 0, 38), { color = C.textDim, textSize = 13 }).TextWrapped = true
+button(wagerWin, "✕", UDim2.new(0, 28, 0, 28), UDim2.new(1, -36, 0, 8), C.panel2, function()
+	wagerWin.Visible = false
+end)
+for i, w in ipairs(Config.WAGER_OPTIONS) do
+	local col = (i - 1) % 3
+	local row = math.floor((i - 1) / 3)
+	button(wagerWin,
+		w == 0 and "CASUAL (0)" or (w .. " ⨀"),
+		UDim2.new(0, 100, 0, 38),
+		UDim2.new(0, 12 + col * 106, 0, 76 + row * 46),
+		w == 0 and C.panel2 or (w >= 250 and C.red or C.accent2),
+		function()
+			wagerWin.Visible = false
+			net.QueueJoin:FireServer(w)
+		end)
+end
+
+function UIController.openWager()
+	wagerWin.Visible = true
+end
+
+-- ── Prime-Status-Menü ─────────────────────────────────────────────────────────
+local primeWin = panel(UDim2.new(0, 420, 0, 360), UDim2.new(0.5, -210, 0.5, -180))
+Theme.applyStroke(primeWin, C.gold, 2)
+label(primeWin, "👑 PRIME STATUS AKTIVIEREN", UDim2.new(1, -60, 0, 32), UDim2.new(0, 16, 0, 12),
+	{ color = C.gold, textSize = 21, font = Theme.FONTS.display })
+button(primeWin, "✕", UDim2.new(0, 30, 0, 30), UDim2.new(1, -40, 0, 8), C.panel2, function()
+	primeWin.Visible = false
+end)
+local PRIME_BULLETS = {
+	"•  Prime-Matchmaking (nur Prime Spieler)",
+	"•  Prime-Exklusive Waffenskins und Auren",
+	"•  Verbesserter Rangfortschritt (+25% ELO)",
+	"•  Wöchentliche Prime-Belohnungen (" .. Config.PRIME_WEEKLY .. " " .. Config.CURRENCY_NAME .. ")",
+}
+for i, b in ipairs(PRIME_BULLETS) do
+	label(primeWin, b, UDim2.new(1, -32, 0, 26), UDim2.new(0, 20, 0, 48 + (i - 1) * 30),
+		{ textSize = 15 })
+end
+label(primeWin, "Fair bleibt fair: Prime gibt NIEMALS stärkere Waffen.",
+	UDim2.new(1, -32, 0, 22), UDim2.new(0, 20, 0, 178), { color = C.textDim, textSize = 12 })
+local primeBuyBtn = button(primeWin, "Kaufen für " .. Config.PRIME_PRICE_TEXT,
+	UDim2.new(0, 230, 0, 44), UDim2.new(0.5, -115, 0, 216), C.gold, function()
+		net.BuyPrime:FireServer()
+	end)
+primeBuyBtn.TextColor3 = Color3.fromRGB(30, 26, 10)
+primeBuyBtn.TextSize = 17
+local weeklyBtn = button(primeWin, "👑 Weekly abholen", UDim2.new(0, 230, 0, 36),
+	UDim2.new(0.5, -115, 0, 272), C.panel2, function()
+		net.ClaimWeekly:FireServer()
+	end)
+local primeStateLbl = label(primeWin, "", UDim2.new(1, 0, 0, 22), UDim2.new(0, 0, 1, -30),
+	{ color = C.textDim, textSize = 13, align = Enum.TextXAlignment.Center })
+
+local function refreshPrimeWindow()
+	if localData.prime then
+		primeBuyBtn.Text = "✔ PRIME AKTIV"
+		primeStateLbl.Text = "Danke für deinen Support — viel Spaß mit der Ägis!"
+		weeklyBtn.BackgroundColor3 = C.gold
+		weeklyBtn.TextColor3 = Color3.fromRGB(30, 26, 10)
+	else
+		primeBuyBtn.Text = "Kaufen für " .. Config.PRIME_PRICE_TEXT
+		primeStateLbl.Text = "Gamepass-ID in Config.lua eintragen, um Prime live zu schalten."
+		weeklyBtn.BackgroundColor3 = C.panel2
+		weeklyBtn.TextColor3 = C.text
+	end
+end
+
+-- ── Rangschild am 5v5-Portal (client-seitig — jeder sieht SEINEN Rang) ────────
+local rankShieldGui = nil
+local function ensureRankShield()
+	if rankShieldGui and rankShieldGui.Parent then return rankShieldGui end
+	local anchor = workspace:FindFirstChild("RankShieldAnchor", true)
+	if not anchor then return nil end
+
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.new(0, 260, 0, 110)
+	bb.MaxDistance = 130
+	bb.Parent = anchor
+
+	local shield = Instance.new("Frame")
+	shield.Size = UDim2.new(1, 0, 1, 0)
+	shield.BackgroundColor3 = C.panel
+	shield.BackgroundTransparency = 0.25
+	shield.BorderSizePixel = 0
+	Theme.applyCorner(shield, Theme.CORNER_LG)
+	Theme.applyStroke(shield, C.gold, 2)
+	shield.Parent = bb
+
+	local t1 = label(shield, "DEIN RANG:", UDim2.new(1, 0, 0, 30), UDim2.new(0, 0, 0, 12),
+		{ color = C.textDim, textSize = 16, align = Enum.TextXAlignment.Center })
+	t1.Name = "RankTitle"
+	local t2 = label(shield, "—", UDim2.new(1, 0, 0, 44), UDim2.new(0, 0, 0, 44),
+		{ textSize = 28, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center })
+	t2.Name = "RankName"
+
+	rankShieldGui = bb
+	return bb
+end
+
+local function refreshRankShield()
+	local bb = ensureRankShield()
+	if not bb then return end
+	local rank = Config.rankFor(localData.rating or Config.ELO_START)
+	local nameLbl = bb:FindFirstChild("RankName", true)
+	if nameLbl then
+		nameLbl.Text = rank.name
+		nameLbl.TextColor3 = rank.color
+	end
+end
+
+-- ── Trade-Fenster von außen öffnen (Handelskiosk) ─────────────────────────────
+function UIController.openTradeList()
+	if sessionFrame.Visible then
+		tradeWin.Visible = true
+		return
+	end
+	refreshPlayerList()
+	playerList.Visible = true
+	sessionFrame.Visible = false
+	tradeWin.Visible = true
+end
+
 -- ── Bottom-Right Buttons ──────────────────────────────────────────────────────
 local btnBar = Instance.new("Frame")
-btnBar.Size = UDim2.new(0, 64, 0, 310)
-btnBar.Position = UDim2.new(1, -76, 1, -322)
+btnBar.Size = UDim2.new(0, 64, 0, 372)
+btnBar.Position = UDim2.new(1, -76, 1, -384)
 btnBar.BackgroundTransparency = 1
 btnBar.Parent = screenGui
 
@@ -613,28 +843,29 @@ local function barButton(emoji, tip, yOrder, cb)
 	return b
 end
 
-barButton("🥚", "Skins & Ei öffnen", 1, function()
+barButton("📦", "Omega-Gehäuse & Skins", 1, function()
 	refreshEggWindow()
 	eggWin.Visible = not eggWin.Visible
 end)
-barButton("🤝", "Trading", 2, function()
-	if sessionFrame.Visible then
-		tradeWin.Visible = true
-		return
+barButton("🤝", "Handelsplatz", 2, function()
+	if tradeWin.Visible then
+		tradeWin.Visible = false
+	else
+		UIController.openTradeList()
 	end
-	refreshPlayerList()
-	playerList.Visible = true
-	sessionFrame.Visible = false
-	tradeWin.Visible = not tradeWin.Visible
 end)
 barButton("🎁", "Daily Reward", 3, function()
 	net.ClaimDaily:FireServer()
 end)
-barButton("⚔", "1v1-Queue (oder rotes Pad)", 4, function()
-	net.QueueJoin:FireServer()
+barButton("⚔", "1v1 PvP — Wager wählen (oder rotes Pad)", 4, function()
+	UIController.openWager()
 end)
 barButton("🤖", "1v1 gegen den Bot (oder blaues Pad)", 5, function()
 	net.QueueBot:FireServer()
+end)
+barButton("👑", "Prime Status", 6, function()
+	refreshPrimeWindow()
+	primeWin.Visible = not primeWin.Visible
 end)
 
 -- ── Refresh ───────────────────────────────────────────────────────────────────
@@ -644,6 +875,12 @@ function UIController.refresh(data)
 	creditsLabel.Text = "⨀ " .. tostring(data.credits)
 	statsLabel.Text = "Kills: " .. (data.kills or 0) .. "  ·  Siege: " .. (data.wins or 0)
 		.. "  ·  Pulls: " .. (data.hatches or 0)
+
+	local rank = Config.rankFor(data.rating or Config.ELO_START)
+	rankLabel.Text = (data.prime and "👑 " or "") .. "RANG: " .. rank.name
+	rankLabel.TextColor3 = rank.color
+	refreshRankShield()
+	if primeWin.Visible then refreshPrimeWindow() end
 
 	local luckOn = os.time() < (data.luckUntil or 0)
 	luckLabel.Text = luckOn

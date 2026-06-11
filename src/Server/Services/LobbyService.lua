@@ -1,4 +1,9 @@
--- LobbyService.lua — Cyber-Lobby: Omega-Ei in der Mitte, Queue-Pad, Daily-Terminal
+-- LobbyService.lua — Neon-Cyber-Mythos-Hauptlobby:
+--   Mitte-Rechts: Omega-Gehäuse (Case-Opening, schwebendes Artefakt)
+--   Links:        COMPETITIVE 5V5 Portal + Rangschild + RANGTABELLE
+--   Rechts:       1v1 SNIPER-ARENA Terminal (AKTIVE DUELLE, Wager) + Pads
+--   Hinten:       Prachtvolle Treppe → obere Ebene "HANDELSHALLE" (+ Live-Ticker)
+--   Vorne-Links:  BESTENLISTE (Kills/Pulls/Rang)
 local LobbyService = {}
 
 local RS                = game:GetService("ReplicatedStorage")
@@ -10,12 +15,18 @@ local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local arenaService = nil
 local eggService   = nil
+local dataService  = nil
 local net          = nil
 
-local NEON   = Color3.fromRGB(150, 80, 255)
-local CYAN   = Color3.fromRGB(70, 200, 255)
-local DARK   = Color3.fromRGB(22, 24, 34)
-local FLOOR  = Color3.fromRGB(32, 34, 48)
+local CYAN    = Color3.fromRGB(70, 200, 255)
+local MAGENTA = Color3.fromRGB(255, 70, 200)
+local PURPLE  = Color3.fromRGB(150, 80, 255)
+local GOLD    = Color3.fromRGB(255, 200, 60)
+local DARK    = Color3.fromRGB(20, 22, 32)
+local STONE   = Color3.fromRGB(58, 56, 70)
+local FLOOR   = Color3.fromRGB(16, 17, 26)
+
+local tickerLabel = nil   -- Live-Ticker der Handelshalle
 
 local function part(props, parent)
 	local p = Instance.new("Part")
@@ -26,16 +37,18 @@ local function part(props, parent)
 	p.Anchored = true
 	p.CanCollide = props.collide ~= false
 	if props.transparency then p.Transparency = props.transparency end
+	if props.reflectance then p.Reflectance = props.reflectance end
+	if props.shape then p.Shape = props.shape end
 	if props.name then p.Name = props.name end
 	p.Parent = parent
 	return p
 end
 
-local function billboard(parent, offset, title, subtitle, color)
+local function billboard(parent, offset, title, subtitle, color, width)
 	local bb = Instance.new("BillboardGui")
-	bb.Size = UDim2.new(0, 220, 0, 70)
+	bb.Size = UDim2.new(0, width or 240, 0, 70)
 	bb.StudsOffset = offset
-	bb.MaxDistance = 120
+	bb.MaxDistance = 160
 	bb.Parent = parent
 
 	local tl = Instance.new("TextLabel")
@@ -62,130 +75,256 @@ local function billboard(parent, offset, title, subtitle, color)
 	end
 end
 
-local function buildMegaEgg(folder)
+-- SurfaceGui-Textpanel (Terminals, Boards)
+local function surfacePanel(parent, face, lines)
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = face
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 30
+	sg.Parent = parent
+
+	local labels = {}
+	local n = #lines
+	for i, line in ipairs(lines) do
+		local tl = Instance.new("TextLabel")
+		tl.Size = UDim2.new(1, -12, 1 / n, -4)
+		tl.Position = UDim2.new(0, 6, (i - 1) / n, 2)
+		tl.BackgroundTransparency = 1
+		tl.Text = line.text
+		tl.TextColor3 = line.color or Color3.fromRGB(225, 230, 245)
+		tl.TextScaled = true
+		tl.Font = line.font or Enum.Font.Gotham
+		tl.TextXAlignment = line.align or Enum.TextXAlignment.Center
+		tl.Parent = sg
+		labels[i] = tl
+	end
+	return labels
+end
+
+-- "Antike Glyphen": Reihe kleiner Neon-Formen (Balken/Ringe/Punkte) auf Stein
+local function glyphRow(parent, originCF, count, color, rng)
+	for i = 0, count - 1 do
+		local kind = rng:NextInteger(1, 3)
+		local cf = originCF * CFrame.new(i * 1.4, 0, 0)
+		if kind == 1 then
+			part({ size = Vector3.new(0.18, rng:NextNumber(0.6, 1.1), 0.12), cframe = cf,
+				material = Enum.Material.Neon, color = color, transparency = 0.25, collide = false }, parent)
+		elseif kind == 2 then
+			part({ size = Vector3.new(0.55, 0.55, 0.12), cframe = cf * CFrame.Angles(0, 0, math.rad(45)),
+				material = Enum.Material.Neon, color = color, transparency = 0.35, collide = false }, parent)
+		else
+			part({ size = Vector3.new(0.3, 0.3, 0.12), cframe = cf, shape = Enum.PartType.Ball,
+				material = Enum.Material.Neon, color = color, transparency = 0.2, collide = false }, parent)
+		end
+	end
+end
+
+-- ── Omega-Gehäuse (Case-Opening-Terminal, Mitte-Rechts) ───────────────────────
+local function buildOmegaCase(folder)
 	local egg = Config.EGGS.omega
-	local center = Vector3.new(0, 0, 15)
+	local center = Vector3.new(18, 0, 8)
 
-	-- Podest
-	part({ size = Vector3.new(18, 1.2, 18), pos = center + Vector3.new(0, 0.6, 0),
-		material = Enum.Material.Slate, color = DARK }, folder)
-	part({ size = Vector3.new(15, 0.4, 15), pos = center + Vector3.new(0, 1.4, 0),
-		material = Enum.Material.Neon, color = egg.color, transparency = 0.35, collide = false }, folder)
+	-- Podest mit "Zahnrädern" (flache Zylinder)
+	part({ size = Vector3.new(20, 1.4, 20), pos = center + Vector3.new(0, 0.7, 0),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	for a = 0, 3 do
+		local ang = a / 4 * math.pi * 2
+		part({ size = Vector3.new(0.8, 3.2, 3.2),
+			cframe = CFrame.new(center + Vector3.new(math.cos(ang) * 8, 1.5, math.sin(ang) * 8))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			shape = Enum.PartType.Cylinder,
+			material = Enum.Material.Metal, color = Color3.fromRGB(90, 85, 105) }, folder)
+	end
+	part({ size = Vector3.new(16, 0.4, 16), pos = center + Vector3.new(0, 1.6, 0),
+		material = Enum.Material.Neon, color = egg.color, transparency = 0.4, collide = false }, folder)
 
-	-- Das massive Omega-Ei (Sphere-Mesh vertikal gestreckt)
-	local shell = part({ size = Vector3.new(10, 10, 10), pos = center + Vector3.new(0, 8.5, 0),
-		material = Enum.Material.SmoothPlastic, color = egg.color, name = "OmegaEgg" }, folder)
-	local mesh = Instance.new("SpecialMesh")
-	mesh.MeshType = Enum.MeshType.Sphere
-	mesh.Scale = Vector3.new(1, 1.35, 1)
-	mesh.Parent = shell
-	shell.Reflectance = 0.08
-	-- Client-Animation (Schweben/Drehen) via Tag — kostet den Server nichts
-	CollectionService:AddTag(shell, "EggFloat")
-
-	-- Leucht-Ringe um das Ei
-	for i, y in ipairs({ 6.2, 8.5, 10.8 }) do
-		local ring = part({
-			size = Vector3.new(0.35, 11 - math.abs(i - 2) * 3, 11 - math.abs(i - 2) * 3),
-			cframe = CFrame.new(center + Vector3.new(0, y, 0)) * CFrame.Angles(0, 0, math.rad(90)),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.25, collide = false,
-		}, folder)
-		-- Ringe NICHT taggen: die Float-Animation überschreibt die Orientierung,
-		-- gekippte Zylinder würden dadurch aufrecht springen
-		ring.Shape = Enum.PartType.Cylinder
+	-- Das schwebende Artefakt-Gehäuse (Würfel + Neon-Kanten, dreht/schwebt client-seitig)
+	local case = part({ size = Vector3.new(7, 7, 7), pos = center + Vector3.new(0, 9, 0),
+		material = Enum.Material.Slate, color = DARK, reflectance = 0.1, name = "OmegaCase" }, folder)
+	CollectionService:AddTag(case, "EggFloat")
+	for _, off in ipairs({
+		Vector3.new(3.5, 0, 3.5), Vector3.new(-3.5, 0, 3.5),
+		Vector3.new(3.5, 0, -3.5), Vector3.new(-3.5, 0, -3.5),
+	}) do
+		local edge = part({ size = Vector3.new(0.35, 7.4, 0.35), pos = case.Position + off,
+			material = Enum.Material.Neon, color = egg.color, collide = false }, folder)
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = case
+		w.Part1 = edge
+		w.Parent = edge
+		edge.Anchored = false
+	end
+	for _, dy in ipairs({ 3.7, -3.7 }) do
+		local frame = part({ size = Vector3.new(7.6, 0.35, 7.6), pos = case.Position + Vector3.new(0, dy, 0),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.2, collide = false }, folder)
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = case
+		w.Part1 = frame
+		w.Parent = frame
+		frame.Anchored = false
 	end
 
-	-- Orbit-Partikel
+	-- Statische Leucht-Ringe (gekippt — bewusst NICHT getaggt, s. EggFloat-Handler)
+	for i, tilt in ipairs({ 18, -14 }) do
+		part({
+			size = Vector3.new(0.3, 13 + i * 2, 13 + i * 2),
+			cframe = CFrame.new(center + Vector3.new(0, 9, 0))
+				* CFrame.Angles(math.rad(tilt), 0, math.rad(90 + tilt)),
+			shape = Enum.PartType.Cylinder,
+			material = Enum.Material.Neon, color = (i == 1) and CYAN or MAGENTA,
+			transparency = 0.45, collide = false,
+		}, folder)
+	end
+
+	-- Holo-Projektion + Partikel + Licht
 	local att = Instance.new("Attachment")
-	att.Parent = shell
+	att.Parent = case
 	local pe = Instance.new("ParticleEmitter")
 	pe.Texture = Assets.PARTICLES.Sparkles
-	pe.Rate = 8
+	pe.Rate = 10
 	pe.Lifetime = NumberRange.new(1.5, 3)
-	pe.Speed = NumberRange.new(1, 2.5)
+	pe.Speed = NumberRange.new(1.5, 3)
 	pe.SpreadAngle = Vector2.new(180, 180)
 	pe.Size = NumberSequence.new(0.35)
 	pe.Color = ColorSequence.new(egg.color, CYAN)
 	pe.LightEmission = 1
 	pe.Parent = att
-
 	local light = Instance.new("PointLight")
 	light.Color = egg.color
-	light.Range = 28
-	light.Brightness = 1.4
-	light.Parent = shell
+	light.Range = 30
+	light.Brightness = 1.6
+	light.Parent = case
 
-	billboard(shell, Vector3.new(0, 9, 0),
-		"🥚 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
+	billboard(case, Vector3.new(0, 7.5, 0),
+		"📦 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
 
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Ei öffnen"
+	prompt.ActionText = "Gehäuse öffnen"
 	prompt.ObjectText = egg.name
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 18
+	prompt.MaxActivationDistance = 20
 	prompt.RequiresLineOfSight = false
-	prompt.Parent = shell
+	prompt.Parent = case
 	prompt.Triggered:Connect(function(player)
 		net.OpenEgg:FireClient(player, "omega")
 	end)
 end
 
-local function buildLobby(folder)
-	-- Boden + Neon-Grid
-	part({ size = Vector3.new(180, 2, 180), pos = Vector3.new(0, -1, 0),
-		material = Enum.Material.Slate, color = FLOOR, name = "LobbyFloor" }, folder)
-	for i = -3, 3 do
-		part({ size = Vector3.new(0.5, 0.15, 180), pos = Vector3.new(i * 25, 0.05, 0),
-			material = Enum.Material.Neon, color = NEON, transparency = 0.55, collide = false }, folder)
-		part({ size = Vector3.new(180, 0.15, 0.5), pos = Vector3.new(0, 0.05, i * 25),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.65, collide = false }, folder)
-	end
+-- ── COMPETITIVE 5V5 Portal + Rang (Links) ─────────────────────────────────────
+local function buildPortal5v5(folder, rng)
+	local cx, cz = -45, 25
 
-	-- Begrenzung + Neon-Türme als Skyline
-	for _, w in ipairs({
-		{ Vector3.new(180, 18, 2), Vector3.new(0, 9, -90) },
-		{ Vector3.new(180, 18, 2), Vector3.new(0, 9, 90) },
-		{ Vector3.new(2, 18, 180), Vector3.new(-90, 9, 0) },
-		{ Vector3.new(2, 18, 180), Vector3.new(90, 9, 0) },
-	}) do
-		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+	-- Massive Stein-Pfeiler + verzierter Bogen
+	for side = -1, 1, 2 do
+		local pillar = part({ size = Vector3.new(5, 26, 5), pos = Vector3.new(cx + side * 11, 13, cz),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		glyphRow(folder, CFrame.new(pillar.Position + Vector3.new(-0.7, -6, -2.7)) * CFrame.Angles(0, 0, math.rad(90)),
+			6, PURPLE, rng)
 	end
-	local towerRng = Random.new(7)
-	for a = 0, 11 do
-		local ang = a / 12 * math.pi * 2
-		local d = 120 + towerRng:NextNumber(0, 60)
-		local h = towerRng:NextNumber(40, 110)
-		local tower = part({
-			size = Vector3.new(towerRng:NextNumber(12, 24), h, towerRng:NextNumber(12, 24)),
-			pos = Vector3.new(math.cos(ang) * d, h / 2 - 4, math.sin(ang) * d),
-			material = Enum.Material.Concrete, color = DARK,
+	part({ size = Vector3.new(28, 4, 5.5), pos = Vector3.new(cx, 27, cz),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	part({ size = Vector3.new(29, 0.6, 6), pos = Vector3.new(cx, 29.2, cz),
+		material = Enum.Material.Neon, color = PURPLE, transparency = 0.3, collide = false }, folder)
+
+	-- Wirbelndes Energieportal (zwei Ebenen + Partikel)
+	local portal = part({ size = Vector3.new(17, 22, 0.6), pos = Vector3.new(cx, 12, cz),
+		material = Enum.Material.Neon, color = PURPLE, transparency = 0.35, collide = false, name = "Portal5v5" }, folder)
+	part({ size = Vector3.new(14, 18, 0.4), pos = Vector3.new(cx, 12, cz + 0.3),
+		material = Enum.Material.Neon, color = CYAN, transparency = 0.6, collide = false }, folder)
+	local patt = Instance.new("Attachment")
+	patt.Parent = portal
+	local pswirl = Instance.new("ParticleEmitter")
+	pswirl.Texture = Assets.PARTICLES.Smoke
+	pswirl.Rate = 14
+	pswirl.Lifetime = NumberRange.new(1.4, 2.6)
+	pswirl.Speed = NumberRange.new(2, 5)
+	pswirl.SpreadAngle = Vector2.new(180, 180)
+	pswirl.Size = NumberSequence.new(2.4)
+	pswirl.Color = ColorSequence.new(PURPLE, CYAN)
+	pswirl.LightEmission = 0.8
+	pswirl.Parent = patt
+	local plight = Instance.new("PointLight")
+	plight.Color = PURPLE
+	plight.Range = 34
+	plight.Brightness = 1.8
+	plight.Parent = portal
+
+	billboard(portal, Vector3.new(0, 13.5, 0),
+		"COMPETITIVE: 5V5 BOMBEN-DEFUSAL", "Matchmaking in Entwicklung — Rang steigt im 1v1!", PURPLE, 340)
+
+	-- Anker für das client-seitige Rangschild ("DEIN RANG: …" sieht jeder nur für sich)
+	local anchor = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(cx, 7.5, cz - 7),
+		transparency = 1, collide = false, name = "RankShieldAnchor" }, folder)
+	anchor.CanQuery = false
+
+	-- Touch-Hinweis
+	local touchCd = {}
+	portal.Touched:Connect(function(hit)
+		local player = hit and hit.Parent and Players:GetPlayerFromCharacter(hit.Parent)
+		if not player then return end
+		if os.clock() - (touchCd[player] or 0) < 4 then return end
+		touchCd[player] = os.clock()
+		net.Notify:FireClient(player, "🚧 5v5 Bomben-Defusal kommt bald — dein Rang steigt im 1v1!")
+	end)
+
+	-- RANGTABELLE-Terminal (rechts neben dem Portal)
+	local board = part({ size = Vector3.new(0.8, 13, 9), pos = Vector3.new(cx + 19, 7.5, cz - 2),
+		material = Enum.Material.Slate, color = DARK }, folder)
+	local lines = { { text = "RANGTABELLE:", color = GOLD, font = Enum.Font.GothamBold } }
+	for i = #Config.RANKS, 1, -1 do
+		local r = Config.RANKS[i]
+		table.insert(lines, { text = r.name .. "  (" .. r.min .. "+)", color = r.color })
+	end
+	surfacePanel(board, Enum.NormalId.Right, lines)
+end
+
+-- ── 1v1 SNIPER-ARENA Terminal + Pads (Rechts) ─────────────────────────────────
+local duelCountLabel = nil
+
+local function buildArenaTerminal(folder, rng)
+	local cx, cz = 52, 22
+
+	-- Glyphen-Steinwand mit stilisierten Scope-Symbolen
+	local wall = part({ size = Vector3.new(2, 18, 30), pos = Vector3.new(cx + 10, 9, cz),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	for i = 0, 2 do
+		local ring = part({
+			size = Vector3.new(0.3, 3.4, 3.4),
+			cframe = CFrame.new(wall.Position + Vector3.new(-1.2, 3 + (i % 2) * 4, -9 + i * 9))
+				* CFrame.Angles(0, 0, math.rad(90)),
+			shape = Enum.PartType.Cylinder,
+			material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80),
+			transparency = 0.35, collide = false,
 		}, folder)
-		-- Leuchtkanten
-		part({
-			size = Vector3.new(tower.Size.X + 0.4, 0.6, tower.Size.Z + 0.4),
-			pos = tower.Position + Vector3.new(0, h / 2 - 1, 0),
-			material = Enum.Material.Neon,
-			color = (a % 2 == 0) and NEON or CYAN,
-			collide = false,
-		}, folder)
+		-- Fadenkreuz im Ring
+		part({ size = Vector3.new(0.15, 4.2, 0.2), pos = ring.Position + Vector3.new(-0.1, 0, 0),
+			material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.45, collide = false }, folder)
+		part({ size = Vector3.new(0.15, 0.2, 4.2), pos = ring.Position + Vector3.new(-0.1, 0, 0),
+			material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.45, collide = false }, folder)
 	end
+	glyphRow(folder, CFrame.new(wall.Position + Vector3.new(-1.2, -7, -10)) * CFrame.Angles(0, math.rad(90), 0),
+		8, Color3.fromRGB(235, 65, 80), rng)
 
-	-- Spawn
-	local spawnLoc = Instance.new("SpawnLocation")
-	spawnLoc.Name = "LobbySpawn"
-	spawnLoc.Size = Vector3.new(12, 1, 12)
-	spawnLoc.Position = Vector3.new(0, 0.5, -55)
-	spawnLoc.Anchored = true
-	spawnLoc.Neutral = true
-	spawnLoc.Color = Color3.fromRGB(45, 48, 66)
-	spawnLoc.Parent = folder
+	-- Terminal mit Live-Anzeige
+	local term = part({ size = Vector3.new(1, 8, 10), pos = Vector3.new(cx + 5, 4, cz),
+		material = Enum.Material.Metal, color = DARK }, folder)
+	billboard(term, Vector3.new(0, 6, 0), "1v1 SNIPER-ARENA", nil, Color3.fromRGB(255, 90, 100), 280)
+	local labels = surfacePanel(term, Enum.NormalId.Left, {
+		{ text = "1v1 SNIPER-ARENA", color = Color3.fromRGB(255, 90, 100), font = Enum.Font.GothamBold },
+		{ text = "AKTIVE DUELLE: 0", color = CYAN },
+		{ text = "NÄCHSTER WAGER: WÄHLEN.", color = GOLD },
+		{ text = "Rotes Pad: PvP  ·  Blaues Pad: Bot", color = Color3.fromRGB(200, 205, 220) },
+	})
+	duelCountLabel = labels[2]
 
-	-- ── Queue-Pad (drauftreten = 1v1-Queue) ──
-	local pad = part({ size = Vector3.new(10, 0.5, 10), pos = Vector3.new(55, 0.25, 0),
-		material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.25,
+	-- ── Queue-Pad (rot): öffnet die Wager-Wahl / verlässt die Queue ──
+	local pad = part({ size = Vector3.new(11, 0.5, 11), pos = Vector3.new(cx - 8, 0.25, cz + 6),
+		material = Enum.Material.Neon, color = Color3.fromRGB(235, 65, 80), transparency = 0.2,
 		name = "QueuePad" }, folder)
-	billboard(pad, Vector3.new(0, 6, 0), "⚔ 1v1 SNIPER-ARENA", "Drauftreten: Queue (rein/raus)", Color3.fromRGB(255, 90, 100))
+	part({ size = Vector3.new(12, 0.2, 12), pos = pad.Position + Vector3.new(0, 0.2, 0),
+		material = Enum.Material.Neon, color = Color3.fromRGB(255, 130, 140), transparency = 0.7, collide = false }, folder)
+	billboard(pad, Vector3.new(0, 5.5, 0), "⚔ 1v1 PVP", "Drauftreten: Wager wählen", Color3.fromRGB(255, 90, 100))
 
 	local padCooldown = {}
 	local function padTouch(callback)
@@ -200,26 +339,221 @@ local function buildLobby(folder)
 		end
 	end
 	pad.Touched:Connect(padTouch(function(player)
-		arenaService.toggleQueue(player)
+		if arenaService.isQueued(player) then
+			arenaService.toggleQueue(player)   -- verlassen
+		else
+			net.OpenWager:FireClient(player)   -- Einsatz wählen → Client sendet QueueJoin
+		end
 	end))
 
-	-- ── Bot-Pad (Training gegen den Bot, reduzierte Rewards) ──
-	local botPad = part({ size = Vector3.new(10, 0.5, 10), pos = Vector3.new(55, 0.25, -22),
+	-- ── Bot-Pad (blau): Training ──
+	local botPad = part({ size = Vector3.new(11, 0.5, 11), pos = Vector3.new(cx - 8, 0.25, cz - 10),
 		material = Enum.Material.Neon, color = CYAN, transparency = 0.25,
 		name = "BotPad" }, folder)
-	billboard(botPad, Vector3.new(0, 6, 0), "🤖 1v1 VS BOT", "Drauftreten: Training starten", CYAN)
+	billboard(botPad, Vector3.new(0, 5.5, 0), "🤖 1v1 VS BOT", "Drauftreten: Training starten", CYAN)
 	botPad.Touched:Connect(padTouch(function(player)
 		arenaService.startBotMatch(player)
 	end))
+end
 
-	-- ── Daily-Terminal ──
-	local terminal = part({ size = Vector3.new(3, 6, 1.6), pos = Vector3.new(-55, 3, 0),
+-- ── Handelshalle (obere Ebene, hinten) + Treppe + Live-Ticker ─────────────────
+local function buildHandelshalle(folder, rng)
+	local cz = 78
+	local Y = 12
+
+	-- Prachtvolle Treppe (Mitte)
+	local steps = 10
+	for i = 1, steps do
+		part({ size = Vector3.new(18, 1.2, 3.4),
+			pos = Vector3.new(0, i * (Y / steps) - 0.6, 52 + i * 3),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		if i % 2 == 0 then
+			part({ size = Vector3.new(18.4, 0.15, 0.5),
+				pos = Vector3.new(0, i * (Y / steps), 52 + i * 3 + 1.6),
+				material = Enum.Material.Neon, color = (i % 4 == 0) and CYAN or MAGENTA,
+				transparency = 0.35, collide = false }, folder)
+		end
+	end
+
+	-- Plattform + Geländer
+	part({ size = Vector3.new(90, 2, 40), pos = Vector3.new(0, Y - 1, cz + 8),
+		material = Enum.Material.Slate, color = FLOOR, reflectance = 0.15 }, folder)
+	for _, side in ipairs({ -1, 1 }) do
+		part({ size = Vector3.new(0.6, 3, 40), pos = Vector3.new(side * 45, Y + 1.5, cz + 8),
+			material = Enum.Material.Slate, color = STONE }, folder)
+	end
+	part({ size = Vector3.new(34, 3, 0.6), pos = Vector3.new(-27, Y + 1.5, cz - 12),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	part({ size = Vector3.new(34, 3, 0.6), pos = Vector3.new(27, Y + 1.5, cz - 12),
+		material = Enum.Material.Slate, color = STONE }, folder)
+	part({ size = Vector3.new(90, 0.25, 0.7), pos = Vector3.new(0, Y + 3.1, cz + 8 - 20),
+		material = Enum.Material.Neon, color = GOLD, transparency = 0.4, collide = false }, folder)
+
+	-- Schild
+	local sign = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(0, Y + 10, cz + 4),
+		transparency = 1, collide = false }, folder)
+	billboard(sign, Vector3.new(0, 0, 0), "⇆ HANDELSPLATZ", "Kiosk: E zum Handeln  ·  >3 Items: Trader-Pass", GOLD, 300)
+
+	-- Handelskioske (Stein + glühendes Metall + Holo-Panel)
+	for k = -1, 1 do
+		local kx = k * 26
+		part({ size = Vector3.new(8, 3.4, 3), pos = Vector3.new(kx, Y + 1.7, cz + 14),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		part({ size = Vector3.new(8.4, 0.3, 3.4), pos = Vector3.new(kx, Y + 3.5, cz + 14),
+			material = Enum.Material.Neon, color = GOLD, transparency = 0.3, collide = false }, folder)
+		local holo = part({ size = Vector3.new(6, 3, 0.25), pos = Vector3.new(kx, Y + 6, cz + 14),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.55, collide = false }, folder)
+		surfacePanel(holo, Enum.NormalId.Front, {
+			{ text = "HANDELSPLATZ", color = Color3.fromRGB(240, 245, 255), font = Enum.Font.GothamBold },
+			{ text = "E: Trade starten", color = Color3.fromRGB(215, 225, 240) },
+		})
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Handeln"
+		prompt.ObjectText = "Handelskiosk"
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 12
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = holo
+		prompt.Triggered:Connect(function(player)
+			net.OpenTrade:FireClient(player)
+		end)
+	end
+
+	-- Live-Ticker (massives integriertes Terminal an der Rückwand)
+	local tickerBoard = part({ size = Vector3.new(34, 5, 0.8), pos = Vector3.new(0, Y + 9, cz + 26),
+		material = Enum.Material.Slate, color = DARK }, folder)
+	local labels = surfacePanel(tickerBoard, Enum.NormalId.Front, {
+		{ text = "● LIVE-TICKER", color = MAGENTA, font = Enum.Font.GothamBold },
+		{ text = "ZULETZT GEHANDELT: —", color = Color3.fromRGB(225, 230, 245) },
+	})
+	tickerLabel = labels[2]
+	glyphRow(folder, CFrame.new(Vector3.new(-15, Y + 5.6, cz + 25.4)), 22, PURPLE, rng)
+end
+
+-- ── Bestenliste (Vorne-Links) ─────────────────────────────────────────────────
+local lbLabels = nil
+
+local function buildLeaderboard(folder)
+	local board = part({ size = Vector3.new(0.8, 14, 18), pos = Vector3.new(-60, 8, -28),
+		material = Enum.Material.Slate, color = DARK }, folder)
+	part({ size = Vector3.new(1, 14.6, 18.6), pos = board.Position + Vector3.new(0.2, 0, 0),
+		material = Enum.Material.Neon, color = CYAN, transparency = 0.75, collide = false }, folder)
+
+	local lines = { { text = "BESTENLISTE (KILLS/PULLS/RANG)", color = GOLD, font = Enum.Font.GothamBold } }
+	for _ = 1, 8 do
+		table.insert(lines, { text = "—", color = Color3.fromRGB(210, 216, 232), align = Enum.TextXAlignment.Left })
+	end
+	lbLabels = surfacePanel(board, Enum.NormalId.Right, lines)
+end
+
+local function refreshLeaderboard()
+	if not lbLabels then return end
+	local rows = {}
+	for player, data in dataService.eachPlayer() do
+		table.insert(rows, {
+			name = player.Name,
+			kills = data.kills or 0,
+			pulls = data.hatches or 0,
+			rank = Config.rankFor(data.rating or Config.ELO_START),
+		})
+	end
+	table.sort(rows, function(a, b) return a.kills > b.kills end)
+	for i = 1, 8 do
+		local lbl = lbLabels[i + 1]
+		local r = rows[i]
+		if r then
+			lbl.Text = ("%d. %s  ·  %d Kills  ·  %d Pulls  ·  %s")
+				:format(i, r.name, r.kills, r.pulls, r.rank.name)
+			lbl.TextColor3 = r.rank.color
+		else
+			lbl.Text = "—"
+			lbl.TextColor3 = Color3.fromRGB(120, 126, 145)
+		end
+	end
+end
+
+-- ── Grundfläche, Bögen, Skyline ───────────────────────────────────────────────
+local function buildLobbyBase(folder, rng)
+	-- Hochglänzender, reflektierender Neon-Gitterboden
+	part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
+		material = Enum.Material.Glass, color = FLOOR, reflectance = 0.28, name = "LobbyFloor" }, folder)
+	for i = -4, 4 do
+		part({ size = Vector3.new(0.5, 0.12, 200), pos = Vector3.new(i * 22, 0.06, 10),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.5, collide = false }, folder)
+		part({ size = Vector3.new(200, 0.12, 0.5), pos = Vector3.new(0, 0.06, 10 + i * 22),
+			material = Enum.Material.Neon, color = MAGENTA, transparency = 0.6, collide = false }, folder)
+	end
+
+	-- Begrenzungswände
+	for _, w in ipairs({
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, -90) },
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, 110) },
+		{ Vector3.new(2, 20, 200), Vector3.new(-100, 10, 10) },
+		{ Vector3.new(2, 20, 200), Vector3.new(100, 10, 10) },
+	}) do
+		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+	end
+
+	-- Bögen über dem Hauptgang mit Glyphen + Datenstrom-Partikeln
+	for _, az in ipairs({ -30, 40 }) do
+		for side = -1, 1, 2 do
+			part({ size = Vector3.new(2.4, 14, 2.4), pos = Vector3.new(side * 14, 7, az),
+				material = Enum.Material.Slate, color = STONE }, folder)
+		end
+		local beam = part({ size = Vector3.new(31, 2.2, 2.4), pos = Vector3.new(0, 15, az),
+			material = Enum.Material.Slate, color = STONE }, folder)
+		glyphRow(folder, CFrame.new(Vector3.new(-12, 15, az - 1.4)), 18,
+			(az < 0) and CYAN or MAGENTA, rng)
+		local att = Instance.new("Attachment")
+		att.Parent = beam
+		local stream = Instance.new("ParticleEmitter")
+		stream.Texture = Assets.PARTICLES.Sparkles
+		stream.Rate = 5
+		stream.Lifetime = NumberRange.new(2, 3.5)
+		stream.Speed = NumberRange.new(3, 5)
+		stream.SpreadAngle = Vector2.new(8, 8)
+		stream.Size = NumberSequence.new(0.2)
+		stream.Color = ColorSequence.new(CYAN, MAGENTA)
+		stream.LightEmission = 1
+		stream.Parent = att
+	end
+
+	-- Neon-Skyline
+	for a = 0, 13 do
+		local ang = a / 14 * math.pi * 2
+		local d = 135 + rng:NextNumber(0, 60)
+		local h = rng:NextNumber(45, 120)
+		local tower = part({
+			size = Vector3.new(rng:NextNumber(12, 26), h, rng:NextNumber(12, 26)),
+			pos = Vector3.new(math.cos(ang) * d, h / 2 - 4, 10 + math.sin(ang) * d),
+			material = Enum.Material.Concrete, color = DARK,
+		}, folder)
+		part({
+			size = Vector3.new(tower.Size.X + 0.4, 0.7, tower.Size.Z + 0.4),
+			pos = tower.Position + Vector3.new(0, h / 2 - 1, 0),
+			material = Enum.Material.Neon,
+			color = ({ CYAN, MAGENTA, PURPLE })[(a % 3) + 1],
+			collide = false,
+		}, folder)
+	end
+
+	-- Spawn (Süden, Blick in den Hauptgang)
+	local spawnLoc = Instance.new("SpawnLocation")
+	spawnLoc.Name = "LobbySpawn"
+	spawnLoc.Size = Vector3.new(14, 1, 14)
+	spawnLoc.Position = Vector3.new(0, 0.5, -65)
+	spawnLoc.Anchored = true
+	spawnLoc.Neutral = true
+	spawnLoc.Color = Color3.fromRGB(40, 43, 60)
+	spawnLoc.Parent = folder
+
+	-- Daily-Terminal (nahe Spawn)
+	local terminal = part({ size = Vector3.new(3, 6, 1.6), pos = Vector3.new(-18, 3, -55),
 		material = Enum.Material.Metal, color = DARK }, folder)
-	part({ size = Vector3.new(2.2, 3, 0.3), pos = Vector3.new(-55, 3.6, -0.75),
-		material = Enum.Material.Neon, color = Color3.fromRGB(255, 200, 45), collide = false }, folder)
+	part({ size = Vector3.new(2.2, 3, 0.3), pos = Vector3.new(-18, 3.6, -55.8),
+		material = Enum.Material.Neon, color = GOLD, collide = false }, folder)
 	billboard(terminal, Vector3.new(0, 4.5, 0), "🎁 DAILY", "E: +"
-		.. Config.DAILY_REWARD .. " " .. Config.CURRENCY_NAME .. " täglich", Color3.fromRGB(255, 200, 45))
-
+		.. Config.DAILY_REWARD .. " " .. Config.CURRENCY_NAME .. " täglich", GOLD)
 	local dailyPrompt = Instance.new("ProximityPrompt")
 	dailyPrompt.ActionText = "Abholen"
 	dailyPrompt.ObjectText = "Daily-Reward"
@@ -230,13 +564,21 @@ local function buildLobby(folder)
 	dailyPrompt.Triggered:Connect(function(player)
 		eggService.claimDaily(player)
 	end)
-
-	buildMegaEgg(folder)
 end
 
-function LobbyService.init(arenaSvc, eggSvc, netRef)
+-- ── Public ────────────────────────────────────────────────────────────────────
+
+-- Live-Ticker der Handelshalle aktualisieren (TradeService.onTicker)
+function LobbyService.pushTicker(text)
+	if tickerLabel then
+		tickerLabel.Text = text
+	end
+end
+
+function LobbyService.init(arenaSvc, eggSvc, ds, netRef)
 	arenaService = arenaSvc
 	eggService   = eggSvc
+	dataService  = ds
 	net          = netRef
 
 	local old = workspace:FindFirstChild("Lobby")
@@ -245,8 +587,26 @@ function LobbyService.init(arenaSvc, eggSvc, netRef)
 	folder.Name = "Lobby"
 	folder.Parent = workspace
 
-	buildLobby(folder)
-	print("[LobbyService] Lobby gebaut.")
+	local rng = Random.new(42)
+	buildLobbyBase(folder, rng)
+	buildOmegaCase(folder)
+	buildPortal5v5(folder, rng)
+	buildArenaTerminal(folder, rng)
+	buildHandelshalle(folder, rng)
+	buildLeaderboard(folder)
+
+	-- Live-Anzeigen: AKTIVE DUELLE + Bestenliste
+	task.spawn(function()
+		while folder.Parent do
+			if duelCountLabel then
+				duelCountLabel.Text = "AKTIVE DUELLE: " .. arenaService.getActiveDuelCount()
+			end
+			refreshLeaderboard()
+			task.wait(5)
+		end
+	end)
+
+	print("[LobbyService] Neon-Cyber-Mythos-Lobby gebaut.")
 end
 
 return LobbyService

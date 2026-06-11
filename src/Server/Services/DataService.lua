@@ -26,6 +26,9 @@ local function defaultData()
 		hatches   = 0,
 		luckUntil = 0,
 		lastDaily = 0,
+		rating    = Config.ELO_START,   -- Rang (1v1-ELO)
+		pullsSinceLegendary = 0,        -- Pity-Zähler fürs Omega-Gehäuse
+		lastWeekly = 0,                 -- Prime-Weekly
 	}
 end
 
@@ -75,6 +78,11 @@ function DataService.sendUpdate(player)
 	if data and net then
 		net.UpdateData:FireClient(player, data)
 	end
+end
+
+-- Für Bestenliste/Leaderboard: über alle geladenen Spieler iterieren
+function DataService.eachPlayer()
+	return pairs(cache)
 end
 
 function DataService.addCredits(player, amount)

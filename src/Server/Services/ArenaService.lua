@@ -10,7 +10,7 @@ local dataService = nil
 local botService  = nil   -- via setBotService (Server-Wiring)
 local net         = nil
 
-local queue          = {}    -- Array von Playern
+local queue          = {}    -- Array von { player, wager }
 local playerMatch    = {}    -- [player] = match
 local arenaFree      = {}    -- [idx] = true/false
 local arenaSpawns    = {}    -- [idx] = { CFrame, CFrame }
@@ -147,6 +147,32 @@ local function sendStateForPlayer(p, match, winner)
 	})
 end
 
+-- ELO-Update nach einem PvP-Match (Bot-Matches zählen nicht).
+-- Prime-Spieler bekommen +25% auf GEWINNE (nie stärkere Waffen).
+local function updateRatings(winner, loser)
+	local dw, dl = dataService.get(winner), dataService.get(loser)
+	if not dw or not dl then return end
+	local rw, rl = dw.rating or Config.ELO_START, dl.rating or Config.ELO_START
+	local expected = 1 / (1 + 10 ^ ((rl - rw) / 400))
+	local gain = Config.ELO_K * (1 - expected)
+	if dw.prime then gain = gain * Config.PRIME_RANK_BOOST end
+
+	local oldRankW = Config.rankFor(rw).name
+	local oldRankL = Config.rankFor(rl).name
+	dw.rating = math.floor(rw + gain + 0.5)
+	dl.rating = math.max(0, math.floor(rl - Config.ELO_K * (1 - expected) + 0.5))
+
+	local newRankW = Config.rankFor(dw.rating)
+	if newRankW.name ~= oldRankW and winner.Parent then
+		net.Notify:FireClient(winner, "🏅 RANG AUF: " .. newRankW.name .. "!")
+		net.PlaySFX:FireClient(winner, "Chime", 0.8, 1.2)
+	end
+	local newRankL = Config.rankFor(dl.rating)
+	if newRankL.name ~= oldRankL and loser.Parent then
+		net.Notify:FireClient(loser, "📉 Rang ab: " .. newRankL.name)
+	end
+end
+
 local function endMatch(match, winner)
 	if match.ended then return end
 	match.ended = true
@@ -156,6 +182,22 @@ local function endMatch(match, winner)
 		playerMatch[p] = nil
 	end
 	arenaFree[match.arenaIdx] = true
+
+	-- Wager-Topf: Sieger bekommt alles; kein Sieger → Einsatz zurück
+	local pot = (match.wager or 0) * 2
+	if winner and pot > 0 then
+		dataService.addCredits(winner, pot)
+	elseif not winner and (match.wager or 0) > 0 then
+		for _, p in ipairs(match.players) do
+			if p.Parent then dataService.addCredits(p, match.wager) end
+		end
+	end
+
+	-- Rang nur bei klarem Ergebnis
+	if winner then
+		local loser = (winner == match.players[1]) and match.players[2] or match.players[1]
+		updateRatings(winner, loser)
+	end
 
 	for _, p in ipairs(match.players) do
 		if p.Parent then
@@ -168,11 +210,12 @@ local function endMatch(match, winner)
 			if won then
 				local d = dataService.get(p)
 				if d then d.wins += 1 end
-				dataService.sendUpdate(p)
 			end
+			dataService.sendUpdate(p)
 			net.PlaySFX:FireClient(p, won and "Chime" or "ChimeSoft", 0.7)
+			local potText = (won and pot > 0) and ("  💰 Pot: +" .. pot) or ""
 			net.Notify:FireClient(p, won
-				and ("🏆 Sieg! +" .. Config.WIN_REWARD .. " " .. Config.CURRENCY_NAME)
+				and ("🏆 Sieg! +" .. Config.WIN_REWARD .. " " .. Config.CURRENCY_NAME .. potText)
 				or ("💀 Niederlage. +" .. Config.LOSS_REWARD .. " " .. Config.CURRENCY_NAME))
 			sendStateForPlayer(p, match, winner)
 			teleport(p, lobbyCFrame())
@@ -183,7 +226,8 @@ local function endMatch(match, winner)
 	task.defer(tryStartMatchesRef)
 end
 
-local function startMatch(a, b)
+local function startMatch(a, b, wager)
+	wager = wager or 0
 	local arenaIdx = nil
 	for i = 1, Config.ARENA_COUNT do
 		if arenaFree[i] then
@@ -193,9 +237,26 @@ local function startMatch(a, b)
 	end
 	if not arenaIdx then
 		-- keine Arena frei → zurück in die Queue (vorne); Aufrufer stoppt die Schleife
-		table.insert(queue, 1, b)
-		table.insert(queue, 1, a)
+		table.insert(queue, 1, { player = b, wager = wager })
+		table.insert(queue, 1, { player = a, wager = wager })
 		return false
+	end
+
+	-- Wager-Escrow: beide zahlen JETZT ein (Auszahlung in endMatch)
+	if wager > 0 then
+		local da, db = dataService.get(a), dataService.get(b)
+		if not da or da.credits < wager or not db or db.credits < wager then
+			local broke = (not da or da.credits < wager) and a or b
+			local other = (broke == a) and b or a
+			if broke.Parent then
+				net.Notify:FireClient(broke, "Zu wenig " .. Config.CURRENCY_NAME .. " für den Wager!")
+				net.QueueState:FireClient(broke, false)
+			end
+			table.insert(queue, 1, { player = other, wager = wager })
+			return true   -- kein Arena-Verbrauch, weiter matchen
+		end
+		dataService.addCredits(a, -wager)
+		dataService.addCredits(b, -wager)
 	end
 	arenaFree[arenaIdx] = false
 
@@ -203,6 +264,7 @@ local function startMatch(a, b)
 		arenaIdx = arenaIdx,
 		players  = { a, b },
 		score    = { [a] = 0, [b] = 0 },
+		wager    = wager,
 		live     = false,
 		ended    = false,
 		endTime  = os.clock() + Config.MATCH_TIME + Config.COUNTDOWN,
@@ -257,21 +319,35 @@ local function startMatch(a, b)
 	return true
 end
 
+-- Paart Spieler mit GLEICHEM Wager-Einsatz (0 = Casual-Pool)
 local function tryStartMatches()
-	while #queue >= 2 do
-		local a = table.remove(queue, 1)
-		local b = table.remove(queue, 1)
-		if not a.Parent then
-			if b.Parent then table.insert(queue, 1, b) end
-		elseif not b.Parent then
-			table.insert(queue, 1, a)
-		elseif not alive(a) then
-			table.insert(queue, b)
-		elseif not alive(b) then
-			table.insert(queue, a)
-		elseif startMatch(a, b) == false then
+	while true do
+		-- tote Einträge entsorgen
+		for i = #queue, 1, -1 do
+			local e = queue[i]
+			if not e.player.Parent or not alive(e.player) then
+				table.remove(queue, i)
+			end
+		end
+
+		-- erstes Paar mit gleichem Einsatz suchen
+		local i1, i2 = nil, nil
+		for a = 1, #queue do
+			for b = a + 1, #queue do
+				if queue[a].wager == queue[b].wager then
+					i1, i2 = a, b
+					break
+				end
+			end
+			if i1 then break end
+		end
+		if not i1 then return end
+
+		local eB = table.remove(queue, i2)   -- höheren Index zuerst entfernen
+		local eA = table.remove(queue, i1)
+		if startMatch(eA.player, eB.player, eA.wager) == false then
 			-- keine Arena frei: warten, bis eine frei wird
-			break
+			return
 		end
 	end
 end
@@ -367,8 +443,8 @@ function ArenaService.startBotMatch(player)
 		return
 	end
 	-- aus der PvP-Queue nehmen
-	for i, p in ipairs(queue) do
-		if p == player then
+	for i, e in ipairs(queue) do
+		if e.player == player then
 			table.remove(queue, i)
 			net.QueueState:FireClient(player, false)
 			break
@@ -486,18 +562,56 @@ function ArenaService.onKill(killer, victim)
 	end)
 end
 
-function ArenaService.toggleQueue(player)
+function ArenaService.isQueued(player)
+	for _, e in ipairs(queue) do
+		if e.player == player then return true end
+	end
+	return false
+end
+
+function ArenaService.getActiveDuelCount()
+	local seen, count = {}, 0
+	for _, match in pairs(playerMatch) do
+		if not seen[match] and match.live and not match.ended then
+			seen[match] = true
+			count += 1
+		end
+	end
+	return count
+end
+
+-- wager: einer der Config.WAGER_OPTIONS-Beträge (Default 0 = Casual)
+function ArenaService.toggleQueue(player, wager)
 	if playerMatch[player] then return end
-	for i, p in ipairs(queue) do
-		if p == player then
+	for i, e in ipairs(queue) do
+		if e.player == player then
 			table.remove(queue, i)
 			net.Notify:FireClient(player, "🚪 Queue verlassen.")
 			net.QueueState:FireClient(player, false)
 			return
 		end
 	end
-	table.insert(queue, player)
-	net.Notify:FireClient(player, "⚔ In der 1v1-Queue… (" .. #queue .. " wartend)")
+
+	wager = (type(wager) == "number") and math.floor(wager) or 0
+	local valid = false
+	for _, w in ipairs(Config.WAGER_OPTIONS) do
+		if w == wager then
+			valid = true
+			break
+		end
+	end
+	if not valid then wager = 0 end
+
+	local data = dataService.get(player)
+	if wager > 0 and (not data or data.credits < wager) then
+		net.Notify:FireClient(player, "Zu wenig " .. Config.CURRENCY_NAME .. " für diesen Wager!")
+		return
+	end
+
+	table.insert(queue, { player = player, wager = wager })
+	net.Notify:FireClient(player, wager > 0
+		and ("⚔ Wager-Queue: " .. wager .. " " .. Config.CURRENCY_NAME .. " — Sieger nimmt alles!")
+		or ("⚔ In der 1v1-Queue… (" .. #queue .. " wartend)"))
 	net.QueueState:FireClient(player, true)
 	tryStartMatches()
 end
@@ -515,8 +629,8 @@ function ArenaService.init(ds, _ws, netRef)
 		buildArena(i, folder)
 	end
 
-	net.QueueJoin.OnServerEvent:Connect(function(player)
-		ArenaService.toggleQueue(player)
+	net.QueueJoin.OnServerEvent:Connect(function(player, wager)
+		ArenaService.toggleQueue(player, wager)
 	end)
 
 	net.QueueBot.OnServerEvent:Connect(function(player)
@@ -540,8 +654,8 @@ function ArenaService.init(ds, _ws, netRef)
 	end
 
 	Players.PlayerRemoving:Connect(function(player)
-		for i, p in ipairs(queue) do
-			if p == player then
+		for i, e in ipairs(queue) do
+			if e.player == player then
 				table.remove(queue, i)
 				break
 			end

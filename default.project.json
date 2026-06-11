@@ -34,6 +34,7 @@
         "ArenaService":  { "$path": "src/Server/Services/ArenaService.lua" },
         "BotService":    { "$path": "src/Server/Services/BotService.lua" },
         "LobbyService":  { "$path": "src/Server/Services/LobbyService.lua" },
+        "PrimeService":  { "$path": "src/Server/Services/PrimeService.lua" },
         "TradeService":  { "$path": "src/Server/Services/TradeService.lua" }
       }
     },
