@@ -8,6 +8,30 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
 
 -- ============================================================
+-- Ground & spawn (created via script so XML parsing doesn't matter)
+-- ============================================================
+local baseplate       = Instance.new("Part")
+baseplate.Name        = "Baseplate"
+baseplate.Anchored    = true
+baseplate.CanCollide  = true
+baseplate.Size        = Vector3.new(2048, 20, 2048)
+baseplate.Position    = Vector3.new(240, -10, 0)  -- centred under all 5 zones
+baseplate.BrickColor  = BrickColor.new("Bright green")
+baseplate.Material    = Enum.Material.Grass
+baseplate.CastShadow  = false
+baseplate.Parent      = workspace
+
+local spawn           = Instance.new("SpawnLocation")
+spawn.Name            = "SpawnLocation"
+spawn.Anchored        = true
+spawn.Size            = Vector3.new(6, 1, 6)
+spawn.Position        = Vector3.new(0, 0.5, 0)
+spawn.BrickColor      = BrickColor.new("Bright blue")
+spawn.Neutral         = true
+spawn.AllowTeamChangeOnTouch = false
+spawn.Parent          = workspace
+
+-- ============================================================
 -- Workspace containers
 -- ============================================================
 local zonesFolder = Instance.new("Folder")

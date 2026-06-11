@@ -3,67 +3,24 @@
   <Meta name="ExplicitAutoJoints">true</Meta>
   <External>null</External>
   <External>nil</External>
-  <Item class="DataModel" referent="RBX6BB3D57E">
+  <Item class="DataModel" referent="RBX1C8CF02E">
     <Properties>
       <string name="Name">BambooSlasher</string>
     </Properties>
 
-    <!-- ======= Workspace ======= -->
-    <Item class="Workspace" referent="RBX6BA17421">
+    <Item class="Workspace" referent="RBXE15B0FC2">
       <Properties>
         <string name="Name">Workspace</string>
         <bool name="StreamingEnabled">false</bool>
         <float name="Gravity">196.2</float>
       </Properties>
-
-      <!-- Baseplate -->
-      <Item class="Part" referent="RBX27A0E05D">
-        <Properties>
-          <string name="Name">Baseplate</string>
-          <bool name="Anchored">true</bool>
-          <BrickColor name="BrickColor">141</BrickColor>
-          <token name="Material">256</token>
-          <CoordinateFrame name="CFrame">
-            <X>240</X><Y>-10</Y><Z>0</Z>
-            <R00>1</R00><R01>0</R01><R02>0</R02>
-            <R10>0</R10><R11>1</R11><R12>0</R12>
-            <R20>0</R20><R21>0</R21><R22>1</R22>
-          </CoordinateFrame>
-          <Vector3 name="size">
-            <X>2048</X><Y>20</Y><Z>2048</Z>
-          </Vector3>
-          <bool name="CastShadow">false</bool>
-        </Properties>
-      </Item>
-
-      <!-- SpawnLocation -->
-      <Item class="SpawnLocation" referent="RBX0991A5C8">
-        <Properties>
-          <string name="Name">SpawnLocation</string>
-          <bool name="Anchored">true</bool>
-          <CoordinateFrame name="CFrame">
-            <X>0</X><Y>0.5</Y><Z>0</Z>
-            <R00>1</R00><R01>0</R01><R02>0</R02>
-            <R10>0</R10><R11>1</R11><R12>0</R12>
-            <R20>0</R20><R21>0</R21><R22>1</R22>
-          </CoordinateFrame>
-          <Vector3 name="size">
-            <X>6</X><Y>1</Y><Z>6</Z>
-          </Vector3>
-          <bool name="Neutral">true</bool>
-          <bool name="AllowTeamChangeOnTouch">false</bool>
-        </Properties>
-      </Item>
-
     </Item>
 
-    <!-- ======= ReplicatedStorage ======= -->
-    <Item class="ReplicatedStorage" referent="RBX8121F6CD">
+    <Item class="ReplicatedStorage" referent="RBX7B084084">
       <Properties>
         <string name="Name">ReplicatedStorage</string>
       </Properties>
-      
-    <Item class="ModuleScript" referent="RBX2A477686">
+      <Item class="ModuleScript" referent="RBX7A9D9349">
       <Properties>
         <string name="Name">Config</string>
         <ProtectedString name="Source"><![CDATA[-- Config.lua
@@ -193,13 +150,11 @@ return Config
     </Item>
     </Item>
 
-    <!-- ======= ServerScriptService ======= -->
-    <Item class="ServerScriptService" referent="RBX1DD723C9">
+    <Item class="ServerScriptService" referent="RBXBD1242C0">
       <Properties>
         <string name="Name">ServerScriptService</string>
       </Properties>
-      
-    <Item class="Script" referent="RBXF3D58423">
+      <Item class="Script" referent="RBX87EA219D">
       <Properties>
         <string name="Name">RemoteSetup</string>
         <ProtectedString name="Source"><![CDATA[-- RemoteSetup.server.lua
@@ -238,8 +193,7 @@ print("[RemoteSetup] BambooRemotes folder created with 3 RemoteEvents.")
         <bool name="Disabled">false</bool>
       </Properties>
     </Item>
-      
-    <Item class="Script" referent="RBX766EA8A3">
+      <Item class="Script" referent="RBXF508D36F">
       <Properties>
         <string name="Name">BambooWorld</string>
         <ProtectedString name="Source"><![CDATA[-- BambooWorld.server.lua
@@ -250,6 +204,30 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Wait for the config module (stored in ReplicatedStorage by convention)
 local Config = require(ReplicatedStorage:WaitForChild("Config"))
+
+-- ============================================================
+-- Ground & spawn (created via script so XML parsing doesn't matter)
+-- ============================================================
+local baseplate       = Instance.new("Part")
+baseplate.Name        = "Baseplate"
+baseplate.Anchored    = true
+baseplate.CanCollide  = true
+baseplate.Size        = Vector3.new(2048, 20, 2048)
+baseplate.Position    = Vector3.new(240, -10, 0)  -- centred under all 5 zones
+baseplate.BrickColor  = BrickColor.new("Bright green")
+baseplate.Material    = Enum.Material.Grass
+baseplate.CastShadow  = false
+baseplate.Parent      = workspace
+
+local spawn           = Instance.new("SpawnLocation")
+spawn.Name            = "SpawnLocation"
+spawn.Anchored        = true
+spawn.Size            = Vector3.new(6, 1, 6)
+spawn.Position        = Vector3.new(0, 0.5, 0)
+spawn.BrickColor      = BrickColor.new("Bright blue")
+spawn.Neutral         = true
+spawn.AllowTeamChangeOnTouch = false
+spawn.Parent          = workspace
 
 -- ============================================================
 -- Workspace containers
@@ -400,8 +378,7 @@ print("[BambooWorld] World generation complete.")
         <bool name="Disabled">false</bool>
       </Properties>
     </Item>
-      
-    <Item class="Script" referent="RBX64D99995">
+      <Item class="Script" referent="RBX0134105A">
       <Properties>
         <string name="Name">GameManager</string>
         <ProtectedString name="Source"><![CDATA[-- GameManager.server.lua
@@ -659,17 +636,15 @@ print("[GameManager] Server logic ready.")
     </Item>
     </Item>
 
-    <!-- ======= StarterPlayer ======= -->
-    <Item class="StarterPlayer" referent="RBX4E6636D0">
+    <Item class="StarterPlayer" referent="RBX3003BC43">
       <Properties>
         <string name="Name">StarterPlayer</string>
       </Properties>
-      <Item class="StarterPlayerScripts" referent="RBX7D594C05">
+      <Item class="StarterPlayerScripts" referent="RBX00EEFF96">
         <Properties>
           <string name="Name">StarterPlayerScripts</string>
         </Properties>
-        
-    <Item class="LocalScript" referent="RBX5B7C2C27">
+        <Item class="LocalScript" referent="RBX8EF939CD">
       <Properties>
         <string name="Name">PlayerController</string>
         <ProtectedString name="Source"><![CDATA[-- PlayerController.client.lua
@@ -910,8 +885,7 @@ equipSword()
         <bool name="Disabled">false</bool>
       </Properties>
     </Item>
-        
-    <Item class="LocalScript" referent="RBX7F7FC872">
+        <Item class="LocalScript" referent="RBX48D96A85">
       <Properties>
         <string name="Name">UIController</string>
         <ProtectedString name="Source"><![CDATA[-- UIController.client.lua
@@ -1172,18 +1146,11 @@ refreshHUD()
       </Item>
     </Item>
 
-    <!-- ======= Lighting ======= -->
-    <Item class="Lighting" referent="RBXF8689144">
+    <Item class="Lighting" referent="RBX31A1C9B2">
       <Properties>
         <string name="Name">Lighting</string>
         <float name="Brightness">2</float>
         <bool name="GlobalShadows">true</bool>
-        <Color3 name="Ambient">
-          <R>0.5</R><G>0.5</G><B>0.5</B>
-        </Color3>
-        <Color3 name="OutdoorAmbient">
-          <R>0.5</R><G>0.5</G><B>0.5</B>
-        </Color3>
       </Properties>
     </Item>
 
