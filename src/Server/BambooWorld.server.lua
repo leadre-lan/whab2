@@ -15,8 +15,8 @@ baseplate.Name        = "Baseplate"
 baseplate.Anchored    = true
 baseplate.CanCollide  = true
 baseplate.Size        = Vector3.new(2048, 20, 2048)
-baseplate.Position    = Vector3.new(240, -10, 0)  -- centred under all 5 zones
-baseplate.BrickColor  = BrickColor.new("Bright green")
+baseplate.Position    = Vector3.new(240, -10, 0)
+baseplate.BrickColor  = BrickColor.new("Medium green")
 baseplate.Material    = Enum.Material.Grass
 baseplate.CastShadow  = false
 baseplate.Parent      = workspace
@@ -171,5 +171,26 @@ for zoneIndex, zone in ipairs(Config.ZONES) do
 	print(string.format("[BambooWorld] Zone %d '%s' generated with %d stalks.",
 		zoneIndex, zone.name, zone.bambooCount))
 end
+
+-- ROJO TEST: sichtbares Schild am Spawn
+local testSign = Instance.new("Part")
+testSign.Name = "RojoTestSign"
+testSign.Size = Vector3.new(12, 4, 0.5)
+testSign.Position = Vector3.new(0, 5, -10)
+testSign.Anchored = true
+testSign.BrickColor = BrickColor.new("Bright red")
+testSign.Parent = workspace
+local bb = Instance.new("BillboardGui")
+bb.Size = UDim2.new(0, 400, 0, 100)
+bb.StudsOffset = Vector3.new(0, 3, 0)
+bb.Parent = testSign
+local lbl = Instance.new("TextLabel")
+lbl.Size = UDim2.new(1,0,1,0)
+lbl.BackgroundTransparency = 1
+lbl.Text = "🎋 ROJO SYNC FUNKTIONIERT! 🎋"
+lbl.TextColor3 = Color3.fromRGB(255,255,0)
+lbl.TextScaled = true
+lbl.Font = Enum.Font.GothamBold
+lbl.Parent = bb
 
 print("[BambooWorld] World generation complete.")
