@@ -94,9 +94,10 @@ function SniperBuilder.buildTool(skin)
 	end
 
 	-- ── Gewehr-Körper: texturiertes Mesh (SpecialMesh + VertexColor-Tint) ──
+	-- WICHTIG: Transparency MUSS 0 sein — ein SpecialMesh erbt die Transparenz
+	-- des Parts (die Part-Box selbst wird vom Mesh ohnehin ersetzt).
 	local meshScale = TARGET_LEN / Assets.WEAPON.length
 	local body = mkPart({ size = Vector3.new(0.5, 1.2, TARGET_LEN), color = skin.body, name = "Body" })
-	body.Transparency = 1   -- sichtbar ist nur das Mesh
 	local mesh = Instance.new("SpecialMesh")
 	mesh.Name = "BodyMesh"
 	mesh.MeshType = Enum.MeshType.FileMesh

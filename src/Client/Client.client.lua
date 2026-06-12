@@ -33,12 +33,15 @@ UICtrl.init(net, EffectsCtrl)
 WeaponCtrl.init(net, EffectsCtrl, UICtrl)
 
 -- ── Lighting: Nacht + Neon (Cyber-Lobby-Look) ─────────────────────────────────
+-- Genug Ambient, damit Geometrie/Texturen lesbar bleiben — sonst ist die
+-- Lobby nur schwarzes Void mit schwebenden Neon-Linien.
 Lighting.ClockTime = 0
-Lighting.Brightness = 1.6
-Lighting.OutdoorAmbient = Color3.fromRGB(70, 70, 95)
-Lighting.FogColor = Color3.fromRGB(18, 16, 30)
-Lighting.FogStart = 150
-Lighting.FogEnd = 650
+Lighting.Brightness = 2.2
+Lighting.OutdoorAmbient = Color3.fromRGB(105, 105, 135)
+Lighting.Ambient = Color3.fromRGB(70, 70, 95)
+Lighting.FogColor = Color3.fromRGB(22, 20, 36)
+Lighting.FogStart = 180
+Lighting.FogEnd = 750
 
 local function ensureEffect(class, name, props)
 	local e = Lighting:FindFirstChild(name)
@@ -59,9 +62,9 @@ if not atmosphere then
 	atmosphere = Instance.new("Atmosphere")
 	atmosphere.Parent = Lighting
 end
-atmosphere.Density = 0.35
-atmosphere.Color = Color3.fromRGB(80, 60, 120)
-atmosphere.Haze = 2.2
+atmosphere.Density = 0.25
+atmosphere.Color = Color3.fromRGB(90, 75, 130)
+atmosphere.Haze = 1.8
 
 -- ── Musik (Lobby ↔ Arena, Crossfade; erste ladbare ID gewinnt) ────────────────
 local MUSIC_VOLUME = 0.25

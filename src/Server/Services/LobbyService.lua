@@ -22,9 +22,9 @@ local CYAN    = Color3.fromRGB(70, 200, 255)
 local MAGENTA = Color3.fromRGB(255, 70, 200)
 local PURPLE  = Color3.fromRGB(150, 80, 255)
 local GOLD    = Color3.fromRGB(255, 200, 60)
-local DARK    = Color3.fromRGB(20, 22, 32)
-local STONE   = Color3.fromRGB(58, 56, 70)
-local FLOOR   = Color3.fromRGB(16, 17, 26)
+local DARK    = Color3.fromRGB(34, 36, 52)
+local STONE   = Color3.fromRGB(78, 76, 98)
+local FLOOR   = Color3.fromRGB(30, 32, 48)
 
 local tickerLabel = nil   -- Live-Ticker der Handelshalle
 
@@ -138,9 +138,17 @@ local function buildOmegaCase(folder)
 	part({ size = Vector3.new(16, 0.4, 16), pos = center + Vector3.new(0, 1.6, 0),
 		material = Enum.Material.Neon, color = egg.color, transparency = 0.4, collide = false }, folder)
 
-	-- Das schwebende Artefakt-Gehäuse (Würfel + Neon-Kanten, dreht/schwebt client-seitig)
+	-- Das schwebende Artefakt-Gehäuse (Würfel + Neon-Kanten, dreht/schwebt
+	-- client-seitig). Heller Korpus + Eigenlicht, damit es nachts nicht im
+	-- Schwarz verschwindet und nur die Kanten schweben.
 	local case = part({ size = Vector3.new(7, 7, 7), pos = center + Vector3.new(0, 9, 0),
-		material = Enum.Material.Slate, color = DARK, reflectance = 0.1, name = "OmegaCase" }, folder)
+		material = Enum.Material.Slate, color = Color3.fromRGB(66, 58, 96), reflectance = 0.15, name = "OmegaCase" }, folder)
+	local caseGlow = Instance.new("SurfaceLight")
+	caseGlow.Face = Enum.NormalId.Bottom
+	caseGlow.Color = egg.color
+	caseGlow.Range = 16
+	caseGlow.Brightness = 1.5
+	caseGlow.Parent = case
 	CollectionService:AddTag(case, "EggFloat")
 	for _, off in ipairs({
 		Vector3.new(3.5, 0, 3.5), Vector3.new(-3.5, 0, 3.5),
@@ -474,9 +482,10 @@ end
 
 -- ── Grundfläche, Bögen, Skyline ───────────────────────────────────────────────
 local function buildLobbyBase(folder, rng)
-	-- Hochglänzender, reflektierender Neon-Gitterboden
+	-- Hochglänzender, reflektierender Neon-Gitterboden (Slate statt Glass —
+	-- schwarzes Glas bei Nacht las sich als bodenloses Void)
 	part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
-		material = Enum.Material.Glass, color = FLOOR, reflectance = 0.28, name = "LobbyFloor" }, folder)
+		material = Enum.Material.Slate, color = FLOOR, reflectance = 0.18, name = "LobbyFloor" }, folder)
 	for i = -4, 4 do
 		part({ size = Vector3.new(0.5, 0.12, 200), pos = Vector3.new(i * 22, 0.06, 10),
 			material = Enum.Material.Neon, color = CYAN, transparency = 0.5, collide = false }, folder)
@@ -518,11 +527,12 @@ local function buildLobbyBase(folder, rng)
 		stream.Parent = att
 	end
 
-	-- Neon-Skyline
+	-- Neon-Skyline (Fenster-Streifen, damit die Türme nachts lesbar sind)
 	for a = 0, 13 do
 		local ang = a / 14 * math.pi * 2
 		local d = 135 + rng:NextNumber(0, 60)
 		local h = rng:NextNumber(45, 120)
+		local accentColor = ({ CYAN, MAGENTA, PURPLE })[(a % 3) + 1]
 		local tower = part({
 			size = Vector3.new(rng:NextNumber(12, 26), h, rng:NextNumber(12, 26)),
 			pos = Vector3.new(math.cos(ang) * d, h / 2 - 4, 10 + math.sin(ang) * d),
@@ -531,10 +541,46 @@ local function buildLobbyBase(folder, rng)
 		part({
 			size = Vector3.new(tower.Size.X + 0.4, 0.7, tower.Size.Z + 0.4),
 			pos = tower.Position + Vector3.new(0, h / 2 - 1, 0),
-			material = Enum.Material.Neon,
-			color = ({ CYAN, MAGENTA, PURPLE })[(a % 3) + 1],
+			material = Enum.Material.Neon, color = accentColor,
 			collide = false,
 		}, folder)
+		-- Vertikale Fenster-Lichtbänder zur Lobby hin
+		local toCenter = (Vector3.new(0, 0, 10) - tower.Position) * Vector3.new(1, 0, 1)
+		local facing = toCenter.Unit
+		for w = -1, 1 do
+			if rng:NextNumber() < 0.7 then
+				part({
+					size = Vector3.new(0.9, h * rng:NextNumber(0.45, 0.8), 0.4),
+					cframe = CFrame.lookAt(
+						tower.Position + facing * (math.max(tower.Size.X, tower.Size.Z) / 2 + 0.3)
+							+ Vector3.new(0, rng:NextNumber(-h * 0.1, h * 0.1), 0)
+							+ facing:Cross(Vector3.yAxis) * (w * tower.Size.X * 0.28),
+						tower.Position),
+					material = Enum.Material.Neon,
+					color = accentColor,
+					transparency = 0.35,
+					collide = false,
+				}, folder)
+			end
+		end
+	end
+
+	-- Licht-Pylonen entlang des Hauptgangs (beleuchten Spieler + Waffen —
+	-- ohne echte Lichtquellen bleibt nachts alles flach-schwarz)
+	for _, pos in ipairs({
+		Vector3.new(-30, 0, -50), Vector3.new(30, 0, -50),
+		Vector3.new(-30, 0, 5),   Vector3.new(30, 0, 5),
+		Vector3.new(-30, 0, 55),  Vector3.new(30, 0, 55),
+	}) do
+		part({ size = Vector3.new(1.2, 9, 1.2), pos = pos + Vector3.new(0, 4.5, 0),
+			material = Enum.Material.Metal, color = STONE }, folder)
+		local lamp = part({ size = Vector3.new(1.6, 0.8, 1.6), pos = pos + Vector3.new(0, 9.4, 0),
+			material = Enum.Material.Neon, color = Color3.fromRGB(225, 215, 255), collide = false }, folder)
+		local pl = Instance.new("PointLight")
+		pl.Color = Color3.fromRGB(215, 205, 255)
+		pl.Range = 42
+		pl.Brightness = 1.1
+		pl.Parent = lamp
 	end
 
 	-- Spawn (Süden, Blick in den Hauptgang)

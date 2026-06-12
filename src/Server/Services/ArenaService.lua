@@ -96,6 +96,17 @@ local function buildArena(idx, folder)
 		arenaSpawns[idx] = arenaSpawns[idx] or {}
 		arenaSpawns[idx][i] = CFrame.new(cx, 4, z) * CFrame.Angles(0, z > 0 and math.rad(180) or 0, 0)
 	end
+
+	-- Arena-Beleuchtung: Flutlichter über beiden Hälften + Mitte
+	for _, z in ipairs({ -45, 0, 45 }) do
+		local lamp = part({ size = Vector3.new(2.4, 0.6, 2.4), pos = Vector3.new(cx, 18, z),
+			material = Enum.Material.Neon, color = Color3.fromRGB(230, 222, 255), collide = false }, folder)
+		local pl = Instance.new("PointLight")
+		pl.Color = Color3.fromRGB(220, 212, 255)
+		pl.Range = 55
+		pl.Brightness = 1.0
+		pl.Parent = lamp
+	end
 end
 
 -- ── Match-Verwaltung ──────────────────────────────────────────────────────────
