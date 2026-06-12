@@ -26,7 +26,7 @@ local function part(props, parent)
 	p.Size = props.size
 	if props.cframe then p.CFrame = props.cframe else p.Position = props.pos end
 	p.Material = props.material or Enum.Material.SmoothPlastic
-	p.Color = props.color
+	if props.color then p.Color = props.color end   -- nil-tolerant
 	p.Anchored = true
 	p.CanCollide = props.collide ~= false
 	if props.transparency then p.Transparency = props.transparency end
