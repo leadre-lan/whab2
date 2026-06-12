@@ -2,10 +2,11 @@
   <Item class="Lighting" referent="0">
     <Properties>
       <string name="Name">Lighting</string>
-      <float name="Brightness">1.6</float>
-      <float name="EnvironmentDiffuseScale">0.5</float>
-      <float name="EnvironmentSpecularScale">0.6</float>
+      <float name="Brightness">2.4</float>
+      <float name="EnvironmentDiffuseScale">1</float>
+      <float name="EnvironmentSpecularScale">1</float>
       <bool name="GlobalShadows">true</bool>
+      <float name="ShadowSoftness">0.25</float>
       <token name="Technology">4</token>
     </Properties>
   </Item>
@@ -167,7 +168,7 @@ return Assets
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v0.9 — CS-Skin-Texturen"
+Config.VERSION = "v1.0 — Grafik-Pass"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -536,6 +537,80 @@ function SkinTextures.get(skinId)
 		cache[skinId] = generate(skinId)
 	end
 	return cache[skinId] or nil
+end
+
+-- ── Umgebungs-Texturen (kachelbar) ────────────────────────────────────────────
+-- Gleiches Prinzip für die Lobby: Boden/Wände bekommen echte Oberflächen
+-- statt flacher Farben. Kachelbar dank periodischer Muster.
+local ENV = {
+	-- Dunkle Tech-Panels mit Fugen, Nieten und dezenten Glow-Seams
+	panels = function(x, y)
+		local gx = (x * 4) % 1
+		local gy = (y * 4) % 1
+		local seam = (gx < 0.035 or gx > 0.965 or gy < 0.035 or gy > 0.965)
+		if seam then
+			-- jede zweite Fuge glüht leicht cyan
+			local cell = math.floor(x * 4) + math.floor(y * 4)
+			if cell % 3 == 0 then return 30, 90, 110 end
+			return 12, 13, 20
+		end
+		-- Nieten in den Ecken
+		local rx = math.min(gx, 1 - gx)
+		local ry = math.min(gy, 1 - gy)
+		if rx > 0.07 and rx < 0.12 and ry > 0.07 and ry < 0.12 then
+			return 70, 74, 92
+		end
+		local n = noise2(x * 26, y * 26, 201) * 14 + noise2(x * 90, y * 90, 202) * 8
+		local v = 38 + n + math.abs(math.sin((gx + gy) * 3)) * 7
+		return v, v + 2, v + 12
+	end,
+	-- Stein mit Mythos-Gravuren (für Wände/Pfeiler)
+	stone = function(x, y)
+		local n = noise2(x * 9, y * 9, 211) * 0.6 + noise2(x * 30, y * 30, 212) * 0.4
+		local v = 62 + n * 34
+		-- eingravierte Linien-Glyphen in Bändern
+		local band = (y * 6) % 1
+		if band > 0.42 and band < 0.58 then
+			local glyph = math.abs(math.sin(x * 40 + math.floor(y * 6) * 7))
+			if glyph > 0.86 then
+				return 120, 80, 200
+			end
+			v = v - 12
+		end
+		return v, v - 2, v + 10
+	end,
+}
+
+local envCache = {}
+
+function SkinTextures.getEnv(kind)
+	if envCache[kind] == nil then
+		local recipe = ENV[kind]
+		if not recipe then
+			envCache[kind] = false
+		else
+			local ok, content = pcall(function()
+				local ei = AssetService:CreateEditableImage({ Size = Vector2.new(SIZE, SIZE) })
+				local buf = buffer.create(SIZE * SIZE * 4)
+				for py = 0, SIZE - 1 do
+					local fy = py / SIZE
+					local rowBase = py * SIZE * 4
+					for px = 0, SIZE - 1 do
+						local r, g, b = recipe(px / SIZE, fy)
+						local o = rowBase + px * 4
+						buffer.writeu8(buf, o, math.clamp(math.floor(r + 0.5), 0, 255))
+						buffer.writeu8(buf, o + 1, math.clamp(math.floor(g + 0.5), 0, 255))
+						buffer.writeu8(buf, o + 2, math.clamp(math.floor(b + 0.5), 0, 255))
+						buffer.writeu8(buf, o + 3, 255)
+					end
+				end
+				ei:WritePixelsBuffer(Vector2.zero, Vector2.new(SIZE, SIZE), buf)
+				return Content.fromObject(ei)
+			end)
+			envCache[kind] = ok and content or false
+		end
+	end
+	return envCache[kind] or nil
 end
 
 return SkinTextures
@@ -1167,8 +1242,14 @@ local function buildArena(idx, folder)
 	local floor = Color3.fromRGB(38, 41, 58)
 	local neon  = Color3.fromRGB(150, 80, 255)
 
-	part({ size = Vector3.new(W, 2, L), pos = Vector3.new(cx, -1, 0),
-		material = Enum.Material.Slate, color = floor }, folder)
+	local floorPart = part({ size = Vector3.new(W, 2, L), pos = Vector3.new(cx, -1, 0),
+		material = Enum.Material.SmoothPlastic, color = floor }, folder)
+	floorPart.Reflectance = 0.12
+	floorPart:SetAttribute("EnvKind", "panels")
+	floorPart:SetAttribute("EnvFaces", "Top")
+	floorPart:SetAttribute("EnvStuds", 14)
+	floorPart:SetAttribute("EnvAlpha", 0.18)
+	game:GetService("CollectionService"):AddTag(floorPart, "EnvTexture")
 
 	-- Wände (hoch genug, dass niemand rausspringt)
 	for _, w in ipairs({
@@ -2489,6 +2570,17 @@ local function buildOmegaCase(folder)
 	caseGlow.Range = 16
 	caseGlow.Brightness = 1.5
 	caseGlow.Parent = case
+
+	-- Glas-Hülle: weiche Reflexionen statt nackter Box
+	local shell = part({ size = Vector3.new(10.5, 10.5, 10.5), pos = case.Position,
+		shape = Enum.PartType.Ball,
+		material = Enum.Material.Glass, color = Color3.fromRGB(180, 160, 255),
+		transparency = 0.82, reflectance = 0.12, collide = false }, folder)
+	local shellWeld = Instance.new("WeldConstraint")
+	shellWeld.Part0 = case
+	shellWeld.Part1 = shell
+	shellWeld.Parent = shell
+	shell.Anchored = false
 	CollectionService:AddTag(case, "EggFloat")
 	for _, off in ipairs({
 		Vector3.new(3.5, 0, 3.5), Vector3.new(-3.5, 0, 3.5),
@@ -2563,17 +2655,29 @@ end
 local function buildPortal5v5(folder, rng)
 	local cx, cz = -45, 25
 
-	-- Massive Stein-Pfeiler + verzierter Bogen
+	-- Runde Stein-Säulen mit Trims + Gravur-Textur statt Kasten-Pfeiler
 	for side = -1, 1, 2 do
-		local pillar = part({ size = Vector3.new(5, 26, 5), pos = Vector3.new(cx + side * 11, 13, cz),
+		local pillar = part({ size = Vector3.new(26, 5.4, 5.4),
+			cframe = CFrame.new(cx + side * 11, 13, cz) * CFrame.Angles(0, 0, math.rad(90)),
+			shape = Enum.PartType.Cylinder,
 			material = Enum.Material.Slate, color = STONE }, folder)
-		glyphRow(folder, CFrame.new(pillar.Position + Vector3.new(-0.7, -6, -2.7)) * CFrame.Angles(0, 0, math.rad(90)),
+		pillar:SetAttribute("EnvKind", "stone")
+		pillar:SetAttribute("EnvFaces", "Front,Back")
+		pillar:SetAttribute("EnvStuds", 8)
+		pillar:SetAttribute("EnvAlpha", 0.15)
+		CollectionService:AddTag(pillar, "EnvTexture")
+		for _, ty in ipairs({ 1.4, 24.8 }) do
+			part({ size = Vector3.new(1.4, 6.6, 6.6),
+				cframe = CFrame.new(cx + side * 11, ty, cz) * CFrame.Angles(0, 0, math.rad(90)),
+				shape = Enum.PartType.Cylinder,
+				material = Enum.Material.Metal, color = Color3.fromRGB(95, 92, 115) }, folder)
+		end
+		glyphRow(folder, CFrame.new(Vector3.new(cx + side * 11 - 0.7, 7, cz - 3)) * CFrame.Angles(0, 0, math.rad(90)),
 			6, PURPLE, rng)
 	end
-	part({ size = Vector3.new(28, 4, 5.5), pos = Vector3.new(cx, 27, cz),
-		material = Enum.Material.Slate, color = STONE }, folder)
-	part({ size = Vector3.new(29, 0.6, 6), pos = Vector3.new(cx, 29.2, cz),
-		material = Enum.Material.Neon, color = PURPLE, transparency = 0.3, collide = false }, folder)
+	-- Verzierter Rundbogen über dem Portal
+	buildArc(folder, cx, 24, cz, 11.5, 8, 172, 11, 3.4, 5.4, STONE)
+	buildArc(folder, cx, 24, cz, 10, 15, 165, 11, 0.6, 1.4, PURPLE, Enum.Material.Neon)
 
 	-- Wirbelndes Energieportal (zwei Ebenen + Partikel)
 	local portal = part({ size = Vector3.new(17, 22, 0.6), pos = Vector3.new(cx, 12, cz),
@@ -2724,8 +2828,13 @@ local function buildHandelshalle(folder, rng)
 	end
 
 	-- Plattform + Geländer
-	part({ size = Vector3.new(90, 2, 40), pos = Vector3.new(0, Y - 1, cz + 8),
-		material = Enum.Material.Slate, color = FLOOR, reflectance = 0.15 }, folder)
+	local platform = part({ size = Vector3.new(90, 2, 40), pos = Vector3.new(0, Y - 1, cz + 8),
+		material = Enum.Material.SmoothPlastic, color = FLOOR, reflectance = 0.18 }, folder)
+	platform:SetAttribute("EnvKind", "panels")
+	platform:SetAttribute("EnvFaces", "Top")
+	platform:SetAttribute("EnvStuds", 16)
+	platform:SetAttribute("EnvAlpha", 0.15)
+	CollectionService:AddTag(platform, "EnvTexture")
 	for _, side in ipairs({ -1, 1 }) do
 		part({ size = Vector3.new(0.6, 3, 40), pos = Vector3.new(side * 45, Y + 1.5, cz + 8),
 			material = Enum.Material.Slate, color = STONE }, folder)
@@ -2820,39 +2929,96 @@ local function refreshLeaderboard()
 	end
 end
 
+-- Bogen aus Segmenten (vertikale Halbkreis-Architektur statt Kastenbalken —
+-- runde Formen nehmen der Lobby den Klötzchen-Look)
+local function buildArc(folder, cx, cy, cz, radius, fromDeg, toDeg, segments, thickness, depth, color, material)
+	for i = 0, segments - 1 do
+		local a0 = math.rad(fromDeg + (toDeg - fromDeg) * i / segments)
+		local a1 = math.rad(fromDeg + (toDeg - fromDeg) * (i + 1) / segments)
+		local mid = (a0 + a1) / 2
+		local chord = 2 * radius * math.sin((a1 - a0) / 2) + 0.25
+		part({
+			size = Vector3.new(chord, thickness, depth),
+			cframe = CFrame.new(cx + math.cos(mid) * radius, cy + math.sin(mid) * radius, cz)
+				* CFrame.Angles(0, 0, mid + math.rad(90)),
+			material = material or Enum.Material.Slate,
+			color = color,
+		}, folder)
+	end
+end
+
 -- ── Grundfläche, Bögen, Skyline ───────────────────────────────────────────────
 local function buildLobbyBase(folder, rng)
-	-- Hochglänzender, reflektierender Neon-Gitterboden (Slate statt Glass —
-	-- schwarzes Glas bei Nacht las sich als bodenloses Void)
-	part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
-		material = Enum.Material.Slate, color = FLOOR, reflectance = 0.18, name = "LobbyFloor" }, folder)
+	-- Polierter Glanzboden + kachelnde Tech-Panel-Textur (client-seitig via
+	-- EditableImage — echte Oberfläche statt flacher Farbe)
+	local floorPart = part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
+		material = Enum.Material.SmoothPlastic, color = FLOOR, reflectance = 0.22, name = "LobbyFloor" }, folder)
+	floorPart:SetAttribute("EnvKind", "panels")
+	floorPart:SetAttribute("EnvFaces", "Top")
+	floorPart:SetAttribute("EnvStuds", 22)
+	floorPart:SetAttribute("EnvAlpha", 0.15)
+	CollectionService:AddTag(floorPart, "EnvTexture")
+
+	-- Dezentere Neon-Gridlinien (das Panel-Muster trägt jetzt den Boden)
 	for i = -4, 4 do
-		part({ size = Vector3.new(0.5, 0.12, 200), pos = Vector3.new(i * 22, 0.06, 10),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.5, collide = false }, folder)
-		part({ size = Vector3.new(200, 0.12, 0.5), pos = Vector3.new(0, 0.06, 10 + i * 22),
-			material = Enum.Material.Neon, color = MAGENTA, transparency = 0.6, collide = false }, folder)
+		part({ size = Vector3.new(0.35, 0.1, 200), pos = Vector3.new(i * 22, 0.05, 10),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.62, collide = false }, folder)
+		part({ size = Vector3.new(200, 0.1, 0.35), pos = Vector3.new(0, 0.05, 10 + i * 22),
+			material = Enum.Material.Neon, color = MAGENTA, transparency = 0.72, collide = false }, folder)
 	end
 
-	-- Begrenzungswände
+	-- Begrenzungswände mit Stein-Gravur-Textur + Cove-Licht am Fuß
 	for _, w in ipairs({
-		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, -90) },
-		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, 110) },
-		{ Vector3.new(2, 20, 200), Vector3.new(-100, 10, 10) },
-		{ Vector3.new(2, 20, 200), Vector3.new(100, 10, 10) },
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, -90), "Back" },
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, 110), "Front" },
+		{ Vector3.new(2, 20, 200), Vector3.new(-100, 10, 10), "Right" },
+		{ Vector3.new(2, 20, 200), Vector3.new(100, 10, 10), "Left" },
 	}) do
-		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+		local wall = part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+		wall:SetAttribute("EnvKind", "stone")
+		wall:SetAttribute("EnvFaces", w[3])
+		wall:SetAttribute("EnvStuds", 14)
+		wall:SetAttribute("EnvAlpha", 0.1)
+		CollectionService:AddTag(wall, "EnvTexture")
+
+		-- Cove-Light: Neon-Leiste am Wandfuß + Licht-Wash nach oben
+		local inward = (Vector3.new(0, 0, 10) - w[2]) * Vector3.new(1, 0, 1)
+		inward = inward.Magnitude > 0 and inward.Unit or Vector3.zAxis
+		local along = math.abs(inward.X) > 0.5 and Vector3.new(0, 0, 1) or Vector3.new(1, 0, 0)
+		local strip = part({
+			size = along * 192 + Vector3.new(0.45, 0.45, 0.45),
+			pos = w[2] * Vector3.new(1, 0, 1) + inward * 1.6 + Vector3.new(0, 0.4, 0),
+			material = Enum.Material.Neon, color = PURPLE, transparency = 0.35, collide = false,
+		}, folder)
+		local wash = Instance.new("SurfaceLight")
+		wash.Face = Enum.NormalId.Top
+		wash.Color = PURPLE
+		wash.Range = 18
+		wash.Brightness = 0.6
+		wash.Parent = strip
 	end
 
-	-- Bögen über dem Hauptgang mit Glyphen + Datenstrom-Partikeln
+	-- Rund-Bögen über dem Hauptgang: Zylinder-Säulen + Halbkreis-Segmente
 	for _, az in ipairs({ -30, 40 }) do
+		local accentColor = (az < 0) and CYAN or MAGENTA
 		for side = -1, 1, 2 do
-			part({ size = Vector3.new(2.4, 14, 2.4), pos = Vector3.new(side * 14, 7, az),
+			part({ size = Vector3.new(16, 2.6, 2.6),
+				cframe = CFrame.new(side * 14, 8, az) * CFrame.Angles(0, 0, math.rad(90)),
+				shape = Enum.PartType.Cylinder,
 				material = Enum.Material.Slate, color = STONE }, folder)
+			-- Säulen-Trims (Fuß + Kapitell)
+			for _, ty in ipairs({ 1, 15.4 }) do
+				part({ size = Vector3.new(1, 3.6, 3.6),
+					cframe = CFrame.new(side * 14, ty, az) * CFrame.Angles(0, 0, math.rad(90)),
+					shape = Enum.PartType.Cylinder,
+					material = Enum.Material.Metal, color = Color3.fromRGB(95, 92, 115) }, folder)
+			end
 		end
-		local beam = part({ size = Vector3.new(31, 2.2, 2.4), pos = Vector3.new(0, 15, az),
-			material = Enum.Material.Slate, color = STONE }, folder)
-		glyphRow(folder, CFrame.new(Vector3.new(-12, 15, az - 1.4)), 18,
-			(az < 0) and CYAN or MAGENTA, rng)
+		buildArc(folder, 0, 16, az, 14, 12, 168, 9, 2.2, 2.4, STONE)
+		buildArc(folder, 0, 16, az, 12.4, 20, 160, 9, 0.5, 1.2, accentColor, Enum.Material.Neon)
+		glyphRow(folder, CFrame.new(Vector3.new(-10, 13.5, az - 1.4)), 15, accentColor, rng)
+		local beam = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(0, 16, az),
+			transparency = 1, collide = false }, folder)
 		local att = Instance.new("Attachment")
 		att.Parent = beam
 		local stream = Instance.new("ParticleEmitter")
@@ -3747,13 +3913,17 @@ local WeaponCtrl       = require(Controllers:WaitForChild("WeaponController"))
 UICtrl.init(net, EffectsCtrl)
 WeaponCtrl.init(net, EffectsCtrl, UICtrl)
 
--- ── Lighting: Nacht + Neon (Cyber-Lobby-Look) ─────────────────────────────────
--- Genug Ambient, damit Geometrie/Texturen lesbar bleiben — sonst ist die
--- Lobby nur schwarzes Void mit schwebenden Neon-Linien.
+-- ── Lighting 2.0: Nacht + Neon, aber mit PBR-Tiefe statt Pixel-Flachheit ──────
+-- Weiche Schatten, volle Environment-Reflexionen, leichte Tiefenschärfe und
+-- knackiges Bloom — das nimmt dem Part-Look die harte Klötzchen-Optik.
 Lighting.ClockTime = 0
-Lighting.Brightness = 2.2
+Lighting.Brightness = 2.4
+Lighting.ExposureCompensation = 0.25
+Lighting.ShadowSoftness = 0.25
+Lighting.EnvironmentDiffuseScale = 1
+Lighting.EnvironmentSpecularScale = 1
 Lighting.OutdoorAmbient = Color3.fromRGB(105, 105, 135)
-Lighting.Ambient = Color3.fromRGB(70, 70, 95)
+Lighting.Ambient = Color3.fromRGB(72, 72, 98)
 Lighting.FogColor = Color3.fromRGB(22, 20, 36)
 Lighting.FogStart = 180
 Lighting.FogEnd = 750
@@ -3768,9 +3938,16 @@ local function ensureEffect(class, name, props)
 	end
 	for k, v in pairs(props) do e[k] = v end
 end
-ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.65, Size = 40, Threshold = 0.95 })
+-- Knackiges Neon-Bloom (kleiner Radius = Glow statt Matsch)
+ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.95, Size = 26, Threshold = 1.08 })
+-- Cinematic Grade: mehr Kontrast, leicht kühler Magenta-Stich
 ensureEffect("ColorCorrectionEffect", "GameGrade", {
-	Contrast = 0.1, Saturation = 0.22, TintColor = Color3.fromRGB(245, 242, 255),
+	Contrast = 0.14, Saturation = 0.14, Brightness = 0.015,
+	TintColor = Color3.fromRGB(248, 242, 255),
+})
+-- Dezente Tiefenschärfe: Distanz weicht auf → wirkt sofort gerendert
+ensureEffect("DepthOfFieldEffect", "GameDOF", {
+	FarIntensity = 0.18, NearIntensity = 0, FocusDistance = 28, InFocusRadius = 42,
 })
 local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 if not atmosphere then
@@ -3850,6 +4027,33 @@ do
 	CollectionService:GetInstanceAddedSignal("SkinBody"):Connect(applySkinTexture)
 	for _, part in ipairs(CollectionService:GetTagged("SkinBody")) do
 		applySkinTexture(part)
+	end
+
+	-- Umgebungs-Texturen: getaggte Parts ("EnvTexture") bekommen kachelnde
+	-- Oberflächen (Tech-Panels, gravierter Stein) statt flacher Farben
+	local function applyEnvTexture(part)
+		if not part:IsA("BasePart") then return end
+		task.spawn(function()
+			local content = SkinTextures.getEnv(part:GetAttribute("EnvKind") or "panels")
+			if not content or not part.Parent then return end
+			local studs = part:GetAttribute("EnvStuds") or 16
+			for face in string.gmatch(part:GetAttribute("EnvFaces") or "Top", "[^,]+") do
+				pcall(function()
+					local tex = Instance.new("Texture")
+					tex.Face = Enum.NormalId[face]
+					tex.StudsPerTileU = studs
+					tex.StudsPerTileV = studs
+					tex.TextureContent = content
+					tex.Transparency = part:GetAttribute("EnvAlpha") or 0.25
+					tex.Parent = part
+				end)
+			end
+		end)
+	end
+
+	CollectionService:GetInstanceAddedSignal("EnvTexture"):Connect(applyEnvTexture)
+	for _, part in ipairs(CollectionService:GetTagged("EnvTexture")) do
+		applyEnvTexture(part)
 	end
 end
 

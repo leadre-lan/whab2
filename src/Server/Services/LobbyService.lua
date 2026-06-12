@@ -149,6 +149,17 @@ local function buildOmegaCase(folder)
 	caseGlow.Range = 16
 	caseGlow.Brightness = 1.5
 	caseGlow.Parent = case
+
+	-- Glas-Hülle: weiche Reflexionen statt nackter Box
+	local shell = part({ size = Vector3.new(10.5, 10.5, 10.5), pos = case.Position,
+		shape = Enum.PartType.Ball,
+		material = Enum.Material.Glass, color = Color3.fromRGB(180, 160, 255),
+		transparency = 0.82, reflectance = 0.12, collide = false }, folder)
+	local shellWeld = Instance.new("WeldConstraint")
+	shellWeld.Part0 = case
+	shellWeld.Part1 = shell
+	shellWeld.Parent = shell
+	shell.Anchored = false
 	CollectionService:AddTag(case, "EggFloat")
 	for _, off in ipairs({
 		Vector3.new(3.5, 0, 3.5), Vector3.new(-3.5, 0, 3.5),
@@ -223,17 +234,29 @@ end
 local function buildPortal5v5(folder, rng)
 	local cx, cz = -45, 25
 
-	-- Massive Stein-Pfeiler + verzierter Bogen
+	-- Runde Stein-Säulen mit Trims + Gravur-Textur statt Kasten-Pfeiler
 	for side = -1, 1, 2 do
-		local pillar = part({ size = Vector3.new(5, 26, 5), pos = Vector3.new(cx + side * 11, 13, cz),
+		local pillar = part({ size = Vector3.new(26, 5.4, 5.4),
+			cframe = CFrame.new(cx + side * 11, 13, cz) * CFrame.Angles(0, 0, math.rad(90)),
+			shape = Enum.PartType.Cylinder,
 			material = Enum.Material.Slate, color = STONE }, folder)
-		glyphRow(folder, CFrame.new(pillar.Position + Vector3.new(-0.7, -6, -2.7)) * CFrame.Angles(0, 0, math.rad(90)),
+		pillar:SetAttribute("EnvKind", "stone")
+		pillar:SetAttribute("EnvFaces", "Front,Back")
+		pillar:SetAttribute("EnvStuds", 8)
+		pillar:SetAttribute("EnvAlpha", 0.15)
+		CollectionService:AddTag(pillar, "EnvTexture")
+		for _, ty in ipairs({ 1.4, 24.8 }) do
+			part({ size = Vector3.new(1.4, 6.6, 6.6),
+				cframe = CFrame.new(cx + side * 11, ty, cz) * CFrame.Angles(0, 0, math.rad(90)),
+				shape = Enum.PartType.Cylinder,
+				material = Enum.Material.Metal, color = Color3.fromRGB(95, 92, 115) }, folder)
+		end
+		glyphRow(folder, CFrame.new(Vector3.new(cx + side * 11 - 0.7, 7, cz - 3)) * CFrame.Angles(0, 0, math.rad(90)),
 			6, PURPLE, rng)
 	end
-	part({ size = Vector3.new(28, 4, 5.5), pos = Vector3.new(cx, 27, cz),
-		material = Enum.Material.Slate, color = STONE }, folder)
-	part({ size = Vector3.new(29, 0.6, 6), pos = Vector3.new(cx, 29.2, cz),
-		material = Enum.Material.Neon, color = PURPLE, transparency = 0.3, collide = false }, folder)
+	-- Verzierter Rundbogen über dem Portal
+	buildArc(folder, cx, 24, cz, 11.5, 8, 172, 11, 3.4, 5.4, STONE)
+	buildArc(folder, cx, 24, cz, 10, 15, 165, 11, 0.6, 1.4, PURPLE, Enum.Material.Neon)
 
 	-- Wirbelndes Energieportal (zwei Ebenen + Partikel)
 	local portal = part({ size = Vector3.new(17, 22, 0.6), pos = Vector3.new(cx, 12, cz),
@@ -384,8 +407,13 @@ local function buildHandelshalle(folder, rng)
 	end
 
 	-- Plattform + Geländer
-	part({ size = Vector3.new(90, 2, 40), pos = Vector3.new(0, Y - 1, cz + 8),
-		material = Enum.Material.Slate, color = FLOOR, reflectance = 0.15 }, folder)
+	local platform = part({ size = Vector3.new(90, 2, 40), pos = Vector3.new(0, Y - 1, cz + 8),
+		material = Enum.Material.SmoothPlastic, color = FLOOR, reflectance = 0.18 }, folder)
+	platform:SetAttribute("EnvKind", "panels")
+	platform:SetAttribute("EnvFaces", "Top")
+	platform:SetAttribute("EnvStuds", 16)
+	platform:SetAttribute("EnvAlpha", 0.15)
+	CollectionService:AddTag(platform, "EnvTexture")
 	for _, side in ipairs({ -1, 1 }) do
 		part({ size = Vector3.new(0.6, 3, 40), pos = Vector3.new(side * 45, Y + 1.5, cz + 8),
 			material = Enum.Material.Slate, color = STONE }, folder)
@@ -480,39 +508,96 @@ local function refreshLeaderboard()
 	end
 end
 
+-- Bogen aus Segmenten (vertikale Halbkreis-Architektur statt Kastenbalken —
+-- runde Formen nehmen der Lobby den Klötzchen-Look)
+local function buildArc(folder, cx, cy, cz, radius, fromDeg, toDeg, segments, thickness, depth, color, material)
+	for i = 0, segments - 1 do
+		local a0 = math.rad(fromDeg + (toDeg - fromDeg) * i / segments)
+		local a1 = math.rad(fromDeg + (toDeg - fromDeg) * (i + 1) / segments)
+		local mid = (a0 + a1) / 2
+		local chord = 2 * radius * math.sin((a1 - a0) / 2) + 0.25
+		part({
+			size = Vector3.new(chord, thickness, depth),
+			cframe = CFrame.new(cx + math.cos(mid) * radius, cy + math.sin(mid) * radius, cz)
+				* CFrame.Angles(0, 0, mid + math.rad(90)),
+			material = material or Enum.Material.Slate,
+			color = color,
+		}, folder)
+	end
+end
+
 -- ── Grundfläche, Bögen, Skyline ───────────────────────────────────────────────
 local function buildLobbyBase(folder, rng)
-	-- Hochglänzender, reflektierender Neon-Gitterboden (Slate statt Glass —
-	-- schwarzes Glas bei Nacht las sich als bodenloses Void)
-	part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
-		material = Enum.Material.Slate, color = FLOOR, reflectance = 0.18, name = "LobbyFloor" }, folder)
+	-- Polierter Glanzboden + kachelnde Tech-Panel-Textur (client-seitig via
+	-- EditableImage — echte Oberfläche statt flacher Farbe)
+	local floorPart = part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
+		material = Enum.Material.SmoothPlastic, color = FLOOR, reflectance = 0.22, name = "LobbyFloor" }, folder)
+	floorPart:SetAttribute("EnvKind", "panels")
+	floorPart:SetAttribute("EnvFaces", "Top")
+	floorPart:SetAttribute("EnvStuds", 22)
+	floorPart:SetAttribute("EnvAlpha", 0.15)
+	CollectionService:AddTag(floorPart, "EnvTexture")
+
+	-- Dezentere Neon-Gridlinien (das Panel-Muster trägt jetzt den Boden)
 	for i = -4, 4 do
-		part({ size = Vector3.new(0.5, 0.12, 200), pos = Vector3.new(i * 22, 0.06, 10),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.5, collide = false }, folder)
-		part({ size = Vector3.new(200, 0.12, 0.5), pos = Vector3.new(0, 0.06, 10 + i * 22),
-			material = Enum.Material.Neon, color = MAGENTA, transparency = 0.6, collide = false }, folder)
+		part({ size = Vector3.new(0.35, 0.1, 200), pos = Vector3.new(i * 22, 0.05, 10),
+			material = Enum.Material.Neon, color = CYAN, transparency = 0.62, collide = false }, folder)
+		part({ size = Vector3.new(200, 0.1, 0.35), pos = Vector3.new(0, 0.05, 10 + i * 22),
+			material = Enum.Material.Neon, color = MAGENTA, transparency = 0.72, collide = false }, folder)
 	end
 
-	-- Begrenzungswände
+	-- Begrenzungswände mit Stein-Gravur-Textur + Cove-Licht am Fuß
 	for _, w in ipairs({
-		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, -90) },
-		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, 110) },
-		{ Vector3.new(2, 20, 200), Vector3.new(-100, 10, 10) },
-		{ Vector3.new(2, 20, 200), Vector3.new(100, 10, 10) },
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, -90), "Back" },
+		{ Vector3.new(200, 20, 2), Vector3.new(0, 10, 110), "Front" },
+		{ Vector3.new(2, 20, 200), Vector3.new(-100, 10, 10), "Right" },
+		{ Vector3.new(2, 20, 200), Vector3.new(100, 10, 10), "Left" },
 	}) do
-		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+		local wall = part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+		wall:SetAttribute("EnvKind", "stone")
+		wall:SetAttribute("EnvFaces", w[3])
+		wall:SetAttribute("EnvStuds", 14)
+		wall:SetAttribute("EnvAlpha", 0.1)
+		CollectionService:AddTag(wall, "EnvTexture")
+
+		-- Cove-Light: Neon-Leiste am Wandfuß + Licht-Wash nach oben
+		local inward = (Vector3.new(0, 0, 10) - w[2]) * Vector3.new(1, 0, 1)
+		inward = inward.Magnitude > 0 and inward.Unit or Vector3.zAxis
+		local along = math.abs(inward.X) > 0.5 and Vector3.new(0, 0, 1) or Vector3.new(1, 0, 0)
+		local strip = part({
+			size = along * 192 + Vector3.new(0.45, 0.45, 0.45),
+			pos = w[2] * Vector3.new(1, 0, 1) + inward * 1.6 + Vector3.new(0, 0.4, 0),
+			material = Enum.Material.Neon, color = PURPLE, transparency = 0.35, collide = false,
+		}, folder)
+		local wash = Instance.new("SurfaceLight")
+		wash.Face = Enum.NormalId.Top
+		wash.Color = PURPLE
+		wash.Range = 18
+		wash.Brightness = 0.6
+		wash.Parent = strip
 	end
 
-	-- Bögen über dem Hauptgang mit Glyphen + Datenstrom-Partikeln
+	-- Rund-Bögen über dem Hauptgang: Zylinder-Säulen + Halbkreis-Segmente
 	for _, az in ipairs({ -30, 40 }) do
+		local accentColor = (az < 0) and CYAN or MAGENTA
 		for side = -1, 1, 2 do
-			part({ size = Vector3.new(2.4, 14, 2.4), pos = Vector3.new(side * 14, 7, az),
+			part({ size = Vector3.new(16, 2.6, 2.6),
+				cframe = CFrame.new(side * 14, 8, az) * CFrame.Angles(0, 0, math.rad(90)),
+				shape = Enum.PartType.Cylinder,
 				material = Enum.Material.Slate, color = STONE }, folder)
+			-- Säulen-Trims (Fuß + Kapitell)
+			for _, ty in ipairs({ 1, 15.4 }) do
+				part({ size = Vector3.new(1, 3.6, 3.6),
+					cframe = CFrame.new(side * 14, ty, az) * CFrame.Angles(0, 0, math.rad(90)),
+					shape = Enum.PartType.Cylinder,
+					material = Enum.Material.Metal, color = Color3.fromRGB(95, 92, 115) }, folder)
+			end
 		end
-		local beam = part({ size = Vector3.new(31, 2.2, 2.4), pos = Vector3.new(0, 15, az),
-			material = Enum.Material.Slate, color = STONE }, folder)
-		glyphRow(folder, CFrame.new(Vector3.new(-12, 15, az - 1.4)), 18,
-			(az < 0) and CYAN or MAGENTA, rng)
+		buildArc(folder, 0, 16, az, 14, 12, 168, 9, 2.2, 2.4, STONE)
+		buildArc(folder, 0, 16, az, 12.4, 20, 160, 9, 0.5, 1.2, accentColor, Enum.Material.Neon)
+		glyphRow(folder, CFrame.new(Vector3.new(-10, 13.5, az - 1.4)), 15, accentColor, rng)
+		local beam = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(0, 16, az),
+			transparency = 1, collide = false }, folder)
 		local att = Instance.new("Attachment")
 		att.Parent = beam
 		local stream = Instance.new("ParticleEmitter")

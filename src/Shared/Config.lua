@@ -2,7 +2,7 @@
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v0.9 — CS-Skin-Texturen"
+Config.VERSION = "v1.0 — Grafik-Pass"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"

@@ -72,6 +72,19 @@ mit Mil-Dots, Waffe ausgeblendet, FOV 16, langsameres Laufen).
 **Sound:** echte CS-AWP-Ports wenn ladbar, sonst gelayerter Knall
 (Gewehr-Boom + Bass + Crack-Tail) — nie wieder dünner Peitschenklatscher.
 
+## Grafik maximal stellen (wichtig gegen den "Pixel-Look"!)
+
+Roblox rendert PBR-Materialien, weiche Schatten und Reflexionen erst auf
+hohen Qualitätsstufen:
+
+- **In Studio:** File → Studio Settings → Rendering → **Editor Quality Level:
+  Level 21** und **Quality Level: Level 21**.
+- **Im Spiel/Test:** Esc-Menü → Einstellungen → Grafikmodus **Manuell** →
+  Regler ganz nach **rechts (10)**.
+
+Ohne das sehen Future-Lighting, Tiefenschärfe, Glanzboden und die
+Panel-/Stein-Texturen deutlich flacher aus.
+
 **Wichtig beim Testen:** Nach jedem `git pull` die NEUE `HatchSnipers.rbxlx`
 öffnen oder per `rojo serve` in deinen gespeicherten Platz syncen — alte
 Platz-Kopien enthalten alten Code (die Build-Version steht unten rechts im

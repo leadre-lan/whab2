@@ -32,13 +32,17 @@ local WeaponCtrl       = require(Controllers:WaitForChild("WeaponController"))
 UICtrl.init(net, EffectsCtrl)
 WeaponCtrl.init(net, EffectsCtrl, UICtrl)
 
--- ── Lighting: Nacht + Neon (Cyber-Lobby-Look) ─────────────────────────────────
--- Genug Ambient, damit Geometrie/Texturen lesbar bleiben — sonst ist die
--- Lobby nur schwarzes Void mit schwebenden Neon-Linien.
+-- ── Lighting 2.0: Nacht + Neon, aber mit PBR-Tiefe statt Pixel-Flachheit ──────
+-- Weiche Schatten, volle Environment-Reflexionen, leichte Tiefenschärfe und
+-- knackiges Bloom — das nimmt dem Part-Look die harte Klötzchen-Optik.
 Lighting.ClockTime = 0
-Lighting.Brightness = 2.2
+Lighting.Brightness = 2.4
+Lighting.ExposureCompensation = 0.25
+Lighting.ShadowSoftness = 0.25
+Lighting.EnvironmentDiffuseScale = 1
+Lighting.EnvironmentSpecularScale = 1
 Lighting.OutdoorAmbient = Color3.fromRGB(105, 105, 135)
-Lighting.Ambient = Color3.fromRGB(70, 70, 95)
+Lighting.Ambient = Color3.fromRGB(72, 72, 98)
 Lighting.FogColor = Color3.fromRGB(22, 20, 36)
 Lighting.FogStart = 180
 Lighting.FogEnd = 750
@@ -53,9 +57,16 @@ local function ensureEffect(class, name, props)
 	end
 	for k, v in pairs(props) do e[k] = v end
 end
-ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.65, Size = 40, Threshold = 0.95 })
+-- Knackiges Neon-Bloom (kleiner Radius = Glow statt Matsch)
+ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.95, Size = 26, Threshold = 1.08 })
+-- Cinematic Grade: mehr Kontrast, leicht kühler Magenta-Stich
 ensureEffect("ColorCorrectionEffect", "GameGrade", {
-	Contrast = 0.1, Saturation = 0.22, TintColor = Color3.fromRGB(245, 242, 255),
+	Contrast = 0.14, Saturation = 0.14, Brightness = 0.015,
+	TintColor = Color3.fromRGB(248, 242, 255),
+})
+-- Dezente Tiefenschärfe: Distanz weicht auf → wirkt sofort gerendert
+ensureEffect("DepthOfFieldEffect", "GameDOF", {
+	FarIntensity = 0.18, NearIntensity = 0, FocusDistance = 28, InFocusRadius = 42,
 })
 local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 if not atmosphere then
@@ -135,6 +146,33 @@ do
 	CollectionService:GetInstanceAddedSignal("SkinBody"):Connect(applySkinTexture)
 	for _, part in ipairs(CollectionService:GetTagged("SkinBody")) do
 		applySkinTexture(part)
+	end
+
+	-- Umgebungs-Texturen: getaggte Parts ("EnvTexture") bekommen kachelnde
+	-- Oberflächen (Tech-Panels, gravierter Stein) statt flacher Farben
+	local function applyEnvTexture(part)
+		if not part:IsA("BasePart") then return end
+		task.spawn(function()
+			local content = SkinTextures.getEnv(part:GetAttribute("EnvKind") or "panels")
+			if not content or not part.Parent then return end
+			local studs = part:GetAttribute("EnvStuds") or 16
+			for face in string.gmatch(part:GetAttribute("EnvFaces") or "Top", "[^,]+") do
+				pcall(function()
+					local tex = Instance.new("Texture")
+					tex.Face = Enum.NormalId[face]
+					tex.StudsPerTileU = studs
+					tex.StudsPerTileV = studs
+					tex.TextureContent = content
+					tex.Transparency = part:GetAttribute("EnvAlpha") or 0.25
+					tex.Parent = part
+				end)
+			end
+		end)
+	end
+
+	CollectionService:GetInstanceAddedSignal("EnvTexture"):Connect(applyEnvTexture)
+	for _, part in ipairs(CollectionService:GetTagged("EnvTexture")) do
+		applyEnvTexture(part)
 	end
 end
 

@@ -7,9 +7,10 @@
       "$properties": {
         "Technology": "Future",
         "GlobalShadows": true,
-        "Brightness": 1.6,
-        "EnvironmentDiffuseScale": 0.5,
-        "EnvironmentSpecularScale": 0.6
+        "Brightness": 2.4,
+        "ShadowSoftness": 0.25,
+        "EnvironmentDiffuseScale": 1,
+        "EnvironmentSpecularScale": 1
       }
     },
     "ReplicatedStorage": {

@@ -266,4 +266,78 @@ function SkinTextures.get(skinId)
 	return cache[skinId] or nil
 end
 
+-- ── Umgebungs-Texturen (kachelbar) ────────────────────────────────────────────
+-- Gleiches Prinzip für die Lobby: Boden/Wände bekommen echte Oberflächen
+-- statt flacher Farben. Kachelbar dank periodischer Muster.
+local ENV = {
+	-- Dunkle Tech-Panels mit Fugen, Nieten und dezenten Glow-Seams
+	panels = function(x, y)
+		local gx = (x * 4) % 1
+		local gy = (y * 4) % 1
+		local seam = (gx < 0.035 or gx > 0.965 or gy < 0.035 or gy > 0.965)
+		if seam then
+			-- jede zweite Fuge glüht leicht cyan
+			local cell = math.floor(x * 4) + math.floor(y * 4)
+			if cell % 3 == 0 then return 30, 90, 110 end
+			return 12, 13, 20
+		end
+		-- Nieten in den Ecken
+		local rx = math.min(gx, 1 - gx)
+		local ry = math.min(gy, 1 - gy)
+		if rx > 0.07 and rx < 0.12 and ry > 0.07 and ry < 0.12 then
+			return 70, 74, 92
+		end
+		local n = noise2(x * 26, y * 26, 201) * 14 + noise2(x * 90, y * 90, 202) * 8
+		local v = 38 + n + math.abs(math.sin((gx + gy) * 3)) * 7
+		return v, v + 2, v + 12
+	end,
+	-- Stein mit Mythos-Gravuren (für Wände/Pfeiler)
+	stone = function(x, y)
+		local n = noise2(x * 9, y * 9, 211) * 0.6 + noise2(x * 30, y * 30, 212) * 0.4
+		local v = 62 + n * 34
+		-- eingravierte Linien-Glyphen in Bändern
+		local band = (y * 6) % 1
+		if band > 0.42 and band < 0.58 then
+			local glyph = math.abs(math.sin(x * 40 + math.floor(y * 6) * 7))
+			if glyph > 0.86 then
+				return 120, 80, 200
+			end
+			v = v - 12
+		end
+		return v, v - 2, v + 10
+	end,
+}
+
+local envCache = {}
+
+function SkinTextures.getEnv(kind)
+	if envCache[kind] == nil then
+		local recipe = ENV[kind]
+		if not recipe then
+			envCache[kind] = false
+		else
+			local ok, content = pcall(function()
+				local ei = AssetService:CreateEditableImage({ Size = Vector2.new(SIZE, SIZE) })
+				local buf = buffer.create(SIZE * SIZE * 4)
+				for py = 0, SIZE - 1 do
+					local fy = py / SIZE
+					local rowBase = py * SIZE * 4
+					for px = 0, SIZE - 1 do
+						local r, g, b = recipe(px / SIZE, fy)
+						local o = rowBase + px * 4
+						buffer.writeu8(buf, o, math.clamp(math.floor(r + 0.5), 0, 255))
+						buffer.writeu8(buf, o + 1, math.clamp(math.floor(g + 0.5), 0, 255))
+						buffer.writeu8(buf, o + 2, math.clamp(math.floor(b + 0.5), 0, 255))
+						buffer.writeu8(buf, o + 3, 255)
+					end
+				end
+				ei:WritePixelsBuffer(Vector2.zero, Vector2.new(SIZE, SIZE), buf)
+				return Content.fromObject(ei)
+			end)
+			envCache[kind] = ok and content or false
+		end
+	end
+	return envCache[kind] or nil
+end
+
 return SkinTextures

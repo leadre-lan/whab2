@@ -42,8 +42,14 @@ local function buildArena(idx, folder)
 	local floor = Color3.fromRGB(38, 41, 58)
 	local neon  = Color3.fromRGB(150, 80, 255)
 
-	part({ size = Vector3.new(W, 2, L), pos = Vector3.new(cx, -1, 0),
-		material = Enum.Material.Slate, color = floor }, folder)
+	local floorPart = part({ size = Vector3.new(W, 2, L), pos = Vector3.new(cx, -1, 0),
+		material = Enum.Material.SmoothPlastic, color = floor }, folder)
+	floorPart.Reflectance = 0.12
+	floorPart:SetAttribute("EnvKind", "panels")
+	floorPart:SetAttribute("EnvFaces", "Top")
+	floorPart:SetAttribute("EnvStuds", 14)
+	floorPart:SetAttribute("EnvAlpha", 0.18)
+	game:GetService("CollectionService"):AddTag(floorPart, "EnvTexture")
 
 	-- Wände (hoch genug, dass niemand rausspringt)
 	for _, w in ipairs({
