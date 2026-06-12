@@ -111,9 +111,34 @@ end
 
 local function trySetupAwpTemplate()
 	local assets = RS:FindFirstChild("Assets")
-	local tpl = assets and assets:FindFirstChild("Awp")
+	if not assets then return false end
+	-- Namens-tolerant: Awp / AWP / awp …
+	local tpl = nil
+	for _, child in ipairs(assets:GetChildren()) do
+		if child.Name:lower() == "awp" then
+			tpl = child
+			break
+		end
+	end
 	if not tpl then return false end
-	local mp = tpl:IsA("MeshPart") and tpl or tpl:FindFirstChildWhichIsA("MeshPart", true)
+
+	-- Toolbox-Kits bestehen oft aus mehreren MeshParts (Magazin, Scope, …):
+	-- das GRÖSSTE MeshPart ist der Waffenkörper
+	local mp = nil
+	if tpl:IsA("MeshPart") then
+		mp = tpl
+	else
+		local best = 0
+		for _, d in ipairs(tpl:GetDescendants()) do
+			if d:IsA("MeshPart") and d.MeshId ~= "" then
+				local vol = d.Size.X * d.Size.Y * d.Size.Z
+				if vol > best then
+					best = vol
+					mp = d
+				end
+			end
+		end
+	end
 	return setupFromMeshPart(mp)
 end
 
