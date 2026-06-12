@@ -166,6 +166,9 @@ return Assets
           <string name="Source"><![CDATA[-- Config.lua — Alle Spielwerte von Hatch Snipers an einem Ort.
 local Config = {}
 
+-- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
+Config.VERSION = "v0.7 — AWP-Template"
+
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
 Config.START_CREDITS   = 1000        -- reicht für den ersten Pull sofort
@@ -438,6 +441,31 @@ local Assets = require(script.Parent:WaitForChild("Assets"))
 
 local METAL = Color3.fromRGB(46, 47, 54)   -- Lauf/Scope/Bolt (immer dunkel)
 
+-- ── Echtes AWP-Mesh (optional, via Studio-Template) ───────────────────────────
+-- Zieht man das Toolbox-AWP nach ReplicatedStorage/Assets/Awp, extrahiert der
+-- WeaponService Mesh-/Textur-ID + Maße + Lauf-Richtung und setzt awpInfo:
+-- { meshId, textureId, scale, rot (CFrame), length, height }
+-- Dann rendert JEDER Skin das echte texturierte AWP-Modell (VertexColor-Tint).
+local awpInfo = nil
+
+function SniperBuilder.setAwpInfo(info)
+	awpInfo = info
+end
+
+function SniperBuilder.hasAwpMesh()
+	return awpInfo ~= nil
+end
+
+-- VertexColor-Tönung: multipliziert die AWP-Textur pro Skin.
+-- standard = Original-Textur (1,1,1); helle Skins boosten, dunkle dimmen.
+local function tintFor(skin)
+	if skin.id == "standard" then
+		return Vector3.new(1, 1, 1)
+	end
+	local c = skin.body
+	return Vector3.new(0.35 + c.R * 1.65, 0.35 + c.G * 1.65, 0.35 + c.B * 1.65)
+end
+
 local function weldTo(handle, part, offset)
 	part.Anchored = false
 	part.CanCollide = false
@@ -502,7 +530,31 @@ function SniperBuilder.buildTool(skin)
 		return part
 	end
 
-	-- ── AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
+	local muzzleZ, barrelY
+
+	if awpInfo then
+		-- ── Echtes texturiertes AWP-Mesh (Studio-Template) ──
+		local body = mkPart({ size = Vector3.new(0.5, 1.2, awpInfo.length), color = skin.body, name = "Body" })
+		local mesh = Instance.new("SpecialMesh")
+		mesh.Name = "BodyMesh"
+		mesh.MeshType = Enum.MeshType.FileMesh
+		mesh.MeshId = awpInfo.meshId
+		mesh.TextureId = awpInfo.textureId
+		mesh.Scale = Vector3.new(awpInfo.scale, awpInfo.scale, awpInfo.scale)
+		mesh.VertexColor = tintFor(skin)
+		mesh.Parent = body
+		weldTo(handle, body, CFrame.new(0, 0.05, -0.6) * awpInfo.rot)
+
+		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05
+		barrelY = 0.12
+
+		-- Akzent: Unterlauf-Glow-Strip (trägt die Skin-Farbe sichtbar)
+		accent(weldTo(handle, mkPart({
+			size = Vector3.new(0.07, 0.07, awpInfo.length * 0.38),
+			color = skin.accent, material = accentMat,
+		}), CFrame.new(0, 0.05 - awpInfo.height / 2 - 0.05, -0.8)))
+	else
+	-- ── Part-Fallback: AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
 	local furnMat  = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
 	local furnRefl = (fx.metallic and not fx.neon) and 0.25 or 0
 	local function furniture(size, cf, name)
@@ -558,8 +610,8 @@ function SniperBuilder.buildTool(skin)
 		metal(Vector3.new(0.06, 0.1, 0.26), CFrame.new(side * 0.13, 0.18, -3.95))
 	end
 
-	local muzzleZ = -4.16
-	local barrelY = 0.18
+	muzzleZ = -4.16
+	barrelY = 0.18
 
 	-- ── Das große AWP-Scope ──
 	local scopeY = 0.62
@@ -581,6 +633,7 @@ function SniperBuilder.buildTool(skin)
 	for _, z in ipairs({ -0.55, 0.5 }) do
 		metal(Vector3.new(0.12, 0.3, 0.16), CFrame.new(0, scopeY - 0.22, z))
 	end
+	end   -- Ende Part-Fallback
 
 	-- ── Mündung: Marker (Shot-Origin) + Glow-Ring bei Legendary+ ──
 	local muzzle = mkPart({
@@ -3042,6 +3095,117 @@ function WeaponService.setArenaService(svc)
 	arenaService = svc
 end
 
+-- ── Echtes AWP-Mesh via Studio-Template ───────────────────────────────────────
+-- Einmalig in Studio: Toolbox-Modell "AWP sniper" (13638913296) nach
+-- ReplicatedStorage/Assets/Awp ziehen. Dadurch bakt Roblox Mesh + Textur in
+-- den Platz (keine LoadAsset-Permissions nötig). Hier wird das Template
+-- vermessen: MeshSize liefert die nativen Maße, eine Raycast-Probe findet die
+-- Mündung (dünnes Ende) — danach rendern ALLE Skins das echte AWP.
+local AWP_TARGET_LEN = 5.2
+local AXES = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+
+local function probeEndHits(meshPart, axis, sign, otherA, otherB)
+	local s = meshPart.Size
+	local center = meshPart.Position + axis * (axis:Dot(s) * 0.4 * sign)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { meshPart }
+	local hits = 0
+	for i = -2, 2 do
+		for j = -2, 2 do
+			local offset = otherA * (otherA:Dot(s) * 0.12 * i) + otherB * (otherB:Dot(s) * 0.12 * j)
+			local origin = center + offset + Vector3.new(0, s.Magnitude, 0)
+			if workspace:Raycast(origin, Vector3.new(0, -s.Magnitude * 2, 0), params) then
+				hits += 1
+			end
+		end
+	end
+	return hits
+end
+
+local function trySetupAwpTemplate()
+	local assets = RS:FindFirstChild("Assets")
+	local tpl = assets and assets:FindFirstChild("Awp")
+	if not tpl then return false end
+	local mp = tpl:IsA("MeshPart") and tpl or tpl:FindFirstChildWhichIsA("MeshPart", true)
+	if not mp or mp.MeshId == "" then return false end
+
+	-- Messklon in nativen Proportionen
+	local probe = mp:Clone()
+	probe:ClearAllChildren()
+	local ms = probe.MeshSize
+	if ms.Magnitude < 0.05 then
+		probe:Destroy()
+		return false
+	end
+	probe.Size = ms
+	probe.Anchored = true
+	probe.CanCollide = false
+	probe.Transparency = 1
+	probe.CFrame = CFrame.new(0, 2800, 0)
+	probe.Parent = workspace
+
+	local sorted = table.clone(AXES)
+	table.sort(sorted, function(a, b) return a:Dot(ms) > b:Dot(ms) end)
+	local barrelAxis, upAxis = sorted[1], sorted[2]
+
+	local hitsPos = probeEndHits(probe, barrelAxis, 1, upAxis, sorted[3])
+	local hitsNeg = probeEndHits(probe, barrelAxis, -1, upAxis, sorted[3])
+	probe:Destroy()
+
+	local muzzleSign = (hitsPos < hitsNeg) and 1 or -1
+	local forward = barrelAxis * muzzleSign
+	local rot = CFrame.fromMatrix(Vector3.zero, forward:Cross(upAxis), upAxis, -forward):Inverse()
+
+	local nativeLen = barrelAxis:Dot(ms)
+	local scale = AWP_TARGET_LEN / nativeLen
+
+	SniperBuilder.setAwpInfo({
+		meshId    = mp.MeshId,
+		textureId = mp.TextureID,
+		scale     = scale,
+		rot       = rot,
+		length    = AWP_TARGET_LEN,
+		height    = upAxis:Dot(ms) * scale,
+	})
+	print(("[WeaponService] Echtes AWP-Template aktiv (Mesh %s, %.1f Studs nativ)")
+		:format(mp.MeshId, nativeLen))
+	return true
+end
+
+-- Template darf auch WÄHREND einer Test-Session reingezogen werden:
+-- Retry-Loop, danach bekommen alle ihre Waffe neu gebaut.
+local function watchForAwpTemplate()
+	task.spawn(function()
+		local hinted = false
+		while not SniperBuilder.hasAwpMesh() do
+			local ok = pcall(trySetupAwpTemplate)
+			if ok and SniperBuilder.hasAwpMesh() then
+				for _, p in ipairs(Players:GetPlayers()) do
+					if dataService.get(p) then
+						WeaponService.giveWeapon(p)
+					end
+				end
+				for _, p in ipairs(Players:GetPlayers()) do
+					net.Notify:FireClient(p, "🔫 Echtes AWP-Modell aktiv!")
+				end
+				return
+			end
+			if not hinted then
+				hinted = true
+				task.delay(8, function()
+					if SniperBuilder.hasAwpMesh() then return end
+					for _, p in ipairs(Players:GetPlayers()) do
+						net.Notify:FireClient(p,
+							"💡 Echte AWP: Toolbox 'AWP sniper' nach ReplicatedStorage/Assets/Awp ziehen")
+					end
+				end)
+			end
+			task.wait(5)
+		end
+	end)
+end
+
 -- ── Waffe geben (Lobby + Arena: der Skin ist immer sichtbar) ──────────────────
 function WeaponService.giveWeapon(player)
 	local data = dataService.get(player)
@@ -3198,6 +3362,8 @@ end
 function WeaponService.init(ds, netRef)
 	dataService = ds
 	net         = netRef
+
+	watchForAwpTemplate()
 
 	net.Shoot.OnServerEvent:Connect(handleShoot)
 
@@ -3769,6 +3935,11 @@ local rankLabel = label(hud, "RANG: —", UDim2.new(1, -16, 0, 20), UDim2.new(0,
 	{ color = C.text, textSize = 14, font = Theme.FONTS.header })
 local luckLabel = label(hud, "", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 78),
 	{ color = C.green, textSize = 14 })
+
+-- Build-Version (unten rechts) — zeigt sofort, ob der neueste Stand läuft
+local versionLbl = label(screenGui, Config.VERSION, UDim2.new(0, 220, 0, 18), UDim2.new(1, -232, 1, -22),
+	{ color = C.textDim, textSize = 12, align = Enum.TextXAlignment.Right, stroke = 0.6 })
+versionLbl.ZIndex = 5
 
 -- ── Crosshair + Scope + Cooldown-Bar ──────────────────────────────────────────
 local crosshair = label(screenGui, "+", UDim2.new(0, 40, 0, 40), UDim2.new(0.5, -20, 0.5, -20),

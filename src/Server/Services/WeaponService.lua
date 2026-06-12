@@ -20,6 +20,117 @@ function WeaponService.setArenaService(svc)
 	arenaService = svc
 end
 
+-- ── Echtes AWP-Mesh via Studio-Template ───────────────────────────────────────
+-- Einmalig in Studio: Toolbox-Modell "AWP sniper" (13638913296) nach
+-- ReplicatedStorage/Assets/Awp ziehen. Dadurch bakt Roblox Mesh + Textur in
+-- den Platz (keine LoadAsset-Permissions nötig). Hier wird das Template
+-- vermessen: MeshSize liefert die nativen Maße, eine Raycast-Probe findet die
+-- Mündung (dünnes Ende) — danach rendern ALLE Skins das echte AWP.
+local AWP_TARGET_LEN = 5.2
+local AXES = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
+
+local function probeEndHits(meshPart, axis, sign, otherA, otherB)
+	local s = meshPart.Size
+	local center = meshPart.Position + axis * (axis:Dot(s) * 0.4 * sign)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { meshPart }
+	local hits = 0
+	for i = -2, 2 do
+		for j = -2, 2 do
+			local offset = otherA * (otherA:Dot(s) * 0.12 * i) + otherB * (otherB:Dot(s) * 0.12 * j)
+			local origin = center + offset + Vector3.new(0, s.Magnitude, 0)
+			if workspace:Raycast(origin, Vector3.new(0, -s.Magnitude * 2, 0), params) then
+				hits += 1
+			end
+		end
+	end
+	return hits
+end
+
+local function trySetupAwpTemplate()
+	local assets = RS:FindFirstChild("Assets")
+	local tpl = assets and assets:FindFirstChild("Awp")
+	if not tpl then return false end
+	local mp = tpl:IsA("MeshPart") and tpl or tpl:FindFirstChildWhichIsA("MeshPart", true)
+	if not mp or mp.MeshId == "" then return false end
+
+	-- Messklon in nativen Proportionen
+	local probe = mp:Clone()
+	probe:ClearAllChildren()
+	local ms = probe.MeshSize
+	if ms.Magnitude < 0.05 then
+		probe:Destroy()
+		return false
+	end
+	probe.Size = ms
+	probe.Anchored = true
+	probe.CanCollide = false
+	probe.Transparency = 1
+	probe.CFrame = CFrame.new(0, 2800, 0)
+	probe.Parent = workspace
+
+	local sorted = table.clone(AXES)
+	table.sort(sorted, function(a, b) return a:Dot(ms) > b:Dot(ms) end)
+	local barrelAxis, upAxis = sorted[1], sorted[2]
+
+	local hitsPos = probeEndHits(probe, barrelAxis, 1, upAxis, sorted[3])
+	local hitsNeg = probeEndHits(probe, barrelAxis, -1, upAxis, sorted[3])
+	probe:Destroy()
+
+	local muzzleSign = (hitsPos < hitsNeg) and 1 or -1
+	local forward = barrelAxis * muzzleSign
+	local rot = CFrame.fromMatrix(Vector3.zero, forward:Cross(upAxis), upAxis, -forward):Inverse()
+
+	local nativeLen = barrelAxis:Dot(ms)
+	local scale = AWP_TARGET_LEN / nativeLen
+
+	SniperBuilder.setAwpInfo({
+		meshId    = mp.MeshId,
+		textureId = mp.TextureID,
+		scale     = scale,
+		rot       = rot,
+		length    = AWP_TARGET_LEN,
+		height    = upAxis:Dot(ms) * scale,
+	})
+	print(("[WeaponService] Echtes AWP-Template aktiv (Mesh %s, %.1f Studs nativ)")
+		:format(mp.MeshId, nativeLen))
+	return true
+end
+
+-- Template darf auch WÄHREND einer Test-Session reingezogen werden:
+-- Retry-Loop, danach bekommen alle ihre Waffe neu gebaut.
+local function watchForAwpTemplate()
+	task.spawn(function()
+		local hinted = false
+		while not SniperBuilder.hasAwpMesh() do
+			local ok = pcall(trySetupAwpTemplate)
+			if ok and SniperBuilder.hasAwpMesh() then
+				for _, p in ipairs(Players:GetPlayers()) do
+					if dataService.get(p) then
+						WeaponService.giveWeapon(p)
+					end
+				end
+				for _, p in ipairs(Players:GetPlayers()) do
+					net.Notify:FireClient(p, "🔫 Echtes AWP-Modell aktiv!")
+				end
+				return
+			end
+			if not hinted then
+				hinted = true
+				task.delay(8, function()
+					if SniperBuilder.hasAwpMesh() then return end
+					for _, p in ipairs(Players:GetPlayers()) do
+						net.Notify:FireClient(p,
+							"💡 Echte AWP: Toolbox 'AWP sniper' nach ReplicatedStorage/Assets/Awp ziehen")
+					end
+				end)
+			end
+			task.wait(5)
+		end
+	end)
+end
+
 -- ── Waffe geben (Lobby + Arena: der Skin ist immer sichtbar) ──────────────────
 function WeaponService.giveWeapon(player)
 	local data = dataService.get(player)
@@ -176,6 +287,8 @@ end
 function WeaponService.init(ds, netRef)
 	dataService = ds
 	net         = netRef
+
+	watchForAwpTemplate()
 
 	net.Shoot.OnServerEvent:Connect(handleShoot)
 

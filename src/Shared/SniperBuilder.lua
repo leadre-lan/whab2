@@ -19,6 +19,31 @@ local Assets = require(script.Parent:WaitForChild("Assets"))
 
 local METAL = Color3.fromRGB(46, 47, 54)   -- Lauf/Scope/Bolt (immer dunkel)
 
+-- ── Echtes AWP-Mesh (optional, via Studio-Template) ───────────────────────────
+-- Zieht man das Toolbox-AWP nach ReplicatedStorage/Assets/Awp, extrahiert der
+-- WeaponService Mesh-/Textur-ID + Maße + Lauf-Richtung und setzt awpInfo:
+-- { meshId, textureId, scale, rot (CFrame), length, height }
+-- Dann rendert JEDER Skin das echte texturierte AWP-Modell (VertexColor-Tint).
+local awpInfo = nil
+
+function SniperBuilder.setAwpInfo(info)
+	awpInfo = info
+end
+
+function SniperBuilder.hasAwpMesh()
+	return awpInfo ~= nil
+end
+
+-- VertexColor-Tönung: multipliziert die AWP-Textur pro Skin.
+-- standard = Original-Textur (1,1,1); helle Skins boosten, dunkle dimmen.
+local function tintFor(skin)
+	if skin.id == "standard" then
+		return Vector3.new(1, 1, 1)
+	end
+	local c = skin.body
+	return Vector3.new(0.35 + c.R * 1.65, 0.35 + c.G * 1.65, 0.35 + c.B * 1.65)
+end
+
 local function weldTo(handle, part, offset)
 	part.Anchored = false
 	part.CanCollide = false
@@ -83,7 +108,31 @@ function SniperBuilder.buildTool(skin)
 		return part
 	end
 
-	-- ── AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
+	local muzzleZ, barrelY
+
+	if awpInfo then
+		-- ── Echtes texturiertes AWP-Mesh (Studio-Template) ──
+		local body = mkPart({ size = Vector3.new(0.5, 1.2, awpInfo.length), color = skin.body, name = "Body" })
+		local mesh = Instance.new("SpecialMesh")
+		mesh.Name = "BodyMesh"
+		mesh.MeshType = Enum.MeshType.FileMesh
+		mesh.MeshId = awpInfo.meshId
+		mesh.TextureId = awpInfo.textureId
+		mesh.Scale = Vector3.new(awpInfo.scale, awpInfo.scale, awpInfo.scale)
+		mesh.VertexColor = tintFor(skin)
+		mesh.Parent = body
+		weldTo(handle, body, CFrame.new(0, 0.05, -0.6) * awpInfo.rot)
+
+		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05
+		barrelY = 0.12
+
+		-- Akzent: Unterlauf-Glow-Strip (trägt die Skin-Farbe sichtbar)
+		accent(weldTo(handle, mkPart({
+			size = Vector3.new(0.07, 0.07, awpInfo.length * 0.38),
+			color = skin.accent, material = accentMat,
+		}), CFrame.new(0, 0.05 - awpInfo.height / 2 - 0.05, -0.8)))
+	else
+	-- ── Part-Fallback: AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
 	local furnMat  = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
 	local furnRefl = (fx.metallic and not fx.neon) and 0.25 or 0
 	local function furniture(size, cf, name)
@@ -139,8 +188,8 @@ function SniperBuilder.buildTool(skin)
 		metal(Vector3.new(0.06, 0.1, 0.26), CFrame.new(side * 0.13, 0.18, -3.95))
 	end
 
-	local muzzleZ = -4.16
-	local barrelY = 0.18
+	muzzleZ = -4.16
+	barrelY = 0.18
 
 	-- ── Das große AWP-Scope ──
 	local scopeY = 0.62
@@ -162,6 +211,7 @@ function SniperBuilder.buildTool(skin)
 	for _, z in ipairs({ -0.55, 0.5 }) do
 		metal(Vector3.new(0.12, 0.3, 0.16), CFrame.new(0, scopeY - 0.22, z))
 	end
+	end   -- Ende Part-Fallback
 
 	-- ── Mündung: Marker (Shot-Origin) + Glow-Ring bei Legendary+ ──
 	local muzzle = mkPart({

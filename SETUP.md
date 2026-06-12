@@ -41,14 +41,34 @@ rojo serve                          # oder live in Studio syncen
 - **Treppe hinten**: Handelshalle (Kioske öffnen den Handelsplatz, Live-Ticker)
 - **👑-Button**: Prime-Status-Menü (Gamepass-ID in Config.lua)
 
-## Die AWP
+## Die AWP — echtes Modell aktivieren (1x ziehen!)
 
-Das Gewehr ist eine **prozedurale AWP-Silhouette in CS:GO-Proportionen**
-(skeletierter Schaft, Bolt, Magazin, langer Lauf mit Mündungsbremse, großes
-Scope). **Rechtsklick zoomt mit CS-Scope-Overlay**: kreisrundes Scope-Bild
-mit Fadenkreuz + Mil-Dots, Waffe wird ausgeblendet, FOV 16, langsameres
-Laufen. Der Schuss klingt nach AWP: echte CS-Ports wenn ladbar, sonst ein
-gelayerter Knall aus garantierten Sounds (Gewehr-Boom + Bass + Crack-Tail).
+**So bekommst du die echte texturierte CS-AWP** (einmalig, 30 Sekunden):
+
+1. In Studio: **Toolbox** öffnen → Suche **"AWP sniper"** (Modell-ID
+   `13638913296`, das olivgrüne mit Scope + Bipod von Jezza19870).
+2. Ins Spiel einfügen, dann im Explorer nach
+   **`ReplicatedStorage → Assets`** ziehen (Ordner "Assets" anlegen, falls
+   nicht da) und das Modell **`Awp`** nennen.
+3. Fertig — der Server vermisst das Modell automatisch (Größe, Lauf-Richtung)
+   und baut ALLE Skins daraus (VertexColor-Tints auf der echten Textur;
+   Klassik-Tarn = Original-Look). Das geht sogar während einer laufenden
+   Test-Session — Hinweis erscheint im Spiel.
+
+> Warum manuell? `InsertService:LoadAsset` ist in Spielen permission-gesperrt;
+> durch das Reinziehen bakt Studio Mesh + Textur in DEINEN Platz — danach
+> lädt es garantiert. Ohne Template läuft automatisch die eingebaute
+> Part-AWP-Silhouette (CS:GO-Proportionen).
+
+**Scope:** Rechtsklick = CS-Style-Overlay (kreisrundes Scope-Bild, Fadenkreuz
+mit Mil-Dots, Waffe ausgeblendet, FOV 16, langsameres Laufen).
+**Sound:** echte CS-AWP-Ports wenn ladbar, sonst gelayerter Knall
+(Gewehr-Boom + Bass + Crack-Tail) — nie wieder dünner Peitschenklatscher.
+
+**Wichtig beim Testen:** Nach jedem `git pull` die NEUE `HatchSnipers.rbxlx`
+öffnen oder per `rojo serve` in deinen gespeicherten Platz syncen — alte
+Platz-Kopien enthalten alten Code (die Build-Version steht unten rechts im
+HUD).
 
 ## Projektstruktur
 

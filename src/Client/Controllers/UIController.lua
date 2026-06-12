@@ -143,6 +143,11 @@ local rankLabel = label(hud, "RANG: —", UDim2.new(1, -16, 0, 20), UDim2.new(0,
 local luckLabel = label(hud, "", UDim2.new(1, -16, 0, 20), UDim2.new(0, 12, 0, 78),
 	{ color = C.green, textSize = 14 })
 
+-- Build-Version (unten rechts) — zeigt sofort, ob der neueste Stand läuft
+local versionLbl = label(screenGui, Config.VERSION, UDim2.new(0, 220, 0, 18), UDim2.new(1, -232, 1, -22),
+	{ color = C.textDim, textSize = 12, align = Enum.TextXAlignment.Right, stroke = 0.6 })
+versionLbl.ZIndex = 5
+
 -- ── Crosshair + Scope + Cooldown-Bar ──────────────────────────────────────────
 local crosshair = label(screenGui, "+", UDim2.new(0, 40, 0, 40), UDim2.new(0.5, -20, 0.5, -20),
 	{ color = Color3.fromRGB(255, 255, 255), textSize = 26, align = Enum.TextXAlignment.Center, stroke = 0.4 })
