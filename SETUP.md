@@ -41,24 +41,31 @@ rojo serve                          # oder live in Studio syncen
 - **Treppe hinten**: Handelshalle (Kioske öffnen den Handelsplatz, Live-Ticker)
 - **👑-Button**: Prime-Status-Menü (Gamepass-ID in Config.lua)
 
-## Die AWP — echtes Modell aktivieren (1x ziehen!)
+## Die AWP — echtes CS-Modell aktivieren (einmalig, 20 Sekunden)
 
-**So bekommst du die echte texturierte CS-AWP** (einmalig, 30 Sekunden):
+**Variante A — Einzeiler (am schnellsten):** In Studio im **Edit-Modus**
+(nicht während Play!) unten die **Befehlsleiste** öffnen (Ansicht →
+Befehlsleiste), diese Zeile einfügen und Enter drücken:
 
-1. In Studio: **Toolbox** öffnen → Suche **"AWP sniper"** (Modell-ID
-   `13638913296`, das olivgrüne mit Scope + Bipod von Jezza19870).
-2. Ins Spiel einfügen, dann im Explorer nach
-   **`ReplicatedStorage → Assets`** ziehen (Ordner "Assets" anlegen, falls
-   nicht da) und das Modell **`Awp`** nennen.
-3. Fertig — der Server vermisst das Modell automatisch (Größe, Lauf-Richtung)
-   und baut ALLE Skins daraus (VertexColor-Tints auf der echten Textur;
-   Klassik-Tarn = Original-Look). Das geht sogar während einer laufenden
-   Test-Session — Hinweis erscheint im Spiel.
+```lua
+local m=game:GetService("InsertService"):LoadAsset(13638913296):GetChildren()[1] local f=game.ReplicatedStorage:FindFirstChild("Assets") or Instance.new("Folder") f.Name="Assets" f.Parent=game.ReplicatedStorage m.Name="Awp" m.Parent=f print("AWP-Template installiert ✔")
+```
 
-> Warum manuell? `InsertService:LoadAsset` ist in Spielen permission-gesperrt;
-> durch das Reinziehen bakt Studio Mesh + Textur in DEINEN Platz — danach
-> lädt es garantiert. Ohne Template läuft automatisch die eingebaute
-> Part-AWP-Silhouette (CS:GO-Proportionen).
+Danach den Platz **speichern** (Ctrl+S) — fertig für immer.
+
+**Variante B — Toolbox:** Suche **"AWP sniper"** (ID `13638913296`),
+einfügen, im Explorer nach **`ReplicatedStorage → Assets`** ziehen und
+**`Awp`** nennen. Speichern.
+
+Beim nächsten Play vermisst der Server das Modell automatisch (Größe,
+Lauf-Richtung per Raycast-Probe) und baut **alle Skins** aus dem echten
+texturierten AWP (Klassik-Tarn = Original-Look, Rest = VertexColor-Tints).
+Im Spiel bestätigt „🔫 Echtes AWP-Modell aktiv!" den Erfolg.
+
+> Hintergrund: Zur Laufzeit blockt Roblox `LoadAsset` für fremde Assets —
+> die Befehlsleiste/Toolbox haben aber Studio-Rechte. Einmal eingefügt ist
+> Mesh + Textur fest in deinem Platz gebakt. Ohne Template läuft die
+> eingebaute Part-AWP als Fallback.
 
 **Scope:** Rechtsklick = CS-Style-Overlay (kreisrundes Scope-Bild, Fadenkreuz
 mit Mil-Dots, Waffe ausgeblendet, FOV 16, langsameres Laufen).

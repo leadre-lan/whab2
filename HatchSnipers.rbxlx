@@ -3229,7 +3229,7 @@ local function watchForAwpTemplate()
 					if SniperBuilder.hasAwpMesh() then return end
 					for _, p in ipairs(Players:GetPlayers()) do
 						net.Notify:FireClient(p,
-							"💡 Echte AWP: Toolbox 'AWP sniper' nach ReplicatedStorage/Assets/Awp ziehen")
+							"💡 Echte AWP fehlt! Einzeiler aus SETUP.md in die Studio-Befehlsleiste kopieren")
 					end
 				end)
 			end
