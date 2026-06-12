@@ -20,13 +20,16 @@ function WeaponService.setArenaService(svc)
 	arenaService = svc
 end
 
--- ── Echtes AWP-Mesh via Studio-Template ───────────────────────────────────────
--- Einmalig in Studio: Toolbox-Modell "AWP sniper" (13638913296) nach
--- ReplicatedStorage/Assets/Awp ziehen. Dadurch bakt Roblox Mesh + Textur in
--- den Platz (keine LoadAsset-Permissions nötig). Hier wird das Template
--- vermessen: MeshSize liefert die nativen Maße, eine Raycast-Probe findet die
--- Mündung (dünnes Ende) — danach rendern ALLE Skins das echte AWP.
+-- ── Echtes AWP-Mesh: Template ODER Auto-Load aus dem Creator Store ────────────
+-- 1) Studio-Template: Toolbox-Modell "AWP sniper" (13638913296) nach
+--    ReplicatedStorage/Assets/Awp ziehen (bakt Mesh+Textur fest in den Platz).
+-- 2) Auto-Load: freie Creator-Store-Assets sind via InsertService:LoadAsset
+--    ladbar (in Studio immer) — wird beim Start automatisch versucht.
+-- 3) Fallback: prozedurale Part-AWP.
+-- Das gefundene MeshPart wird vermessen (MeshSize + Raycast-Probe für die
+-- Mündung) — danach rendern ALLE Skins das echte texturierte AWP.
 local AWP_TARGET_LEN = 5.2
+local AWP_STORE_IDS  = { 13638913296, 504829517 }   -- "AWP sniper", "[L4D2] AWP"
 local AXES = { Vector3.xAxis, Vector3.yAxis, Vector3.zAxis }
 
 local function probeEndHits(meshPart, axis, sign, otherA, otherB)
@@ -48,14 +51,10 @@ local function probeEndHits(meshPart, axis, sign, otherA, otherB)
 	return hits
 end
 
-local function trySetupAwpTemplate()
-	local assets = RS:FindFirstChild("Assets")
-	local tpl = assets and assets:FindFirstChild("Awp")
-	if not tpl then return false end
-	local mp = tpl:IsA("MeshPart") and tpl or tpl:FindFirstChildWhichIsA("MeshPart", true)
+-- Vermisst ein AWP-MeshPart und aktiviert den Mesh-Pfad im SniperBuilder
+local function setupFromMeshPart(mp)
 	if not mp or mp.MeshId == "" then return false end
 
-	-- Messklon in nativen Proportionen
 	local probe = mp:Clone()
 	probe:ClearAllChildren()
 	local ms = probe.MeshSize
@@ -93,19 +92,51 @@ local function trySetupAwpTemplate()
 		length    = AWP_TARGET_LEN,
 		height    = upAxis:Dot(ms) * scale,
 	})
-	print(("[WeaponService] Echtes AWP-Template aktiv (Mesh %s, %.1f Studs nativ)")
+	print(("[WeaponService] Echtes AWP aktiv (Mesh %s, %.1f Studs nativ)")
 		:format(mp.MeshId, nativeLen))
 	return true
 end
 
--- Template darf auch WÄHREND einer Test-Session reingezogen werden:
--- Retry-Loop, danach bekommen alle ihre Waffe neu gebaut.
+local function trySetupAwpTemplate()
+	local assets = RS:FindFirstChild("Assets")
+	local tpl = assets and assets:FindFirstChild("Awp")
+	if not tpl then return false end
+	local mp = tpl:IsA("MeshPart") and tpl or tpl:FindFirstChildWhichIsA("MeshPart", true)
+	return setupFromMeshPart(mp)
+end
+
+local function trySetupAwpFromStore()
+	local InsertService = game:GetService("InsertService")
+	for _, assetId in ipairs(AWP_STORE_IDS) do
+		local ok, asset = pcall(function()
+			return InsertService:LoadAsset(assetId)
+		end)
+		if ok and asset then
+			local mp = asset:FindFirstChildWhichIsA("MeshPart", true)
+			local done = mp and setupFromMeshPart(mp)
+			asset:Destroy()
+			if done then return true end
+		end
+	end
+	return false
+end
+
+-- Reihenfolge: Template (falls vorhanden) → Auto-Load aus dem Store →
+-- weiter beobachten (Template darf auch WÄHREND einer Session reingezogen
+-- werden). Sobald aktiv: alle Waffen neu bauen.
 local function watchForAwpTemplate()
 	task.spawn(function()
 		local hinted = false
+		local storeTried = false
 		while not SniperBuilder.hasAwpMesh() do
-			local ok = pcall(trySetupAwpTemplate)
-			if ok and SniperBuilder.hasAwpMesh() then
+			pcall(trySetupAwpTemplate)
+
+			if not SniperBuilder.hasAwpMesh() and not storeTried then
+				storeTried = true
+				pcall(trySetupAwpFromStore)
+			end
+
+			if SniperBuilder.hasAwpMesh() then
 				for _, p in ipairs(Players:GetPlayers()) do
 					if dataService.get(p) then
 						WeaponService.giveWeapon(p)
@@ -116,6 +147,7 @@ local function watchForAwpTemplate()
 				end
 				return
 			end
+
 			if not hinted then
 				hinted = true
 				task.delay(8, function()
