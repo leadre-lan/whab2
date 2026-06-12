@@ -72,6 +72,27 @@ mit Mil-Dots, Waffe ausgeblendet, FOV 16, langsameres Laufen).
 **Sound:** echte CS-AWP-Ports wenn ladbar, sonst gelayerter Knall
 (Gewehr-Boom + Bass + Crack-Tail) — nie wieder dünner Peitschenklatscher.
 
+## ⚠ Für ECHTE Texturen im Live-Spiel: Mesh-/Bild-APIs aktivieren!
+
+Alle Skin- und Umgebungs-Texturen werden zur Laufzeit per **EditableImage**
+generiert. In Studio läuft das immer — im VERÖFFENTLICHTEN Spiel blockt
+Roblox die API, solange dieser Haken fehlt:
+
+**Creator Hub → dein Spiel → Inhaltseinstellungen → APIs →
+„Mesh-/Bild-APIs aktivieren" ✓** (Nutzungsbedingungen bestätigen)
+
+Ohne den Haken sind Waffen und Boden im Live-Spiel nur eingefärbt statt
+texturiert. Zusätzlich braucht das Waffen-Mesh das AWP-Template
+(Einzeiler oben) — die Skin-Texturen liegen auf dem echten AWP-Modell.
+
+## Mobile-Steuerung
+
+Auf Touch-Geräten gibt es eigene **FEUER- (🔫)** und **SCOPE-Buttons (⊕)**
+unten rechts — ein Tap auf den Bildschirm schießt absichtlich NICHT (sonst
+würde jede Kameradrehung feuern). Gezielt wird über die Bildmitte
+(Fadenkreuz). Im Scope wird zusätzlich die Maus-Empfindlichkeit aufs FOV
+runterskaliert und in die Ego-Sicht gewechselt — kein Zappeln mehr.
+
 ## Grafik maximal stellen (wichtig gegen den "Pixel-Look"!)
 
 Roblox rendert PBR-Materialien, weiche Schatten und Reflexionen erst auf
