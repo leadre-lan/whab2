@@ -15,6 +15,10 @@
     },
     "ReplicatedStorage": {
       "$className": "ReplicatedStorage",
+      "Assets": {
+        "$className": "Folder",
+        "Awp": { "$path": "assets/Awp.model.json" }
+      },
       "Shared": {
         "$className": "Folder",
         "Config":        { "$path": "src/Shared/Config.lua" },

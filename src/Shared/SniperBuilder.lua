@@ -115,6 +115,28 @@ function SniperBuilder.buildTool(skin)
 		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05
 		barrelY = 0.12
 
+		-- Aufgesetztes Scope (das gebakte Mesh ist der nackte AWP-Körper)
+		local scopeY = 0.58
+		local METALDARK = Color3.fromRGB(30, 30, 36)
+		weldTo(handle, mkPart({ size = Vector3.new(1.5, 0.26, 0.26), color = METALDARK,
+			material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeTube" }),
+			CFrame.new(0, scopeY, -0.2) * CFrame.Angles(0, math.rad(90), 0))
+		weldTo(handle, mkPart({ size = Vector3.new(0.38, 0.4, 0.4), color = METALDARK,
+			material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeBell" }),
+			CFrame.new(0, scopeY, -1.04) * CFrame.Angles(0, math.rad(90), 0))
+		weldTo(handle, mkPart({ size = Vector3.new(0.26, 0.3, 0.3), color = METALDARK,
+			material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeEye" }),
+			CFrame.new(0, scopeY, 0.66) * CFrame.Angles(0, math.rad(90), 0))
+		accent(weldTo(handle, mkPart({ size = Vector3.new(0.06, 0.3, 0.3), color = skin.accent,
+			material = fx.neon and Enum.Material.Neon or Enum.Material.Glass,
+			shape = Enum.PartType.Cylinder, name = "Lens" }),
+			CFrame.new(0, scopeY, -1.25) * CFrame.Angles(0, math.rad(90), 0)))
+		for _, z in ipairs({ -0.65, 0.35 }) do
+			weldTo(handle, mkPart({ size = Vector3.new(0.1, 0.3, 0.14), color = METALDARK,
+				material = Enum.Material.Metal }),
+				CFrame.new(0, scopeY - 0.2, z))
+		end
+
 		-- Akzent: kurzer Glow-Strip am Vorderschaft (feste Position — die
 		-- berechnete Mesh-Höhe hat je nach Modell durch die Waffe geclippt)
 		accent(weldTo(handle, mkPart({

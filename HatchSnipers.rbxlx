@@ -16,9 +16,34 @@
     </Properties>
     <Item class="Folder" referent="2">
       <Properties>
+        <string name="Name">Assets</string>
+      </Properties>
+      <Item class="MeshPart" referent="3">
+        <Properties>
+          <string name="Name">Awp</string>
+          <bool name="Anchored">true</bool>
+          <bool name="CanCollide">false</bool>
+          <bool name="CanQuery">false</bool>
+          <bool name="CastShadow">false</bool>
+          <Content name="MeshContent">
+            <uri>rbxassetid://430546128</uri>
+          </Content>
+          <Vector3 name="size">
+            <X>0.374</X>
+            <Y>1.04</Y>
+            <Z>5.2</Z>
+          </Vector3>
+          <Content name="TextureContent">
+            <uri>rbxassetid://430548989</uri>
+          </Content>
+        </Properties>
+      </Item>
+    </Item>
+    <Item class="Folder" referent="4">
+      <Properties>
         <string name="Name">Shared</string>
       </Properties>
-      <Item class="ModuleScript" referent="3">
+      <Item class="ModuleScript" referent="5">
         <Properties>
           <string name="Name">Assets</string>
           <string name="Source"><![CDATA[-- Assets.lua — Zentrales Register aller externen Roblox-Assets.
@@ -162,14 +187,14 @@ return Assets
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="4">
+      <Item class="ModuleScript" referent="6">
         <Properties>
           <string name="Name">Config</string>
           <string name="Source"><![CDATA[-- Config.lua — Alle Spielwerte von Hatch Snipers an einem Ort.
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.3.1 — Template-Erkennung robust"
+Config.VERSION = "v1.4 — AWP fest eingebaut"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -274,7 +299,7 @@ return Config
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="5">
+      <Item class="ModuleScript" referent="7">
         <Properties>
           <string name="Name">SkinTextures</string>
           <string name="Source"><![CDATA[-- SkinTextures.lua — Prozedurale Skin-Texturen (CS-Style: Fade, Galaxie,
@@ -629,7 +654,7 @@ return SkinTextures
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="6">
+      <Item class="ModuleScript" referent="8">
         <Properties>
           <string name="Name">Skins</string>
           <string name="Source"><![CDATA[-- Skins.lua — Der komplette Skin-Katalog inkl. Drop-Chancen.
@@ -779,7 +804,7 @@ return Skins
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="7">
+      <Item class="ModuleScript" referent="9">
         <Properties>
           <string name="Name">SniperBuilder</string>
           <string name="Source"><![CDATA[-- SniperBuilder.lua — Baut das Sniper-Modell für einen Skin (server-seitig,
@@ -898,6 +923,28 @@ function SniperBuilder.buildTool(skin)
 
 		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05
 		barrelY = 0.12
+
+		-- Aufgesetztes Scope (das gebakte Mesh ist der nackte AWP-Körper)
+		local scopeY = 0.58
+		local METALDARK = Color3.fromRGB(30, 30, 36)
+		weldTo(handle, mkPart({ size = Vector3.new(1.5, 0.26, 0.26), color = METALDARK,
+			material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeTube" }),
+			CFrame.new(0, scopeY, -0.2) * CFrame.Angles(0, math.rad(90), 0))
+		weldTo(handle, mkPart({ size = Vector3.new(0.38, 0.4, 0.4), color = METALDARK,
+			material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeBell" }),
+			CFrame.new(0, scopeY, -1.04) * CFrame.Angles(0, math.rad(90), 0))
+		weldTo(handle, mkPart({ size = Vector3.new(0.26, 0.3, 0.3), color = METALDARK,
+			material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeEye" }),
+			CFrame.new(0, scopeY, 0.66) * CFrame.Angles(0, math.rad(90), 0))
+		accent(weldTo(handle, mkPart({ size = Vector3.new(0.06, 0.3, 0.3), color = skin.accent,
+			material = fx.neon and Enum.Material.Neon or Enum.Material.Glass,
+			shape = Enum.PartType.Cylinder, name = "Lens" }),
+			CFrame.new(0, scopeY, -1.25) * CFrame.Angles(0, math.rad(90), 0)))
+		for _, z in ipairs({ -0.65, 0.35 }) do
+			weldTo(handle, mkPart({ size = Vector3.new(0.1, 0.3, 0.14), color = METALDARK,
+				material = Enum.Material.Metal }),
+				CFrame.new(0, scopeY - 0.2, z))
+		end
 
 		-- Akzent: kurzer Glow-Strip am Vorderschaft (feste Position — die
 		-- berechnete Mesh-Höhe hat je nach Modell durch die Waffe geclippt)
@@ -1058,7 +1105,7 @@ return SniperBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="8">
+      <Item class="ModuleScript" referent="10">
         <Properties>
           <string name="Name">UITheme</string>
           <string name="Source"><![CDATA[-- UITheme.lua — Design-System (dunkles Cyber-Theme passend zur Neon-Lobby)
@@ -1107,11 +1154,11 @@ return UITheme
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="9">
+  <Item class="ServerScriptService" referent="11">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Script" referent="10">
+    <Item class="Script" referent="12">
       <Properties>
         <string name="Name">Server</string>
         <token name="RunContext">0</token>
@@ -1205,11 +1252,11 @@ print("[HatchSnipers] Server bereit — GLHF!")
 ]]></string>
       </Properties>
     </Item>
-    <Item class="Folder" referent="11">
+    <Item class="Folder" referent="13">
       <Properties>
         <string name="Name">Services</string>
       </Properties>
-      <Item class="ModuleScript" referent="12">
+      <Item class="ModuleScript" referent="14">
         <Properties>
           <string name="Name">ArenaService</string>
           <string name="Source"><![CDATA[-- ArenaService.lua — 1v1-Sniper-Arenen: Queue, Match-Loop, Respawns, Rewards
@@ -1909,7 +1956,7 @@ return ArenaService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="13">
+      <Item class="ModuleScript" referent="15">
         <Properties>
           <string name="Name">BotService</string>
           <string name="Source"><![CDATA[-- BotService.lua — Trainings-Bot für 1v1: R6-Rig, Sniper, simple Duell-KI.
@@ -2152,7 +2199,7 @@ return BotService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="14">
+      <Item class="ModuleScript" referent="16">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[-- DataService.lua — Laden/Speichern/Replizieren der Spielerdaten
@@ -2296,7 +2343,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="15">
+      <Item class="ModuleScript" referent="17">
         <Properties>
           <string name="Name">EggService</string>
           <string name="Source"><![CDATA[-- EggService.lua — Hatch-Logik, Luck Potion (Dev-Product), Daily Reward
@@ -2430,7 +2477,7 @@ return EggService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="16">
+      <Item class="ModuleScript" referent="18">
         <Properties>
           <string name="Name">LobbyService</string>
           <string name="Source"><![CDATA[-- LobbyService.lua — Neon-Cyber-Mythos-Hauptlobby:
@@ -3179,7 +3226,7 @@ return LobbyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="17">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">PrimeService</string>
           <string name="Source"><![CDATA[-- PrimeService.lua — Prime Status (Gamepass): exklusiver Skin + Aura,
@@ -3289,7 +3336,7 @@ return PrimeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- TradeService.lua — Skin-Trading zwischen Spielern.
@@ -3513,7 +3560,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- WeaponService.lua — Server-autoritatives Schießen + Skin-Equip.
@@ -3580,7 +3627,11 @@ local function setupFromMeshPart(mp)
 		probe:Destroy()
 		return false
 	end
-	probe.Size = ms
+	-- Native PROPORTIONEN, aber auf 100 Studs normiert — manche Meshes sind
+	-- nativ >3000 Studs und würden am 2048er-Part-Limit clippen (verfälschte
+	-- Proportionen → falsche Lauf-Erkennung)
+	local norm = 100 / math.max(ms.X, ms.Y, ms.Z)
+	probe.Size = ms * norm
 	probe.Anchored = true
 	probe.CanCollide = false
 	probe.Transparency = 1
@@ -3945,15 +3996,15 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="20">
+  <Item class="StarterPlayer" referent="22">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="21">
+    <Item class="StarterPlayerScripts" referent="23">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="22">
+      <Item class="LocalScript" referent="24">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[-- Client.client.lua — Hatch Snipers: Entry Point, Musik, Lighting, Event-Routing
@@ -4224,11 +4275,11 @@ print("[HatchSnipers] Client bereit.")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="23">
+      <Item class="Folder" referent="25">
         <Properties>
           <string name="Name">Controllers</string>
         </Properties>
-        <Item class="ModuleScript" referent="24">
+        <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">EffectsController</string>
             <string name="Source"><![CDATA[-- EffectsController.lua — Tracer, Screenflash, Godly-Puls, Ei-Schweben, Juice
@@ -4404,7 +4455,7 @@ return EffectsController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="25">
+        <Item class="ModuleScript" referent="27">
           <Properties>
             <string name="Name">UIController</string>
             <string name="Source"><![CDATA[-- UIController.lua — HUD, Ei-/Inventar-UI (mit offengelegten Odds), Hatch-
@@ -5365,7 +5416,7 @@ return UIController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="26">
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">WeaponController</string>
             <string name="Source"><![CDATA[-- WeaponController.lua — Schießen, Scope-Zoom, Slide, Mobile-Buttons

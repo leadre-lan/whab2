@@ -2,7 +2,7 @@
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.3.1 — Template-Erkennung robust"
+Config.VERSION = "v1.4 — AWP fest eingebaut"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"

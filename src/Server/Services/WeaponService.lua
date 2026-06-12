@@ -62,7 +62,11 @@ local function setupFromMeshPart(mp)
 		probe:Destroy()
 		return false
 	end
-	probe.Size = ms
+	-- Native PROPORTIONEN, aber auf 100 Studs normiert — manche Meshes sind
+	-- nativ >3000 Studs und würden am 2048er-Part-Limit clippen (verfälschte
+	-- Proportionen → falsche Lauf-Erkennung)
+	local norm = 100 / math.max(ms.X, ms.Y, ms.Z)
+	probe.Size = ms * norm
 	probe.Anchored = true
 	probe.CanCollide = false
 	probe.Transparency = 1
