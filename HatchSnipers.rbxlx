@@ -2540,6 +2540,24 @@ local function glyphRow(parent, originCF, count, color, rng)
 	end
 end
 
+-- Bogen aus Segmenten (vertikale Halbkreis-Architektur statt Kastenbalken —
+-- runde Formen nehmen der Lobby den Klötzchen-Look)
+local function buildArc(folder, cx, cy, cz, radius, fromDeg, toDeg, segments, thickness, depth, color, material)
+	for i = 0, segments - 1 do
+		local a0 = math.rad(fromDeg + (toDeg - fromDeg) * i / segments)
+		local a1 = math.rad(fromDeg + (toDeg - fromDeg) * (i + 1) / segments)
+		local mid = (a0 + a1) / 2
+		local chord = 2 * radius * math.sin((a1 - a0) / 2) + 0.25
+		part({
+			size = Vector3.new(chord, thickness, depth),
+			cframe = CFrame.new(cx + math.cos(mid) * radius, cy + math.sin(mid) * radius, cz)
+				* CFrame.Angles(0, 0, mid + math.rad(90)),
+			material = material or Enum.Material.Slate,
+			color = color,
+		}, folder)
+	end
+end
+
 -- ── Omega-Gehäuse (Case-Opening-Terminal, Mitte-Rechts) ───────────────────────
 local function buildOmegaCase(folder)
 	local egg = Config.EGGS.omega
@@ -2926,24 +2944,6 @@ local function refreshLeaderboard()
 			lbl.Text = "—"
 			lbl.TextColor3 = Color3.fromRGB(120, 126, 145)
 		end
-	end
-end
-
--- Bogen aus Segmenten (vertikale Halbkreis-Architektur statt Kastenbalken —
--- runde Formen nehmen der Lobby den Klötzchen-Look)
-local function buildArc(folder, cx, cy, cz, radius, fromDeg, toDeg, segments, thickness, depth, color, material)
-	for i = 0, segments - 1 do
-		local a0 = math.rad(fromDeg + (toDeg - fromDeg) * i / segments)
-		local a1 = math.rad(fromDeg + (toDeg - fromDeg) * (i + 1) / segments)
-		local mid = (a0 + a1) / 2
-		local chord = 2 * radius * math.sin((a1 - a0) / 2) + 0.25
-		part({
-			size = Vector3.new(chord, thickness, depth),
-			cframe = CFrame.new(cx + math.cos(mid) * radius, cy + math.sin(mid) * radius, cz)
-				* CFrame.Angles(0, 0, mid + math.rad(90)),
-			material = material or Enum.Material.Slate,
-			color = color,
-		}, folder)
 	end
 end
 
