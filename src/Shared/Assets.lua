@@ -10,23 +10,15 @@
 
 local Assets = {}
 
--- ── Waffen-Modell (verifiziert + IMMER ladbar) ────────────────────────────────
--- Mesh + Textur aus Robloxs eigenem Gear "Trench Warfare Shotgun" (94233344):
--- klassisches Langgewehr mit Holzschaft/Metall-Textur. Roblox-eigene Assets
--- laden in JEDEM Spiel ohne Berechtigung (anders als LoadAsset/Creator-Store!).
--- Maße offline aus der Mesh-Datei geparst: Lauf liegt entlang -Z (dünnes,
--- hohes Ende = Mündung), 6.53 Studs lang bei Scale 1 — passt 1:1 zur
--- Handle-Konvention des SniperBuilders (Schussrichtung = -Z).
-Assets.WEAPON = {
-	meshId    = "rbxassetid://94219391",
-	textureId = "rbxassetid://94219470",
-	length    = 6.53,    -- native Länge (Studs bei Scale 1)
-	height    = 1.50,
-	barrelY   = 0.31,    -- Lauf-Mittelhöhe (bereits auf Ziel-Scale 0.735 gerechnet)
-}
+-- Das Waffen-Modell ist eine prozedurale AWP-Silhouette (SniperBuilder) —
+-- nach mehreren Mesh-Anläufen (LoadAsset-Permissions, SpecialMesh-Fallstricke)
+-- ist das die einzige Variante, die GARANTIERT überall korrekt aussieht und
+-- sich pro Skin frei einfärben lässt.
 
 Assets.SFX = {
 	Shot      = "rbxassetid://9126213373",  -- Fallback: Whip Crack (verifiziert)
+	GunBoom   = "rbxassetid://94191736",    -- Roblox-Gear-FireSound (garantiert) — Layer 1
+	Boom      = "rbxassetid://9125404320",  -- Deep Boom Impact (verifiziert) — Layer 2
 	Bolt      = "rbxassetid://9114004212",  -- Fallback: Crossbow Latch
 	Magazine  = "rbxassetid://9113104176",  -- Ammo Magazine (Equip-Sound)
 	EggCrack  = "rbxassetid://9113959337",  -- Crack Egg Crunchy 10
@@ -38,14 +30,14 @@ Assets.SFX = {
 	Teleport  = "rbxassetid://9116394545",  -- Magic Glow (Arena-Teleport)
 }
 
--- Echte AWP-Sounds (CS-Ports) zuerst; danach die GARANTIERT ladbaren Sounds
--- aus Robloxs eigenem Trench-Warfare-Gear (Fire/Pump); zuletzt greift sowieso
--- der verifizierte Assets.SFX-Fallback. Client testet per PreloadAsync.
+-- Echte AWP-Sounds (CS-Ports) zuerst — wenn einer lädt, spielt der Client ihn
+-- pur (authentisch). Lädt keiner, baut der Client den AWP-Knall als LAYERING
+-- aus garantierten Sounds nach: Gewehr-Boom + Deep-Boom + Crack-Tail
+-- (EffectsController.playShotSound prüft Assets.RESOLVED.Shot).
 Assets.SFX_PREFERRED = {
 	Shot = {
 		"rbxassetid://138705939667182",  -- Awp_Fire (CS:GO-Port)
 		"rbxassetid://131254751896361",  -- awp fire 1.6
-		"rbxassetid://94191736",         -- Trench-Rifle FireSound (Roblox — garantiert)
 	},
 	Bolt = {
 		"rbxassetid://133852631085337",  -- Awp_BoltPull (CS CZ:DS)
@@ -53,6 +45,9 @@ Assets.SFX_PREFERRED = {
 		"rbxassetid://94191778",         -- Trench-Rifle PumpSound (Roblox — garantiert)
 	},
 }
+
+-- Merkt sich pro Key, ob eine bevorzugte ID geladen werden konnte
+Assets.RESOLVED = {}
 
 -- Client-seitig: bevorzugte IDs testen, erste ladbare gewinnt (sonst Fallback)
 function Assets.resolveSfx()
@@ -68,6 +63,7 @@ function Assets.resolveSfx()
 				end)
 				if status == Enum.AssetFetchStatus.Success then
 					Assets.SFX[key] = id
+					Assets.RESOLVED[key] = true
 					return
 				end
 			end
@@ -131,7 +127,7 @@ function Assets.play2D(soundId, volume, pitch)
 end
 
 function Assets.preloadList()
-	local list = { Assets.WEAPON.meshId, Assets.WEAPON.textureId }
+	local list = {}
 	for _, id in pairs(Assets.SFX) do
 		table.insert(list, id)
 	end

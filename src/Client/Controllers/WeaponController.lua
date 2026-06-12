@@ -18,7 +18,19 @@ local uiCtrl   = nil
 local lastShot   = 0
 local scoped     = false
 local BASE_FOV   = 70
-local SCOPE_FOV  = 22
+local SCOPE_FOV  = 16   -- AWP-Zoomstufe
+
+-- Waffe im Scope lokal ausblenden (CS-Style: man sieht nur das Scope-Bild)
+local function setWeaponHidden(hidden)
+	local char = player.Character
+	local tool = char and char:FindFirstChild("Sniper")
+	if not tool then return end
+	for _, p in ipairs(tool:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.LocalTransparencyModifier = hidden and 1 or 0
+		end
+	end
+end
 
 -- ── Scope ─────────────────────────────────────────────────────────────────────
 local function setScoped(state)
@@ -26,11 +38,12 @@ local function setScoped(state)
 	scoped = state
 	local camera = workspace.CurrentCamera
 	if camera then
-		TweenService:Create(camera, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+		TweenService:Create(camera, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
 			FieldOfView = state and SCOPE_FOV or BASE_FOV,
 		}):Play()
 	end
 	if uiCtrl then uiCtrl.setScopeVisible(state) end
+	setWeaponHidden(state)
 
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")

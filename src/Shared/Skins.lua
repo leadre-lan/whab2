@@ -25,8 +25,8 @@ Skins.TIERS = {
 -- material überschreibt das Tier-Standard-Material (optional).
 Skins.CATALOG = {
 	-- ── Common ──
-	-- keepTexture: behält die Original-AWP-Textur des Mesh-Modells
-	{ id = "standard",  name = "Klassik-Tarn",  tier = "Common", body = Color3.fromRGB(95, 98, 105),   accent = Color3.fromRGB(120, 130, 80), keepTexture = true },
+	-- "standard": die klassische AWP-Lackierung (olivgrünes Furniture)
+	{ id = "standard",  name = "Klassik-Tarn",  tier = "Common", body = Color3.fromRGB(99, 110, 76),   accent = Color3.fromRGB(62, 70, 50) },
 	{ id = "holz",      name = "Holz",          tier = "Common", body = Color3.fromRGB(130, 95, 60),   accent = Color3.fromRGB(90, 64, 40),  material = Enum.Material.Wood },
 	{ id = "beton",     name = "Beton",         tier = "Common", body = Color3.fromRGB(140, 140, 135), accent = Color3.fromRGB(110, 110, 105), material = Enum.Material.Concrete },
 	{ id = "khaki",     name = "Khaki",         tier = "Common", body = Color3.fromRGB(125, 125, 90),  accent = Color3.fromRGB(90, 92, 60) },

@@ -4,21 +4,22 @@ Alle externen Roblox-Assets leben in **`src/Shared/Assets.lua`** bzw.
 `Config.lua` (Waffen-Mesh). Jede ID wurde am 2026-06-11 über die Roblox-APIs
 geprüft.
 
-## Waffen-Modell (Roblox-eigenes Gear — lädt GARANTIERT überall)
+## Waffen-Modell
 
-| ID | Asset | Einsatz |
-|---|---|---|
-| 94219391 | Gewehr-Mesh aus "Trench Warfare Shotgun" (Gear 94233344, by Roblox) | Körper aller Skins |
-| 94219470 | zugehörige Holz/Metall-Textur (256×256) | Textur aller Skins |
-| 94191736 / 94191778 | FireSound / PumpSound desselben Gears | garantierte Schuss-/Bolt-Sounds |
+Die AWP ist eine **prozedurale CS:GO-Silhouette aus Parts** (skeletierter
+Schaft mit Daumenloch, Receiver + Bolt, Magazin, langer Handschutz,
+freiliegender Lauf mit Mündungsbremse, großes Scope mit Objektivglocke und
+Türmen). Bewusst kein Mesh: LoadAsset ist in Live-Games permission-gesperrt
+und SpecialMesh-Texturen waren nicht zuverlässig — Parts sehen überall gleich
+aus und lassen sich pro Skin sauber einfärben (Furniture = body, Akzente =
+accent, Metallteile bleiben dunkel). Der Standard-Skin trägt das klassische
+AWP-Olivgrün.
 
-Wichtig gelernt: `InsertService:LoadAsset` darf in Live-Games nur eigene oder
-Roblox-eigene Assets laden — der frühere Creator-Store-AWP schlug deshalb fehl
-(Waffe ohne Textur). Jetzt rendert ein **SpecialMesh** das Roblox-eigene
-Gewehr-Mesh direkt (kein LoadAsset nötig); Skins tönen die Textur per
-**VertexColor**, der Klassik-Skin bleibt Original. Maße wurden offline aus der
-Mesh-Datei geparst: 6.53 Studs lang, Mündung entlang −Z (dünnes hohes Ende),
-das aufgesetzte Scope macht daraus die Sniper.
+## AWP-Schuss-Sound (gelayert)
+
+Lädt einer der CS-AWP-Ports (s.u.), spielt er pur. Sonst layert der Client den
+Knall aus drei garantierten/verifizierten Sounds: Gewehr-Boom 94191736
+(Roblox-Gear-FireSound) + Deep-Boom 9125404320 + Whip-Crack-Tail 9126213373.
 
 ## Sound-Effekte (ProSoundEffects / APM = offizielle Roblox-Libraries)
 

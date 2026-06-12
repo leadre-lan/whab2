@@ -148,24 +148,61 @@ local crosshair = label(screenGui, "+", UDim2.new(0, 40, 0, 40), UDim2.new(0.5, 
 	{ color = Color3.fromRGB(255, 255, 255), textSize = 26, align = Enum.TextXAlignment.Center, stroke = 0.4 })
 crosshair.ZIndex = 20
 
-local scopeH = Instance.new("Frame")
-scopeH.Size = UDim2.new(1, 0, 0, 1)
-scopeH.Position = UDim2.new(0, 0, 0.5, 0)
-scopeH.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-scopeH.BackgroundTransparency = 0.6
-scopeH.BorderSizePixel = 0
-scopeH.Visible = false
-scopeH.ZIndex = 19
-scopeH.Parent = screenGui
-local scopeV = scopeH:Clone()
-scopeV.Size = UDim2.new(0, 1, 1, 0)
-scopeV.Position = UDim2.new(0.5, 0, 0, 0)
-scopeV.Parent = screenGui
+-- ── CS:GO-Scope-Overlay: schwarzer Screen mit kreisrundem Ausschnitt ──────────
+-- Trick: ein kreisrunder Frame (UICorner 50%) mit RIESIGEM schwarzen UIStroke —
+-- der Stroke füllt alles außerhalb des Kreises, 4 Eckframes sichern den Rest.
+local scopeOverlay = Instance.new("Frame")
+scopeOverlay.Size = UDim2.new(1, 0, 1, 0)
+scopeOverlay.BackgroundTransparency = 1
+scopeOverlay.Visible = false
+scopeOverlay.ZIndex = 18
+scopeOverlay.Parent = screenGui
+
+local scopeCircle = Instance.new("Frame")
+scopeCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+scopeCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+scopeCircle.BackgroundTransparency = 1
+scopeCircle.ZIndex = 19
+scopeCircle.Parent = scopeOverlay
+local circCorner = Instance.new("UICorner")
+circCorner.CornerRadius = UDim.new(0.5, 0)
+circCorner.Parent = scopeCircle
+local circStroke = Instance.new("UIStroke")
+circStroke.Color = Color3.fromRGB(0, 0, 0)
+circStroke.Thickness = 1600
+circStroke.Transparency = 0.02
+circStroke.Parent = scopeCircle
+
+-- Fadenkreuz im Scope (dünne Linien + Mil-Dots wie bei der AWP)
+local function scopeLine(size, pos)
+	local l = Instance.new("Frame")
+	l.AnchorPoint = Vector2.new(0.5, 0.5)
+	l.Size = size
+	l.Position = pos
+	l.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	l.BorderSizePixel = 0
+	l.ZIndex = 20
+	l.Parent = scopeOverlay
+	return l
+end
+scopeLine(UDim2.new(1, 0, 0, 2), UDim2.new(0.5, 0, 0.5, 0))
+scopeLine(UDim2.new(0, 2, 1, 0), UDim2.new(0.5, 0, 0.5, 0))
+for _, d in ipairs({ -120, -60, 60, 120 }) do
+	scopeLine(UDim2.new(0, 2, 0, 10), UDim2.new(0.5, d, 0.5, 0))
+	scopeLine(UDim2.new(0, 10, 0, 2), UDim2.new(0.5, 0, 0.5, d))
+end
+
+local function fitScopeCircle()
+	local cam = workspace.CurrentCamera
+	local v = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local d = math.min(v.X, v.Y) * 0.92
+	scopeCircle.Size = UDim2.new(0, d, 0, d)
+end
 
 function UIController.setScopeVisible(state)
-	scopeH.Visible = state
-	scopeV.Visible = state
-	crosshair.Text = state and "◎" or "+"
+	if state then fitScopeCircle() end
+	scopeOverlay.Visible = state
+	crosshair.Visible = not state
 end
 
 local cdBar = Instance.new("Frame")

@@ -32,23 +32,15 @@
 
 local Assets = {}
 
--- ── Waffen-Modell (verifiziert + IMMER ladbar) ────────────────────────────────
--- Mesh + Textur aus Robloxs eigenem Gear "Trench Warfare Shotgun" (94233344):
--- klassisches Langgewehr mit Holzschaft/Metall-Textur. Roblox-eigene Assets
--- laden in JEDEM Spiel ohne Berechtigung (anders als LoadAsset/Creator-Store!).
--- Maße offline aus der Mesh-Datei geparst: Lauf liegt entlang -Z (dünnes,
--- hohes Ende = Mündung), 6.53 Studs lang bei Scale 1 — passt 1:1 zur
--- Handle-Konvention des SniperBuilders (Schussrichtung = -Z).
-Assets.WEAPON = {
-	meshId    = "rbxassetid://94219391",
-	textureId = "rbxassetid://94219470",
-	length    = 6.53,    -- native Länge (Studs bei Scale 1)
-	height    = 1.50,
-	barrelY   = 0.31,    -- Lauf-Mittelhöhe (bereits auf Ziel-Scale 0.735 gerechnet)
-}
+-- Das Waffen-Modell ist eine prozedurale AWP-Silhouette (SniperBuilder) —
+-- nach mehreren Mesh-Anläufen (LoadAsset-Permissions, SpecialMesh-Fallstricke)
+-- ist das die einzige Variante, die GARANTIERT überall korrekt aussieht und
+-- sich pro Skin frei einfärben lässt.
 
 Assets.SFX = {
 	Shot      = "rbxassetid://9126213373",  -- Fallback: Whip Crack (verifiziert)
+	GunBoom   = "rbxassetid://94191736",    -- Roblox-Gear-FireSound (garantiert) — Layer 1
+	Boom      = "rbxassetid://9125404320",  -- Deep Boom Impact (verifiziert) — Layer 2
 	Bolt      = "rbxassetid://9114004212",  -- Fallback: Crossbow Latch
 	Magazine  = "rbxassetid://9113104176",  -- Ammo Magazine (Equip-Sound)
 	EggCrack  = "rbxassetid://9113959337",  -- Crack Egg Crunchy 10
@@ -60,14 +52,14 @@ Assets.SFX = {
 	Teleport  = "rbxassetid://9116394545",  -- Magic Glow (Arena-Teleport)
 }
 
--- Echte AWP-Sounds (CS-Ports) zuerst; danach die GARANTIERT ladbaren Sounds
--- aus Robloxs eigenem Trench-Warfare-Gear (Fire/Pump); zuletzt greift sowieso
--- der verifizierte Assets.SFX-Fallback. Client testet per PreloadAsync.
+-- Echte AWP-Sounds (CS-Ports) zuerst — wenn einer lädt, spielt der Client ihn
+-- pur (authentisch). Lädt keiner, baut der Client den AWP-Knall als LAYERING
+-- aus garantierten Sounds nach: Gewehr-Boom + Deep-Boom + Crack-Tail
+-- (EffectsController.playShotSound prüft Assets.RESOLVED.Shot).
 Assets.SFX_PREFERRED = {
 	Shot = {
 		"rbxassetid://138705939667182",  -- Awp_Fire (CS:GO-Port)
 		"rbxassetid://131254751896361",  -- awp fire 1.6
-		"rbxassetid://94191736",         -- Trench-Rifle FireSound (Roblox — garantiert)
 	},
 	Bolt = {
 		"rbxassetid://133852631085337",  -- Awp_BoltPull (CS CZ:DS)
@@ -75,6 +67,9 @@ Assets.SFX_PREFERRED = {
 		"rbxassetid://94191778",         -- Trench-Rifle PumpSound (Roblox — garantiert)
 	},
 }
+
+-- Merkt sich pro Key, ob eine bevorzugte ID geladen werden konnte
+Assets.RESOLVED = {}
 
 -- Client-seitig: bevorzugte IDs testen, erste ladbare gewinnt (sonst Fallback)
 function Assets.resolveSfx()
@@ -90,6 +85,7 @@ function Assets.resolveSfx()
 				end)
 				if status == Enum.AssetFetchStatus.Success then
 					Assets.SFX[key] = id
+					Assets.RESOLVED[key] = true
 					return
 				end
 			end
@@ -153,7 +149,7 @@ function Assets.play2D(soundId, volume, pitch)
 end
 
 function Assets.preloadList()
-	local list = { Assets.WEAPON.meshId, Assets.WEAPON.textureId }
+	local list = {}
 	for _, id in pairs(Assets.SFX) do
 		table.insert(list, id)
 	end
@@ -298,8 +294,8 @@ Skins.TIERS = {
 -- material überschreibt das Tier-Standard-Material (optional).
 Skins.CATALOG = {
 	-- ── Common ──
-	-- keepTexture: behält die Original-AWP-Textur des Mesh-Modells
-	{ id = "standard",  name = "Klassik-Tarn",  tier = "Common", body = Color3.fromRGB(95, 98, 105),   accent = Color3.fromRGB(120, 130, 80), keepTexture = true },
+	-- "standard": die klassische AWP-Lackierung (olivgrünes Furniture)
+	{ id = "standard",  name = "Klassik-Tarn",  tier = "Common", body = Color3.fromRGB(99, 110, 76),   accent = Color3.fromRGB(62, 70, 50) },
 	{ id = "holz",      name = "Holz",          tier = "Common", body = Color3.fromRGB(130, 95, 60),   accent = Color3.fromRGB(90, 64, 40),  material = Enum.Material.Wood },
 	{ id = "beton",     name = "Beton",         tier = "Common", body = Color3.fromRGB(140, 140, 135), accent = Color3.fromRGB(110, 110, 105), material = Enum.Material.Concrete },
 	{ id = "khaki",     name = "Khaki",         tier = "Common", body = Color3.fromRGB(125, 125, 90),  accent = Color3.fromRGB(90, 92, 60) },
@@ -424,14 +420,15 @@ return Skins
           <string name="Source"><![CDATA[-- SniperBuilder.lua — Baut das Sniper-Modell für einen Skin (server-seitig,
 -- damit JEDER den Skin sieht — der Flex ist der Kern des Spiels).
 --
--- Basis ist IMMER das texturierte Gewehr-Mesh aus Assets.WEAPON (Roblox-eigenes
--- Asset → lädt garantiert, kein InsertService/LoadAsset nötig). Es wird per
--- SpecialMesh gerendert; Skins tönen die Textur über VertexColor — so behält
--- jede Variante echte Holz-/Metall-Texturdetails. Dazu kommt ein aufgesetztes
--- Scope (das Gear ist ein Langgewehr) und die Tier-Effekte.
+-- Das Modell ist eine prozedurale AWP-Silhouette in CS:GO-Proportionen:
+-- skeletierter Schaft mit Daumenloch, Receiver mit Bolt, Magazin, langer
+-- Handschutz, freiliegender Lauf mit Mündungsbremse und das große Scope mit
+-- Objektivglocke + Türmen. Skins färben Furniture (body) und Akzente (accent);
+-- Metallteile bleiben dunkel. Bewusst KEIN Mesh: nach LoadAsset-Permissions
+-- und SpecialMesh-Fallstricken ist das die Variante, die überall gleich
+-- aussieht und sich sauber tinten lässt.
 --
--- Konvention: Schussrichtung = Handle-lokal -Z (Mesh-Mündung liegt nativ
--- entlang -Z — offline vermessen, keine Rotation nötig).
+-- Konvention: Schussrichtung = Handle-lokal -Z.
 local SniperBuilder = {}
 
 local CollectionService = game:GetService("CollectionService")
@@ -439,7 +436,7 @@ local CollectionService = game:GetService("CollectionService")
 local Skins  = require(script.Parent:WaitForChild("Skins"))
 local Assets = require(script.Parent:WaitForChild("Assets"))
 
-local TARGET_LEN = 4.8   -- Studs (Gesamtlänge des Gewehrs in der Hand)
+local METAL = Color3.fromRGB(46, 47, 54)   -- Lauf/Scope/Bolt (immer dunkel)
 
 local function weldTo(handle, part, offset)
 	part.Anchored = false
@@ -476,17 +473,6 @@ local function tagPulse(part, baseColor, rainbow)
 	CollectionService:AddTag(part, "PulseFX")
 end
 
--- VertexColor-Tönung aus der Skin-Farbe: multipliziert die Gewehr-Textur.
--- Werte > 1 hellen auf (Gold/Chrom), dunkle Skins geben den Moody-Look für
--- Neon-Tiers. keepTexture = Original (1,1,1).
-local function tintFor(skin)
-	if skin.keepTexture then
-		return Vector3.new(1, 1, 1)
-	end
-	local c = skin.body
-	return Vector3.new(0.3 + c.R * 1.7, 0.3 + c.G * 1.7, 0.3 + c.B * 1.7)
-end
-
 -- Baut das fertige Tool. mountTo = Backpack/Character übernimmt der Aufrufer.
 function SniperBuilder.buildTool(skin)
 	local fx = Skins.fxFor(skin.tier)
@@ -516,50 +502,84 @@ function SniperBuilder.buildTool(skin)
 		return part
 	end
 
-	-- ── Gewehr-Körper: texturiertes Mesh (SpecialMesh + VertexColor-Tint) ──
-	-- WICHTIG: Transparency MUSS 0 sein — ein SpecialMesh erbt die Transparenz
-	-- des Parts (die Part-Box selbst wird vom Mesh ohnehin ersetzt).
-	local meshScale = TARGET_LEN / Assets.WEAPON.length
-	local body = mkPart({ size = Vector3.new(0.5, 1.2, TARGET_LEN), color = skin.body, name = "Body" })
-	local mesh = Instance.new("SpecialMesh")
-	mesh.Name = "BodyMesh"
-	mesh.MeshType = Enum.MeshType.FileMesh
-	mesh.MeshId = Assets.WEAPON.meshId
-	mesh.TextureId = Assets.WEAPON.textureId
-	mesh.Scale = Vector3.new(meshScale, meshScale, meshScale)
-	mesh.VertexColor = tintFor(skin)
-	mesh.Parent = body
-	-- Mesh-Mitte etwas vor/über dem Griffpunkt (Hand liegt am Abzug/Receiver)
-	weldTo(handle, body, CFrame.new(0, 0.1, -0.55))
-
-	local muzzleZ = -0.55 - TARGET_LEN / 2   -- ≈ -2.95 (Laufspitze)
-	local barrelY = 0.1 + Assets.WEAPON.barrelY
-
-	-- ── Aufgesetztes Scope (macht aus dem Gewehr die Sniper) ──
-	local scopeY = barrelY + 0.42
-	weldTo(handle, mkPart({ size = Vector3.new(1.5, 0.24, 0.24), color = Color3.fromRGB(28, 28, 34),
-		material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeTube" }),
-		CFrame.new(0, scopeY, -0.45) * CFrame.Angles(0, math.rad(90), 0))
-	-- Linse vorn (Akzentfarbe) + Okular hinten
-	accent(weldTo(handle, mkPart({ size = Vector3.new(0.06, 0.22, 0.22), color = skin.accent,
-		material = fx.neon and Enum.Material.Neon or Enum.Material.Glass,
-		shape = Enum.PartType.Cylinder, name = "Lens" }),
-		CFrame.new(0, scopeY, -1.24) * CFrame.Angles(0, math.rad(90), 0)))
-	weldTo(handle, mkPart({ size = Vector3.new(0.08, 0.26, 0.26), color = Color3.fromRGB(20, 20, 24),
-		material = Enum.Material.Metal, shape = Enum.PartType.Cylinder }),
-		CFrame.new(0, scopeY, 0.34) * CFrame.Angles(0, math.rad(90), 0))
-	-- Scope-Füße
-	for _, z in ipairs({ -0.85, 0.05 }) do
-		weldTo(handle, mkPart({ size = Vector3.new(0.1, 0.34, 0.14), color = Color3.fromRGB(28, 28, 34),
-			material = Enum.Material.Metal }),
-			CFrame.new(0, scopeY - 0.22, z))
+	-- ── AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
+	local furnMat  = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
+	local furnRefl = (fx.metallic and not fx.neon) and 0.25 or 0
+	local function furniture(size, cf, name)
+		local p = mkPart({ size = size, color = skin.body, material = furnMat, reflectance = furnRefl, name = name })
+		return weldTo(handle, p, cf)
+	end
+	local function metal(size, cf, opts)
+		opts = opts or {}
+		local p = mkPart({ size = size, color = METAL, material = Enum.Material.Metal,
+			shape = opts.shape, name = opts.name })
+		return weldTo(handle, p, cf)
 	end
 
-	-- Seitliche Akzent-Rails am Receiver (tragen die Skin-Farbe sichtbar)
+	-- Schaft: skeletiert mit Daumenloch (oberer + unterer Holm, Wangenauflage,
+	-- Schulterplatte) — die markante AWP-Silhouette
+	furniture(Vector3.new(0.26, 0.3, 1.25), CFrame.new(0, 0.22, 1.85))                                   -- oberer Holm
+	furniture(Vector3.new(0.24, 0.24, 1.35), CFrame.new(0, -0.34, 1.78) * CFrame.Angles(math.rad(-14), 0, 0)) -- unterer Holm
+	furniture(Vector3.new(0.3, 0.2, 0.75),  CFrame.new(0, 0.45, 1.7), "CheekRest")                       -- Wangenauflage
+	furniture(Vector3.new(0.3, 0.95, 0.22), CFrame.new(0, -0.02, 2.5))                                   -- Schulterplatte
+	furniture(Vector3.new(0.26, 0.62, 0.3), CFrame.new(0, -0.18, 1.06) * CFrame.Angles(math.rad(12), 0, 0)) -- Pistolengriff
+
+	-- Receiver + Abzugsbügel
+	furniture(Vector3.new(0.34, 0.46, 1.6), CFrame.new(0, 0.12, 0.12), "Receiver")
+	metal(Vector3.new(0.05, 0.06, 0.5), CFrame.new(0, -0.22, 0.55))                                      -- Bügel unten
+	metal(Vector3.new(0.05, 0.22, 0.06), CFrame.new(0, -0.14, 0.32))                                     -- Bügel vorn
+
+	-- Bolt (rechts, mit Kugel-Knauf)
+	metal(Vector3.new(0.45, 0.1, 0.1), CFrame.new(0.22, 0.3, 0.42) * CFrame.Angles(0, 0, math.rad(-32)),
+		{ shape = Enum.PartType.Cylinder, name = "Bolt" })
+	metal(Vector3.new(0.16, 0.16, 0.16), CFrame.new(0.4, 0.2, 0.42), { shape = Enum.PartType.Ball })
+
+	-- Magazin (leicht angewinkelte Box unterm Receiver)
+	metal(Vector3.new(0.26, 0.42, 0.62), CFrame.new(0, -0.36, -0.18) * CFrame.Angles(math.rad(-8), 0, 0),
+		{ name = "Magazine" })
+
+	-- Handschutz (lang, AWP-typisch kantig) + Akzent-Rails an den Seiten
+	furniture(Vector3.new(0.32, 0.36, 2.0), CFrame.new(0, 0.08, -1.55), "Handguard")
 	for side = -1, 1, 2 do
-		accent(weldTo(handle, mkPart({ size = Vector3.new(0.05, 0.12, 1.2), color = skin.accent,
-			material = accentMat, transparency = fx.neon and 0 or 0.1 }),
-			CFrame.new(side * 0.18, 0.18, 0.3)))
+		accent(weldTo(handle, mkPart({ size = Vector3.new(0.05, 0.12, 1.7), color = skin.accent,
+			material = accentMat }),
+			CFrame.new(side * 0.185, 0.1, -1.45)))
+	end
+	accent(weldTo(handle, mkPart({ size = Vector3.new(0.34, 0.05, 1.7), color = skin.accent,
+		material = accentMat }),
+		CFrame.new(0, -0.12, -1.45)))
+
+	-- Freiliegender Lauf + Mündungsbremse
+	metal(Vector3.new(1.45, 0.14, 0.14), CFrame.new(0, 0.18, -3.2) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "Barrel" })
+	metal(Vector3.new(0.42, 0.24, 0.24), CFrame.new(0, 0.18, -3.95) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "MuzzleBrake" })
+	for side = -1, 1, 2 do
+		metal(Vector3.new(0.06, 0.1, 0.26), CFrame.new(side * 0.13, 0.18, -3.95))
+	end
+
+	local muzzleZ = -4.16
+	local barrelY = 0.18
+
+	-- ── Das große AWP-Scope ──
+	local scopeY = 0.62
+	metal(Vector3.new(1.5, 0.26, 0.26), CFrame.new(0, scopeY, 0.0) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "ScopeTube" })
+	metal(Vector3.new(0.4, 0.4, 0.4), CFrame.new(0, scopeY, -0.85) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "ScopeBell" })
+	metal(Vector3.new(0.28, 0.32, 0.32), CFrame.new(0, scopeY, 0.85) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "ScopeEye" })
+	-- Verstelltürme (oben + rechts)
+	metal(Vector3.new(0.14, 0.12, 0.12), CFrame.new(0, scopeY + 0.2, 0.12) * CFrame.Angles(0, 0, math.rad(90)),
+		{ shape = Enum.PartType.Cylinder })
+	metal(Vector3.new(0.14, 0.12, 0.12), CFrame.new(0.2, scopeY, 0.12), { shape = Enum.PartType.Cylinder })
+	-- Linse vorn (Akzentfarbe — leuchtet ab Legendary) + Scope-Füße
+	accent(weldTo(handle, mkPart({ size = Vector3.new(0.06, 0.3, 0.3), color = skin.accent,
+		material = fx.neon and Enum.Material.Neon or Enum.Material.Glass,
+		shape = Enum.PartType.Cylinder, name = "Lens" }),
+		CFrame.new(0, scopeY, -1.07) * CFrame.Angles(0, math.rad(90), 0)))
+	for _, z in ipairs({ -0.55, 0.5 }) do
+		metal(Vector3.new(0.12, 0.3, 0.16), CFrame.new(0, scopeY - 0.22, z))
 	end
 
 	-- ── Mündung: Marker (Shot-Origin) + Glow-Ring bei Legendary+ ──
@@ -3501,18 +3521,29 @@ function EffectsController.spawnTracer(fromPos, toPos, skinId, didKill)
 	Debris:AddItem(hitFx, 0.35)
 end
 
--- ── Schuss-Sound (AWP mit Fallback, Tier bestimmt den Charakter) ──────────────
--- Common klingt dumpf/billig, hohe Tiers knackig-hell — Audio-Flex inklusive.
+-- ── Schuss-Sound (AWP) ────────────────────────────────────────────────────────
+-- Wenn ein echter CS-AWP-Sound geladen werden konnte (Assets.RESOLVED.Shot),
+-- spielt er pur. Sonst wird der AWP-Knall aus garantierten Sounds GELAYERT:
+-- Gewehr-Boom (Körper) + Deep-Boom (Bass-Wumms) + Whip-Crack (Knall-Tail).
+-- Tier hebt Lautstärke/Pitch leicht an — Audio-Flex inklusive.
 function EffectsController.playShotSound(fromPos, skinId)
 	local camera = workspace.CurrentCamera
 	if not camera or (camera.CFrame.Position - fromPos).Magnitude > 500 then return end
 
 	local skin = Skins.BY_ID[skinId] or Skins.BY_ID.standard
 	local order = Skins.TIERS[skin.tier].order
-	Assets.playAt(fromPos, Assets.SFX.Shot,
-		0.55 + order * 0.09,
-		0.78 + order * 0.07, 0.84 + order * 0.07)
-	-- Bolt-Klack kurz danach
+
+	if Assets.RESOLVED.Shot then
+		Assets.playAt(fromPos, Assets.SFX.Shot,
+			0.7 + order * 0.07,
+			0.95 + order * 0.02, 1.0 + order * 0.02)
+	else
+		Assets.playAt(fromPos, Assets.SFX.GunBoom, 0.85 + order * 0.05, 0.8, 0.86)   -- Körper
+		Assets.playAt(fromPos, Assets.SFX.Boom, 0.5 + order * 0.06, 1.2, 1.3)        -- Bass
+		Assets.playAt(fromPos, Assets.SFX.Shot, 0.4, 1.0 + order * 0.04, 1.1)        -- Crack-Tail
+	end
+
+	-- Bolt-Zyklus kurz danach
 	task.delay(0.45, function()
 		Assets.playAt(fromPos, Assets.SFX.Bolt, 0.45, 0.95, 1.05)
 	end)
@@ -3744,24 +3775,61 @@ local crosshair = label(screenGui, "+", UDim2.new(0, 40, 0, 40), UDim2.new(0.5, 
 	{ color = Color3.fromRGB(255, 255, 255), textSize = 26, align = Enum.TextXAlignment.Center, stroke = 0.4 })
 crosshair.ZIndex = 20
 
-local scopeH = Instance.new("Frame")
-scopeH.Size = UDim2.new(1, 0, 0, 1)
-scopeH.Position = UDim2.new(0, 0, 0.5, 0)
-scopeH.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-scopeH.BackgroundTransparency = 0.6
-scopeH.BorderSizePixel = 0
-scopeH.Visible = false
-scopeH.ZIndex = 19
-scopeH.Parent = screenGui
-local scopeV = scopeH:Clone()
-scopeV.Size = UDim2.new(0, 1, 1, 0)
-scopeV.Position = UDim2.new(0.5, 0, 0, 0)
-scopeV.Parent = screenGui
+-- ── CS:GO-Scope-Overlay: schwarzer Screen mit kreisrundem Ausschnitt ──────────
+-- Trick: ein kreisrunder Frame (UICorner 50%) mit RIESIGEM schwarzen UIStroke —
+-- der Stroke füllt alles außerhalb des Kreises, 4 Eckframes sichern den Rest.
+local scopeOverlay = Instance.new("Frame")
+scopeOverlay.Size = UDim2.new(1, 0, 1, 0)
+scopeOverlay.BackgroundTransparency = 1
+scopeOverlay.Visible = false
+scopeOverlay.ZIndex = 18
+scopeOverlay.Parent = screenGui
+
+local scopeCircle = Instance.new("Frame")
+scopeCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+scopeCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+scopeCircle.BackgroundTransparency = 1
+scopeCircle.ZIndex = 19
+scopeCircle.Parent = scopeOverlay
+local circCorner = Instance.new("UICorner")
+circCorner.CornerRadius = UDim.new(0.5, 0)
+circCorner.Parent = scopeCircle
+local circStroke = Instance.new("UIStroke")
+circStroke.Color = Color3.fromRGB(0, 0, 0)
+circStroke.Thickness = 1600
+circStroke.Transparency = 0.02
+circStroke.Parent = scopeCircle
+
+-- Fadenkreuz im Scope (dünne Linien + Mil-Dots wie bei der AWP)
+local function scopeLine(size, pos)
+	local l = Instance.new("Frame")
+	l.AnchorPoint = Vector2.new(0.5, 0.5)
+	l.Size = size
+	l.Position = pos
+	l.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	l.BorderSizePixel = 0
+	l.ZIndex = 20
+	l.Parent = scopeOverlay
+	return l
+end
+scopeLine(UDim2.new(1, 0, 0, 2), UDim2.new(0.5, 0, 0.5, 0))
+scopeLine(UDim2.new(0, 2, 1, 0), UDim2.new(0.5, 0, 0.5, 0))
+for _, d in ipairs({ -120, -60, 60, 120 }) do
+	scopeLine(UDim2.new(0, 2, 0, 10), UDim2.new(0.5, d, 0.5, 0))
+	scopeLine(UDim2.new(0, 10, 0, 2), UDim2.new(0.5, 0, 0.5, d))
+end
+
+local function fitScopeCircle()
+	local cam = workspace.CurrentCamera
+	local v = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local d = math.min(v.X, v.Y) * 0.92
+	scopeCircle.Size = UDim2.new(0, d, 0, d)
+end
 
 function UIController.setScopeVisible(state)
-	scopeH.Visible = state
-	scopeV.Visible = state
-	crosshair.Text = state and "◎" or "+"
+	if state then fitScopeCircle() end
+	scopeOverlay.Visible = state
+	crosshair.Visible = not state
 end
 
 local cdBar = Instance.new("Frame")
@@ -4524,7 +4592,19 @@ local uiCtrl   = nil
 local lastShot   = 0
 local scoped     = false
 local BASE_FOV   = 70
-local SCOPE_FOV  = 22
+local SCOPE_FOV  = 16   -- AWP-Zoomstufe
+
+-- Waffe im Scope lokal ausblenden (CS-Style: man sieht nur das Scope-Bild)
+local function setWeaponHidden(hidden)
+	local char = player.Character
+	local tool = char and char:FindFirstChild("Sniper")
+	if not tool then return end
+	for _, p in ipairs(tool:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.LocalTransparencyModifier = hidden and 1 or 0
+		end
+	end
+end
 
 -- ── Scope ─────────────────────────────────────────────────────────────────────
 local function setScoped(state)
@@ -4532,11 +4612,12 @@ local function setScoped(state)
 	scoped = state
 	local camera = workspace.CurrentCamera
 	if camera then
-		TweenService:Create(camera, TweenInfo.new(0.18, Enum.EasingStyle.Quad), {
+		TweenService:Create(camera, TweenInfo.new(0.15, Enum.EasingStyle.Quad), {
 			FieldOfView = state and SCOPE_FOV or BASE_FOV,
 		}):Play()
 	end
 	if uiCtrl then uiCtrl.setScopeVisible(state) end
+	setWeaponHidden(state)
 
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")

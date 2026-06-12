@@ -41,15 +41,14 @@ rojo serve                          # oder live in Studio syncen
 - **Treppe hinten**: Handelshalle (Kioske öffnen den Handelsplatz, Live-Ticker)
 - **👑-Button**: Prime-Status-Menü (Gamepass-ID in Config.lua)
 
-## Das Waffen-Modell
+## Die AWP
 
-Die Sniper basiert auf dem **texturierten Gewehr-Mesh aus Robloxs eigenem
-"Trench Warfare Shotgun"-Gear** (Holzschaft + Metall, plus aufgesetztes Scope).
-Roblox-eigene Assets laden in jedem Spiel garantiert — kein LoadAsset, keine
-Berechtigungsprobleme. Jeder Skin tönt die echte Textur per VertexColor
-(Klassik-Tarn = Original; Gold/Chrom hell-metallisch; Legendary+ dunkel-moody
-mit Neon-Akzenten, Partikeln, Lichtspur und Puls). IDs in `Shared/Assets.lua`
-(`Assets.WEAPON`).
+Das Gewehr ist eine **prozedurale AWP-Silhouette in CS:GO-Proportionen**
+(skeletierter Schaft, Bolt, Magazin, langer Lauf mit Mündungsbremse, großes
+Scope). **Rechtsklick zoomt mit CS-Scope-Overlay**: kreisrundes Scope-Bild
+mit Fadenkreuz + Mil-Dots, Waffe wird ausgeblendet, FOV 16, langsameres
+Laufen. Der Schuss klingt nach AWP: echte CS-Ports wenn ladbar, sonst ein
+gelayerter Knall aus garantierten Sounds (Gewehr-Boom + Bass + Crack-Tail).
 
 ## Projektstruktur
 

@@ -1,14 +1,15 @@
 -- SniperBuilder.lua — Baut das Sniper-Modell für einen Skin (server-seitig,
 -- damit JEDER den Skin sieht — der Flex ist der Kern des Spiels).
 --
--- Basis ist IMMER das texturierte Gewehr-Mesh aus Assets.WEAPON (Roblox-eigenes
--- Asset → lädt garantiert, kein InsertService/LoadAsset nötig). Es wird per
--- SpecialMesh gerendert; Skins tönen die Textur über VertexColor — so behält
--- jede Variante echte Holz-/Metall-Texturdetails. Dazu kommt ein aufgesetztes
--- Scope (das Gear ist ein Langgewehr) und die Tier-Effekte.
+-- Das Modell ist eine prozedurale AWP-Silhouette in CS:GO-Proportionen:
+-- skeletierter Schaft mit Daumenloch, Receiver mit Bolt, Magazin, langer
+-- Handschutz, freiliegender Lauf mit Mündungsbremse und das große Scope mit
+-- Objektivglocke + Türmen. Skins färben Furniture (body) und Akzente (accent);
+-- Metallteile bleiben dunkel. Bewusst KEIN Mesh: nach LoadAsset-Permissions
+-- und SpecialMesh-Fallstricken ist das die Variante, die überall gleich
+-- aussieht und sich sauber tinten lässt.
 --
--- Konvention: Schussrichtung = Handle-lokal -Z (Mesh-Mündung liegt nativ
--- entlang -Z — offline vermessen, keine Rotation nötig).
+-- Konvention: Schussrichtung = Handle-lokal -Z.
 local SniperBuilder = {}
 
 local CollectionService = game:GetService("CollectionService")
@@ -16,7 +17,7 @@ local CollectionService = game:GetService("CollectionService")
 local Skins  = require(script.Parent:WaitForChild("Skins"))
 local Assets = require(script.Parent:WaitForChild("Assets"))
 
-local TARGET_LEN = 4.8   -- Studs (Gesamtlänge des Gewehrs in der Hand)
+local METAL = Color3.fromRGB(46, 47, 54)   -- Lauf/Scope/Bolt (immer dunkel)
 
 local function weldTo(handle, part, offset)
 	part.Anchored = false
@@ -53,17 +54,6 @@ local function tagPulse(part, baseColor, rainbow)
 	CollectionService:AddTag(part, "PulseFX")
 end
 
--- VertexColor-Tönung aus der Skin-Farbe: multipliziert die Gewehr-Textur.
--- Werte > 1 hellen auf (Gold/Chrom), dunkle Skins geben den Moody-Look für
--- Neon-Tiers. keepTexture = Original (1,1,1).
-local function tintFor(skin)
-	if skin.keepTexture then
-		return Vector3.new(1, 1, 1)
-	end
-	local c = skin.body
-	return Vector3.new(0.3 + c.R * 1.7, 0.3 + c.G * 1.7, 0.3 + c.B * 1.7)
-end
-
 -- Baut das fertige Tool. mountTo = Backpack/Character übernimmt der Aufrufer.
 function SniperBuilder.buildTool(skin)
 	local fx = Skins.fxFor(skin.tier)
@@ -93,50 +83,84 @@ function SniperBuilder.buildTool(skin)
 		return part
 	end
 
-	-- ── Gewehr-Körper: texturiertes Mesh (SpecialMesh + VertexColor-Tint) ──
-	-- WICHTIG: Transparency MUSS 0 sein — ein SpecialMesh erbt die Transparenz
-	-- des Parts (die Part-Box selbst wird vom Mesh ohnehin ersetzt).
-	local meshScale = TARGET_LEN / Assets.WEAPON.length
-	local body = mkPart({ size = Vector3.new(0.5, 1.2, TARGET_LEN), color = skin.body, name = "Body" })
-	local mesh = Instance.new("SpecialMesh")
-	mesh.Name = "BodyMesh"
-	mesh.MeshType = Enum.MeshType.FileMesh
-	mesh.MeshId = Assets.WEAPON.meshId
-	mesh.TextureId = Assets.WEAPON.textureId
-	mesh.Scale = Vector3.new(meshScale, meshScale, meshScale)
-	mesh.VertexColor = tintFor(skin)
-	mesh.Parent = body
-	-- Mesh-Mitte etwas vor/über dem Griffpunkt (Hand liegt am Abzug/Receiver)
-	weldTo(handle, body, CFrame.new(0, 0.1, -0.55))
-
-	local muzzleZ = -0.55 - TARGET_LEN / 2   -- ≈ -2.95 (Laufspitze)
-	local barrelY = 0.1 + Assets.WEAPON.barrelY
-
-	-- ── Aufgesetztes Scope (macht aus dem Gewehr die Sniper) ──
-	local scopeY = barrelY + 0.42
-	weldTo(handle, mkPart({ size = Vector3.new(1.5, 0.24, 0.24), color = Color3.fromRGB(28, 28, 34),
-		material = Enum.Material.Metal, shape = Enum.PartType.Cylinder, name = "ScopeTube" }),
-		CFrame.new(0, scopeY, -0.45) * CFrame.Angles(0, math.rad(90), 0))
-	-- Linse vorn (Akzentfarbe) + Okular hinten
-	accent(weldTo(handle, mkPart({ size = Vector3.new(0.06, 0.22, 0.22), color = skin.accent,
-		material = fx.neon and Enum.Material.Neon or Enum.Material.Glass,
-		shape = Enum.PartType.Cylinder, name = "Lens" }),
-		CFrame.new(0, scopeY, -1.24) * CFrame.Angles(0, math.rad(90), 0)))
-	weldTo(handle, mkPart({ size = Vector3.new(0.08, 0.26, 0.26), color = Color3.fromRGB(20, 20, 24),
-		material = Enum.Material.Metal, shape = Enum.PartType.Cylinder }),
-		CFrame.new(0, scopeY, 0.34) * CFrame.Angles(0, math.rad(90), 0))
-	-- Scope-Füße
-	for _, z in ipairs({ -0.85, 0.05 }) do
-		weldTo(handle, mkPart({ size = Vector3.new(0.1, 0.34, 0.14), color = Color3.fromRGB(28, 28, 34),
-			material = Enum.Material.Metal }),
-			CFrame.new(0, scopeY - 0.22, z))
+	-- ── AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
+	local furnMat  = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
+	local furnRefl = (fx.metallic and not fx.neon) and 0.25 or 0
+	local function furniture(size, cf, name)
+		local p = mkPart({ size = size, color = skin.body, material = furnMat, reflectance = furnRefl, name = name })
+		return weldTo(handle, p, cf)
+	end
+	local function metal(size, cf, opts)
+		opts = opts or {}
+		local p = mkPart({ size = size, color = METAL, material = Enum.Material.Metal,
+			shape = opts.shape, name = opts.name })
+		return weldTo(handle, p, cf)
 	end
 
-	-- Seitliche Akzent-Rails am Receiver (tragen die Skin-Farbe sichtbar)
+	-- Schaft: skeletiert mit Daumenloch (oberer + unterer Holm, Wangenauflage,
+	-- Schulterplatte) — die markante AWP-Silhouette
+	furniture(Vector3.new(0.26, 0.3, 1.25), CFrame.new(0, 0.22, 1.85))                                   -- oberer Holm
+	furniture(Vector3.new(0.24, 0.24, 1.35), CFrame.new(0, -0.34, 1.78) * CFrame.Angles(math.rad(-14), 0, 0)) -- unterer Holm
+	furniture(Vector3.new(0.3, 0.2, 0.75),  CFrame.new(0, 0.45, 1.7), "CheekRest")                       -- Wangenauflage
+	furniture(Vector3.new(0.3, 0.95, 0.22), CFrame.new(0, -0.02, 2.5))                                   -- Schulterplatte
+	furniture(Vector3.new(0.26, 0.62, 0.3), CFrame.new(0, -0.18, 1.06) * CFrame.Angles(math.rad(12), 0, 0)) -- Pistolengriff
+
+	-- Receiver + Abzugsbügel
+	furniture(Vector3.new(0.34, 0.46, 1.6), CFrame.new(0, 0.12, 0.12), "Receiver")
+	metal(Vector3.new(0.05, 0.06, 0.5), CFrame.new(0, -0.22, 0.55))                                      -- Bügel unten
+	metal(Vector3.new(0.05, 0.22, 0.06), CFrame.new(0, -0.14, 0.32))                                     -- Bügel vorn
+
+	-- Bolt (rechts, mit Kugel-Knauf)
+	metal(Vector3.new(0.45, 0.1, 0.1), CFrame.new(0.22, 0.3, 0.42) * CFrame.Angles(0, 0, math.rad(-32)),
+		{ shape = Enum.PartType.Cylinder, name = "Bolt" })
+	metal(Vector3.new(0.16, 0.16, 0.16), CFrame.new(0.4, 0.2, 0.42), { shape = Enum.PartType.Ball })
+
+	-- Magazin (leicht angewinkelte Box unterm Receiver)
+	metal(Vector3.new(0.26, 0.42, 0.62), CFrame.new(0, -0.36, -0.18) * CFrame.Angles(math.rad(-8), 0, 0),
+		{ name = "Magazine" })
+
+	-- Handschutz (lang, AWP-typisch kantig) + Akzent-Rails an den Seiten
+	furniture(Vector3.new(0.32, 0.36, 2.0), CFrame.new(0, 0.08, -1.55), "Handguard")
 	for side = -1, 1, 2 do
-		accent(weldTo(handle, mkPart({ size = Vector3.new(0.05, 0.12, 1.2), color = skin.accent,
-			material = accentMat, transparency = fx.neon and 0 or 0.1 }),
-			CFrame.new(side * 0.18, 0.18, 0.3)))
+		accent(weldTo(handle, mkPart({ size = Vector3.new(0.05, 0.12, 1.7), color = skin.accent,
+			material = accentMat }),
+			CFrame.new(side * 0.185, 0.1, -1.45)))
+	end
+	accent(weldTo(handle, mkPart({ size = Vector3.new(0.34, 0.05, 1.7), color = skin.accent,
+		material = accentMat }),
+		CFrame.new(0, -0.12, -1.45)))
+
+	-- Freiliegender Lauf + Mündungsbremse
+	metal(Vector3.new(1.45, 0.14, 0.14), CFrame.new(0, 0.18, -3.2) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "Barrel" })
+	metal(Vector3.new(0.42, 0.24, 0.24), CFrame.new(0, 0.18, -3.95) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "MuzzleBrake" })
+	for side = -1, 1, 2 do
+		metal(Vector3.new(0.06, 0.1, 0.26), CFrame.new(side * 0.13, 0.18, -3.95))
+	end
+
+	local muzzleZ = -4.16
+	local barrelY = 0.18
+
+	-- ── Das große AWP-Scope ──
+	local scopeY = 0.62
+	metal(Vector3.new(1.5, 0.26, 0.26), CFrame.new(0, scopeY, 0.0) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "ScopeTube" })
+	metal(Vector3.new(0.4, 0.4, 0.4), CFrame.new(0, scopeY, -0.85) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "ScopeBell" })
+	metal(Vector3.new(0.28, 0.32, 0.32), CFrame.new(0, scopeY, 0.85) * CFrame.Angles(0, math.rad(90), 0),
+		{ shape = Enum.PartType.Cylinder, name = "ScopeEye" })
+	-- Verstelltürme (oben + rechts)
+	metal(Vector3.new(0.14, 0.12, 0.12), CFrame.new(0, scopeY + 0.2, 0.12) * CFrame.Angles(0, 0, math.rad(90)),
+		{ shape = Enum.PartType.Cylinder })
+	metal(Vector3.new(0.14, 0.12, 0.12), CFrame.new(0.2, scopeY, 0.12), { shape = Enum.PartType.Cylinder })
+	-- Linse vorn (Akzentfarbe — leuchtet ab Legendary) + Scope-Füße
+	accent(weldTo(handle, mkPart({ size = Vector3.new(0.06, 0.3, 0.3), color = skin.accent,
+		material = fx.neon and Enum.Material.Neon or Enum.Material.Glass,
+		shape = Enum.PartType.Cylinder, name = "Lens" }),
+		CFrame.new(0, scopeY, -1.07) * CFrame.Angles(0, math.rad(90), 0)))
+	for _, z in ipairs({ -0.55, 0.5 }) do
+		metal(Vector3.new(0.12, 0.3, 0.16), CFrame.new(0, scopeY - 0.22, z))
 	end
 
 	-- ── Mündung: Marker (Shot-Origin) + Glow-Ring bei Legendary+ ──

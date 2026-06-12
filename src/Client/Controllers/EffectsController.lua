@@ -70,18 +70,29 @@ function EffectsController.spawnTracer(fromPos, toPos, skinId, didKill)
 	Debris:AddItem(hitFx, 0.35)
 end
 
--- ── Schuss-Sound (AWP mit Fallback, Tier bestimmt den Charakter) ──────────────
--- Common klingt dumpf/billig, hohe Tiers knackig-hell — Audio-Flex inklusive.
+-- ── Schuss-Sound (AWP) ────────────────────────────────────────────────────────
+-- Wenn ein echter CS-AWP-Sound geladen werden konnte (Assets.RESOLVED.Shot),
+-- spielt er pur. Sonst wird der AWP-Knall aus garantierten Sounds GELAYERT:
+-- Gewehr-Boom (Körper) + Deep-Boom (Bass-Wumms) + Whip-Crack (Knall-Tail).
+-- Tier hebt Lautstärke/Pitch leicht an — Audio-Flex inklusive.
 function EffectsController.playShotSound(fromPos, skinId)
 	local camera = workspace.CurrentCamera
 	if not camera or (camera.CFrame.Position - fromPos).Magnitude > 500 then return end
 
 	local skin = Skins.BY_ID[skinId] or Skins.BY_ID.standard
 	local order = Skins.TIERS[skin.tier].order
-	Assets.playAt(fromPos, Assets.SFX.Shot,
-		0.55 + order * 0.09,
-		0.78 + order * 0.07, 0.84 + order * 0.07)
-	-- Bolt-Klack kurz danach
+
+	if Assets.RESOLVED.Shot then
+		Assets.playAt(fromPos, Assets.SFX.Shot,
+			0.7 + order * 0.07,
+			0.95 + order * 0.02, 1.0 + order * 0.02)
+	else
+		Assets.playAt(fromPos, Assets.SFX.GunBoom, 0.85 + order * 0.05, 0.8, 0.86)   -- Körper
+		Assets.playAt(fromPos, Assets.SFX.Boom, 0.5 + order * 0.06, 1.2, 1.3)        -- Bass
+		Assets.playAt(fromPos, Assets.SFX.Shot, 0.4, 1.0 + order * 0.04, 1.1)        -- Crack-Tail
+	end
+
+	-- Bolt-Zyklus kurz danach
 	task.delay(0.45, function()
 		Assets.playAt(fromPos, Assets.SFX.Bolt, 0.45, 0.95, 1.05)
 	end)
