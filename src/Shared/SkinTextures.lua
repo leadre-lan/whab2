@@ -10,7 +10,8 @@ local SkinTextures = {}
 
 local AssetService = game:GetService("AssetService")
 
-local SIZE = 256
+local SIZE = 384       -- Waffen-Texturen
+local ENV_SIZE = 256   -- Umgebungs-Kacheln
 
 -- ── Pixel-Helfer ──────────────────────────────────────────────────────────────
 local function clamp01(x)
@@ -322,13 +323,13 @@ function SkinTextures.getEnv(kind)
 			envCache[kind] = false
 		else
 			local ok, content = pcall(function()
-				local ei = AssetService:CreateEditableImage({ Size = Vector2.new(SIZE, SIZE) })
-				local buf = buffer.create(SIZE * SIZE * 4)
-				for py = 0, SIZE - 1 do
-					local fy = py / SIZE
-					local rowBase = py * SIZE * 4
-					for px = 0, SIZE - 1 do
-						local r, g, b = recipe(px / SIZE, fy)
+				local ei = AssetService:CreateEditableImage({ Size = Vector2.new(ENV_SIZE, ENV_SIZE) })
+				local buf = buffer.create(ENV_SIZE * ENV_SIZE * 4)
+				for py = 0, ENV_SIZE - 1 do
+					local fy = py / ENV_SIZE
+					local rowBase = py * ENV_SIZE * 4
+					for px = 0, ENV_SIZE - 1 do
+						local r, g, b = recipe(px / ENV_SIZE, fy)
 						local o = rowBase + px * 4
 						buffer.writeu8(buf, o, math.clamp(math.floor(r + 0.5), 0, 255))
 						buffer.writeu8(buf, o + 1, math.clamp(math.floor(g + 0.5), 0, 255))
@@ -336,7 +337,7 @@ function SkinTextures.getEnv(kind)
 						buffer.writeu8(buf, o + 3, 255)
 					end
 				end
-				ei:WritePixelsBuffer(Vector2.zero, Vector2.new(SIZE, SIZE), buf)
+				ei:WritePixelsBuffer(Vector2.zero, Vector2.new(ENV_SIZE, ENV_SIZE), buf)
 				return Content.fromObject(ei)
 			end)
 			envCache[kind] = ok and content or false

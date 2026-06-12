@@ -12,7 +12,7 @@ local REMOTE_NAMES = {
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin", "QueueBot",
+	"Shoot", "DoSlide", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 	"BuyPrime", "ClaimWeekly",
 }

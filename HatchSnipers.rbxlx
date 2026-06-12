@@ -169,7 +169,7 @@ return Assets
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.2 — Arena-Only-Sniping + Slide"
+Config.VERSION = "v1.3 — Slide-Pose + 384er-Texturen"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -289,7 +289,8 @@ local SkinTextures = {}
 
 local AssetService = game:GetService("AssetService")
 
-local SIZE = 256
+local SIZE = 384       -- Waffen-Texturen
+local ENV_SIZE = 256   -- Umgebungs-Kacheln
 
 -- ── Pixel-Helfer ──────────────────────────────────────────────────────────────
 local function clamp01(x)
@@ -601,13 +602,13 @@ function SkinTextures.getEnv(kind)
 			envCache[kind] = false
 		else
 			local ok, content = pcall(function()
-				local ei = AssetService:CreateEditableImage({ Size = Vector2.new(SIZE, SIZE) })
-				local buf = buffer.create(SIZE * SIZE * 4)
-				for py = 0, SIZE - 1 do
-					local fy = py / SIZE
-					local rowBase = py * SIZE * 4
-					for px = 0, SIZE - 1 do
-						local r, g, b = recipe(px / SIZE, fy)
+				local ei = AssetService:CreateEditableImage({ Size = Vector2.new(ENV_SIZE, ENV_SIZE) })
+				local buf = buffer.create(ENV_SIZE * ENV_SIZE * 4)
+				for py = 0, ENV_SIZE - 1 do
+					local fy = py / ENV_SIZE
+					local rowBase = py * ENV_SIZE * 4
+					for px = 0, ENV_SIZE - 1 do
+						local r, g, b = recipe(px / ENV_SIZE, fy)
 						local o = rowBase + px * 4
 						buffer.writeu8(buf, o, math.clamp(math.floor(r + 0.5), 0, 255))
 						buffer.writeu8(buf, o + 1, math.clamp(math.floor(g + 0.5), 0, 255))
@@ -615,7 +616,7 @@ function SkinTextures.getEnv(kind)
 						buffer.writeu8(buf, o + 3, 255)
 					end
 				end
-				ei:WritePixelsBuffer(Vector2.zero, Vector2.new(SIZE, SIZE), buf)
+				ei:WritePixelsBuffer(Vector2.zero, Vector2.new(ENV_SIZE, ENV_SIZE), buf)
 				return Content.fromObject(ei)
 			end)
 			envCache[kind] = ok and content or false
@@ -1134,7 +1135,7 @@ local REMOTE_NAMES = {
 	"TradeUpdate",
 	-- Client → Server
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin", "QueueBot",
+	"Shoot", "DoSlide", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 	"BuyPrime", "ClaimWeekly",
 }
@@ -3853,6 +3854,44 @@ function WeaponService.init(ds, netRef)
 
 	net.Shoot.OnServerEvent:Connect(handleShoot)
 
+	-- ── Slide-Animation (server-seitig → in 3rd Person für ALLE sichtbar) ──
+	-- Der Client macht den Velocity-Boost; hier wird das Root-Gelenk nach
+	-- hinten gekippt (Tween auf Motor6D.C0 repliziert an alle Clients).
+	-- Das Universum erzwingt R15 (MorphToR15) — R6-Fallback nur zur Sicherheit.
+	local TweenService = game:GetService("TweenService")
+	local lastSlide = {}
+
+	net.DoSlide.OnServerEvent:Connect(function(player)
+		local now = os.clock()
+		if lastSlide[player] and now - lastSlide[player] < Config.SLIDE_COOLDOWN - 0.2 then return end
+		lastSlide[player] = now
+
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return end
+
+		local motor
+		if hum.RigType == Enum.HumanoidRigType.R15 then
+			local lowerTorso = char:FindFirstChild("LowerTorso")
+			motor = lowerTorso and lowerTorso:FindFirstChild("Root")
+		else
+			local root = char:FindFirstChild("HumanoidRootPart")
+			motor = root and root:FindFirstChild("RootJoint")
+		end
+		if not motor then return end
+
+		local orig = motor.C0
+		local lean = orig * CFrame.Angles(math.rad(-58), 0, 0) * CFrame.new(0, -0.45, 0)
+		TweenService:Create(motor, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ C0 = lean }):Play()
+		task.delay(Config.SLIDE_TIME, function()
+			if motor.Parent then
+				TweenService:Create(motor, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ C0 = orig }):Play()
+			end
+		end)
+	end)
+
 	net.EquipSkin.OnServerEvent:Connect(function(player, skinId)
 		if type(skinId) ~= "string" then return end
 		local data = dataService.get(player)
@@ -3906,7 +3945,7 @@ local REMOTE_NAMES = {
 	"MatchState", "QueueState", "ShotFired", "ScreenFlash",
 	"TradeUpdate",
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin", "QueueBot",
+	"Shoot", "DoSlide", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 	"BuyPrime", "ClaimWeekly",
 }
@@ -5456,6 +5495,7 @@ local function doSlide()
 		TweenService:Create(camera, TweenInfo.new(0.12), { FieldOfView = BASE_FOV + 8 }):Play()
 	end
 	Assets.play2D(Assets.SFX.Whoosh, 0.55, 0.85)
+	net.DoSlide:FireServer()   -- Server kippt das Root-Gelenk → Slide-Pose für alle
 
 	task.delay(Config.SLIDE_TIME, function()
 		local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")

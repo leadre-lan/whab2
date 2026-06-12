@@ -18,7 +18,7 @@ local REMOTE_NAMES = {
 	"TradeUpdate",
 	-- Client → Server
 	"HatchEgg", "EquipSkin", "ClaimDaily", "BuyLuck",
-	"Shoot", "QueueJoin", "QueueBot",
+	"Shoot", "DoSlide", "QueueJoin", "QueueBot",
 	"TradeRequest", "TradeRespond", "TradeSetOffer", "TradeAccept", "TradeCancel",
 	"BuyPrime", "ClaimWeekly",
 }

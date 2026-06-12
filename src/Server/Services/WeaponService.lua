@@ -336,6 +336,44 @@ function WeaponService.init(ds, netRef)
 
 	net.Shoot.OnServerEvent:Connect(handleShoot)
 
+	-- ── Slide-Animation (server-seitig → in 3rd Person für ALLE sichtbar) ──
+	-- Der Client macht den Velocity-Boost; hier wird das Root-Gelenk nach
+	-- hinten gekippt (Tween auf Motor6D.C0 repliziert an alle Clients).
+	-- Das Universum erzwingt R15 (MorphToR15) — R6-Fallback nur zur Sicherheit.
+	local TweenService = game:GetService("TweenService")
+	local lastSlide = {}
+
+	net.DoSlide.OnServerEvent:Connect(function(player)
+		local now = os.clock()
+		if lastSlide[player] and now - lastSlide[player] < Config.SLIDE_COOLDOWN - 0.2 then return end
+		lastSlide[player] = now
+
+		local char = player.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return end
+
+		local motor
+		if hum.RigType == Enum.HumanoidRigType.R15 then
+			local lowerTorso = char:FindFirstChild("LowerTorso")
+			motor = lowerTorso and lowerTorso:FindFirstChild("Root")
+		else
+			local root = char:FindFirstChild("HumanoidRootPart")
+			motor = root and root:FindFirstChild("RootJoint")
+		end
+		if not motor then return end
+
+		local orig = motor.C0
+		local lean = orig * CFrame.Angles(math.rad(-58), 0, 0) * CFrame.new(0, -0.45, 0)
+		TweenService:Create(motor, TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ C0 = lean }):Play()
+		task.delay(Config.SLIDE_TIME, function()
+			if motor.Parent then
+				TweenService:Create(motor, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ C0 = orig }):Play()
+			end
+		end)
+	end)
+
 	net.EquipSkin.OnServerEvent:Connect(function(player, skinId)
 		if type(skinId) ~= "string" then return end
 		local data = dataService.get(player)

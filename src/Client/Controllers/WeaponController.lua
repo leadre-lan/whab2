@@ -150,6 +150,7 @@ local function doSlide()
 		TweenService:Create(camera, TweenInfo.new(0.12), { FieldOfView = BASE_FOV + 8 }):Play()
 	end
 	Assets.play2D(Assets.SFX.Whoosh, 0.55, 0.85)
+	net.DoSlide:FireServer()   -- Server kippt das Root-Gelenk → Slide-Pose für alle
 
 	task.delay(Config.SLIDE_TIME, function()
 		local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
