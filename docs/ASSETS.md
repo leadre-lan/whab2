@@ -4,16 +4,21 @@ Alle externen Roblox-Assets leben in **`src/Shared/Assets.lua`** bzw.
 `Config.lua` (Waffen-Mesh). Jede ID wurde am 2026-06-11 über die Roblox-APIs
 geprüft.
 
-## Waffen-Modell (Creator Store, per Thumbnail-Render geprüft)
+## Waffen-Modell (Roblox-eigenes Gear — lädt GARANTIERT überall)
 
 | ID | Asset | Einsatz |
 |---|---|---|
-| 13638913296 | "AWP sniper" (CS-Style, Olive-Textur, Scope+Bipod) | Basis aller Skins |
-| 504829517 | "[L4D2] AWP" | Fallback-Modell |
+| 94219391 | Gewehr-Mesh aus "Trench Warfare Shotgun" (Gear 94233344, by Roblox) | Körper aller Skins |
+| 94219470 | zugehörige Holz/Metall-Textur (256×256) | Textur aller Skins |
+| 94191736 / 94191778 | FireSound / PumpSound desselben Gears | garantierte Schuss-/Bolt-Sounds |
 
-Geladen via `InsertService:LoadAsset` beim Server-Start; Lauf-Achse und
-Mündungsrichtung werden zur Laufzeit per Raycast-Probe bestimmt (das dünne
-Ende ist der Lauf). Schlägt alles fehl → prozedurales Part-Modell.
+Wichtig gelernt: `InsertService:LoadAsset` darf in Live-Games nur eigene oder
+Roblox-eigene Assets laden — der frühere Creator-Store-AWP schlug deshalb fehl
+(Waffe ohne Textur). Jetzt rendert ein **SpecialMesh** das Roblox-eigene
+Gewehr-Mesh direkt (kein LoadAsset nötig); Skins tönen die Textur per
+**VertexColor**, der Klassik-Skin bleibt Original. Maße wurden offline aus der
+Mesh-Datei geparst: 6.53 Studs lang, Mündung entlang −Z (dünnes hohes Ende),
+das aufgesetzte Scope macht daraus die Sniper.
 
 ## Sound-Effekte (ProSoundEffects / APM = offizielle Roblox-Libraries)
 

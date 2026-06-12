@@ -43,14 +43,13 @@ rojo serve                          # oder live in Studio syncen
 
 ## Das Waffen-Modell
 
-Der Server lädt beim Start ein echtes **AWP-Modell aus dem Creator Store**
-(`Config.WEAPON_MESH_ASSET`, per Thumbnail geprüft), vermisst Lauf-Achse und
-Mündungsrichtung automatisch per Raycast-Probe und baut daraus alle Skins:
-der **Klassik-Tarn** (Standard) behält die originale AWP-Textur, alle anderen
-Skins färben das Modell nach Tier (matt → Metallic → Neon-Akzente → Puls).
-Zeigt der Lauf wider Erwarten nach hinten/unten: `Config.WEAPON_FLIP` bzw.
-`Config.WEAPON_UPSIDE` auf `true` setzen. Kann das Asset nicht geladen werden
-(z.B. offline), baut das Spiel automatisch das prozedurale Part-Modell.
+Die Sniper basiert auf dem **texturierten Gewehr-Mesh aus Robloxs eigenem
+"Trench Warfare Shotgun"-Gear** (Holzschaft + Metall, plus aufgesetztes Scope).
+Roblox-eigene Assets laden in jedem Spiel garantiert — kein LoadAsset, keine
+Berechtigungsprobleme. Jeder Skin tönt die echte Textur per VertexColor
+(Klassik-Tarn = Original; Gold/Chrom hell-metallisch; Legendary+ dunkel-moody
+mit Neon-Akzenten, Partikeln, Lichtspur und Puls). IDs in `Shared/Assets.lua`
+(`Assets.WEAPON`).
 
 ## Projektstruktur
 

@@ -10,6 +10,21 @@
 
 local Assets = {}
 
+-- ── Waffen-Modell (verifiziert + IMMER ladbar) ────────────────────────────────
+-- Mesh + Textur aus Robloxs eigenem Gear "Trench Warfare Shotgun" (94233344):
+-- klassisches Langgewehr mit Holzschaft/Metall-Textur. Roblox-eigene Assets
+-- laden in JEDEM Spiel ohne Berechtigung (anders als LoadAsset/Creator-Store!).
+-- Maße offline aus der Mesh-Datei geparst: Lauf liegt entlang -Z (dünnes,
+-- hohes Ende = Mündung), 6.53 Studs lang bei Scale 1 — passt 1:1 zur
+-- Handle-Konvention des SniperBuilders (Schussrichtung = -Z).
+Assets.WEAPON = {
+	meshId    = "rbxassetid://94219391",
+	textureId = "rbxassetid://94219470",
+	length    = 6.53,    -- native Länge (Studs bei Scale 1)
+	height    = 1.50,
+	barrelY   = 0.31,    -- Lauf-Mittelhöhe (bereits auf Ziel-Scale 0.735 gerechnet)
+}
+
 Assets.SFX = {
 	Shot      = "rbxassetid://9126213373",  -- Fallback: Whip Crack (verifiziert)
 	Bolt      = "rbxassetid://9114004212",  -- Fallback: Crossbow Latch
@@ -23,18 +38,19 @@ Assets.SFX = {
 	Teleport  = "rbxassetid://9116394545",  -- Magic Glow (Arena-Teleport)
 }
 
--- Echte AWP-Sounds (CS-Ports aus dem Creator-Marketplace). User-Audio lässt
--- sich von außen nicht download-verifizieren — deshalb probiert der Client sie
--- per PreloadAsync und fällt bei Lade-Fehlern auf die verifizierten
--- Assets.SFX-IDs oben zurück (Assets.resolveSfx).
+-- Echte AWP-Sounds (CS-Ports) zuerst; danach die GARANTIERT ladbaren Sounds
+-- aus Robloxs eigenem Trench-Warfare-Gear (Fire/Pump); zuletzt greift sowieso
+-- der verifizierte Assets.SFX-Fallback. Client testet per PreloadAsync.
 Assets.SFX_PREFERRED = {
 	Shot = {
 		"rbxassetid://138705939667182",  -- Awp_Fire (CS:GO-Port)
 		"rbxassetid://131254751896361",  -- awp fire 1.6
+		"rbxassetid://94191736",         -- Trench-Rifle FireSound (Roblox — garantiert)
 	},
 	Bolt = {
 		"rbxassetid://133852631085337",  -- Awp_BoltPull (CS CZ:DS)
 		"rbxassetid://140632128823885",  -- awp_boltforward
+		"rbxassetid://94191778",         -- Trench-Rifle PumpSound (Roblox — garantiert)
 	},
 }
 
@@ -115,7 +131,7 @@ function Assets.play2D(soundId, volume, pitch)
 end
 
 function Assets.preloadList()
-	local list = {}
+	local list = { Assets.WEAPON.meshId, Assets.WEAPON.textureId }
 	for _, id in pairs(Assets.SFX) do
 		table.insert(list, id)
 	end

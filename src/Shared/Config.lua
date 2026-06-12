@@ -26,15 +26,8 @@ Config.SHOT_COOLDOWN   = 1.4         -- Bolt-Action-Takt
 Config.SHOT_RANGE      = 800
 Config.LOBBY_SHOOTING  = true        -- in der Lobby knallt's, aber ohne Schaden
 
--- Echtes AWP-Modell aus dem Creator Store (frei; per Thumbnail geprüft).
--- Der Server lädt es einmal via InsertService, vermisst Lauf-Achse/-Richtung
--- per Raycast-Probe und nutzt es als Basis für alle Skins. Schlägt das Laden
--- fehl (z.B. offline), greift automatisch der prozedurale Part-Build.
-Config.WEAPON_MESH_ASSET = 13638913296   -- "AWP sniper"
-Config.WEAPON_ALT_ASSET  = 504829517     -- "[L4D2] AWP" (Fallback-Modell)
-Config.WEAPON_LENGTH     = 4.8           -- Ziel-Länge in Studs
-Config.WEAPON_FLIP       = false         -- true, falls der Lauf nach hinten zeigt
-Config.WEAPON_UPSIDE     = false         -- true, falls das Modell kopfüber hängt
+-- Das Waffen-Modell (texturiertes Roblox-Gewehr-Mesh) ist in Shared/Assets.lua
+-- definiert (Assets.WEAPON) — Roblox-eigenes Asset, lädt garantiert überall.
 
 -- ── Bot-1v1 (Training) ────────────────────────────────────────────────────────
 Config.BOT_NAME        = "🤖 Trainings-Bot"
