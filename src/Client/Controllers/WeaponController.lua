@@ -1,9 +1,14 @@
--- WeaponController.lua — Schießen, Scope-Zoom, Slide, Mobile-Buttons
+-- WeaponController.lua — Schießen, Scope-Zoom, Slide, Viewmodel, Mobile-Buttons
 --
 -- Regeln:
 --  • Geschossen/gescoped wird NUR im Match (Lobby = Showroom für die Skins)
 --  • Im Match herrscht Ego-Perspektive (kein 3rd-Person-Peeken um Deckungen)
 --  • Slide: Ctrl/C im Lauf (Mobile: 🏃-Button) — Boost + geduckte Kamera
+--
+-- Viewmodel: Das echte Tool hängt am animierten Arm und zittert im Ego-Modus.
+-- Deshalb wird es lokal ausgeblendet und ein Kamera-Klon mit CS-Style
+-- View-Bobbing, Maus-Sway und Recoil gerendert (nur für DICH — andere sehen
+-- weiter das normale Tool in deiner Hand).
 --
 -- Desktop: Linksklick = Schuss (Hüfte: Cursor), Rechtsklick halten = Scope
 -- Mobile:  FEUER-/SCOPE-/SLIDE-Buttons (nur im Match sichtbar); gezielt wird
@@ -13,6 +18,7 @@ local WeaponController = {}
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
+local RunService       = game:GetService("RunService")
 local Debris           = game:GetService("Debris")
 local RS               = game:GetService("ReplicatedStorage")
 
@@ -36,16 +42,130 @@ local touchGui   = nil
 local BASE_FOV   = 70
 local SCOPE_FOV  = isTouch and 24 or 16   -- Mobile etwas weniger Zoom (Touch-Look skaliert nicht mit)
 
--- Waffe im Scope lokal ausblenden (CS-Style: man sieht nur das Scope-Bild)
-local function setWeaponHidden(hidden)
-	local char = player.Character
-	local tool = char and char:FindFirstChild("Sniper")
-	if not tool then return end
+-- ── Viewmodel (CS-Style: Waffe an der Kamera, mit View-Bobbing) ───────────────
+local viewmodel  = nil    -- Tool-Klon unter der Kamera
+local vmHandle   = nil
+local bobT       = 0
+local swayX, swayY = 0, 0
+local recoil     = 0
+local showT      = 1      -- Equip-Einblendung (0 → 1)
+
+local function destroyViewmodel()
+	if viewmodel then
+		viewmodel:Destroy()
+		viewmodel = nil
+		vmHandle = nil
+	end
+end
+
+-- Reales Tool nur LOKAL unsichtbar (andere sehen es normal in der Hand)
+local function hideRealTool(tool)
 	for _, p in ipairs(tool:GetDescendants()) do
 		if p:IsA("BasePart") then
-			p.LocalTransparencyModifier = hidden and 1 or 0
+			p.LocalTransparencyModifier = 1
 		end
 	end
+end
+
+local function buildViewmodel(tool)
+	destroyViewmodel()
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+
+	local vm = tool:Clone()
+	vm.Name = "Viewmodel"
+	local handle = vm:FindFirstChild("Handle")
+	if not handle then
+		vm:Destroy()
+		return
+	end
+	for _, d in ipairs(vm:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.CanQuery = false
+			d.Massless = true
+			d.CastShadow = false
+			d.Anchored = false
+			d.LocalTransparencyModifier = 0
+		elseif d:IsA("Sound") or d:IsA("BillboardGui") or d:IsA("ProximityPrompt") then
+			d:Destroy()
+		end
+	end
+	-- Handle verankert: die geweldeten Teile folgen starr, ohne Physik-Drift
+	handle.Anchored = true
+	vm.Parent = camera
+
+	viewmodel = vm
+	vmHandle = handle
+	bobT, swayX, swayY, recoil = 0, 0, 0, 0
+	showT = 0
+end
+
+-- Läuft jeden Frame NACH dem Kamera-Update (RenderPriority.Camera + 1)
+local function updateViewmodel(dt)
+	local camera = workspace.CurrentCamera
+	local char = player.Character
+	local tool = char and char:FindFirstChild("Sniper")
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
+
+	-- Im Match übernimmt das Viewmodel — das reale Tool wird lokal versteckt.
+	-- Jeden Frame: die Default-Kamera-Skripte setzen die Tool-Sichtbarkeit
+	-- im Ego-Modus sonst wieder zurück.
+	if inMatch and tool then
+		hideRealTool(tool)
+	end
+
+	local shouldShow = inMatch and not scoped and camera ~= nil
+		and tool ~= nil and hum ~= nil and hum.Health > 0
+	if not shouldShow then
+		if not tool then
+			destroyViewmodel()
+		elseif viewmodel then
+			viewmodel.Parent = nil   -- behalten (Scope-Toggle), nur ausblenden
+		end
+		return
+	end
+
+	-- Skin gewechselt / noch kein Viewmodel → neu bauen
+	if not viewmodel or viewmodel:GetAttribute("SkinId") ~= tool:GetAttribute("SkinId") then
+		buildViewmodel(tool)
+	end
+	if not viewmodel or not vmHandle then return end
+	if viewmodel.Parent ~= camera then
+		viewmodel.Parent = camera
+		showT = 0
+	end
+
+	local root = char:FindFirstChild("HumanoidRootPart")
+	local vel = root and root.AssemblyLinearVelocity or Vector3.zero
+	local speed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+	local stride = math.clamp(speed / 16, 0, 1.4)
+
+	bobT += dt * (5 + speed * 0.55)
+	showT = math.min(showT + dt * 4, 1)
+	recoil = math.max(recoil - dt * 2.2, 0)
+
+	-- Maus-Sway: die Waffe zieht weich hinterher
+	local md = UserInputService:GetMouseDelta()
+	local k = 1 - math.exp(-dt * 10)
+	swayX += (math.clamp(-md.X, -28, 28) * 0.006 - swayX) * k
+	swayY += (math.clamp(md.Y, -28, 28) * 0.005 - swayY) * k
+
+	-- Figur-8-Bob beim Laufen + Atmen im Stand
+	local bobX = math.sin(bobT) * 0.05 * stride
+	local bobY = -math.abs(math.cos(bobT)) * 0.045 * stride
+	local breath = math.sin(os.clock() * 1.3) * 0.012 * (1 - math.min(stride, 1))
+
+	local rise = 1 - showT          -- Equip: von unten reinschieben
+	local kick = recoil * recoil    -- Recoil: hart rein, weich raus
+
+	local base = CFrame.new(1.0, -0.85, -1.55) * CFrame.Angles(0, math.rad(-2), 0)
+	vmHandle.CFrame = camera.CFrame * base
+		* CFrame.new(swayX + bobX, swayY + bobY + breath - rise * 0.9, kick * 0.5)
+		* CFrame.Angles(
+			math.rad(swayY * 50) + kick * 0.16 - rise * 0.55,
+			math.rad(swayX * 40),
+			math.sin(bobT) * 0.014 * stride)
 end
 
 -- Kamera-Modus: im Match IMMER Ego (kein 3rd-Person-Peek um Deckungen)
@@ -69,7 +189,6 @@ local function setScoped(state)
 		}):Play()
 	end
 	if uiCtrl then uiCtrl.setScopeVisible(state) end
-	setWeaponHidden(state)
 	applyCameraMode()
 
 	-- Anti-Zappeln: Maus-Empfindlichkeit auf das FOV runterskalieren
@@ -114,6 +233,7 @@ local function shoot()
 
 	net.Shoot:FireServer(getTargetPos())
 	effects.shake(scoped and 0.2 or 0.45)
+	recoil = 1   -- Viewmodel-Kick
 	if uiCtrl then uiCtrl.startCooldownBar(Config.SHOT_COOLDOWN) end
 end
 
@@ -219,6 +339,7 @@ function WeaponController.setInMatch(state)
 	inMatch = state
 	if not state then
 		setScoped(false)
+		destroyViewmodel()
 	end
 	applyCameraMode()
 	if touchGui then
@@ -259,9 +380,13 @@ function WeaponController.init(netRef, effectsCtrl, uiController)
 		buildTouchControls()
 	end
 
+	-- Viewmodel: jeden Frame nach dem Kamera-Update positionieren
+	RunService:BindToRenderStep("HSViewmodel", Enum.RenderPriority.Camera.Value + 1, updateViewmodel)
+
 	-- Scope/Kamera beim Tod/Respawn zurücksetzen (Match-Status bleibt)
 	player.CharacterAdded:Connect(function()
 		scoped = false
+		destroyViewmodel()
 		pcall(function()
 			UserInputService.MouseDeltaSensitivity = 1
 		end)

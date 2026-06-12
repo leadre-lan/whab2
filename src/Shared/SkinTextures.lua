@@ -297,6 +297,27 @@ local ENV = {
 		local v = 38 + n + math.abs(math.sin((gx + gy) * 3)) * 7
 		return v, v + 2, v + 12
 	end,
+	-- Wüstensand mit Wind-Rippeln (Defuse-Map-Boden)
+	sand = function(x, y)
+		local dune = math.sin(y * 9 + math.sin(x * 5) * 1.6) * 0.5 + 0.5
+		local grain = noise2(x * 80, y * 80, 221) * 0.5 + noise2(x * 28, y * 28, 222) * 0.5
+		local v = 186 + dune * 16 + grain * 28
+		return v, v * 0.86, v * 0.6
+	end,
+	-- Sonnengebleichter Putz mit Fugen und Rissen (Wüstenstadt-Wände)
+	plaster = function(x, y)
+		local n = noise2(x * 14, y * 14, 231) * 0.55 + noise2(x * 48, y * 48, 232) * 0.45
+		local v = 192 + n * 34
+		local band = (y * 8) % 1
+		if band < 0.045 then
+			v = v - 28   -- horizontale Putzfuge
+		end
+		local crack = math.abs(math.sin(x * 34 + math.sin(y * 22) * 3))
+		if crack > 0.985 then
+			v = v - 34   -- feiner Riss
+		end
+		return v, v * 0.92, v * 0.76
+	end,
 	-- Stein mit Mythos-Gravuren (für Wände/Pfeiler)
 	stone = function(x, y)
 		local n = noise2(x * 9, y * 9, 211) * 0.6 + noise2(x * 30, y * 30, 212) * 0.4

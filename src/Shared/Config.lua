@@ -2,7 +2,7 @@
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.5 — Omega-Ei + Defuse-Mode"
+Config.VERSION = "v1.6 — Dust-Map + Viewmodel"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -63,7 +63,7 @@ Config.PITY_LEGENDARY = 45
 
 -- ── Defuse-Mode (3v3 vs Bots — CS-Style Bomben-Defusal) ──────────────────────
 Config.DEFUSE_TEAM_SIZE   = 3      -- pro Team (Spieler + Bots aufgefüllt)
-Config.DEFUSE_ROUND_TIME  = 90     -- Sekunden bis zur Plant-Deadline
+Config.DEFUSE_ROUND_TIME  = 110    -- Sekunden bis zur Plant-Deadline (große Map)
 Config.DEFUSE_BOMB_TIME   = 35     -- Sekunden bis zur Explosion
 Config.DEFUSE_PLANT_TIME  = 3      -- Halten zum Legen
 Config.DEFUSE_DEFUSE_TIME = 5      -- Halten zum Entschärfen

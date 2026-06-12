@@ -87,10 +87,12 @@ function SniperBuilder.buildTool(skin)
 	tool:SetAttribute("SkinId", skin.id)
 	tool:SetAttribute("SkinTier", skin.tier)
 
-	-- Handle: unsichtbarer Griffpunkt
+	-- Handle: unsichtbarer Griffpunkt (Massless — sonst zieht die Waffe am
+	-- Charakter und die Lauf-Animation wirkt zappelig)
 	local handle = mkPart({ size = Vector3.new(0.34, 0.5, 2.2), color = skin.body, name = "Handle" })
 	handle.Transparency = 1
 	handle.CanCollide = false
+	handle.Massless = true
 	handle.Parent = tool
 
 	local function accent(part)
@@ -102,15 +104,21 @@ function SniperBuilder.buildTool(skin)
 
 	if awpInfo then
 		-- ── Echtes AWP-Mesh (Studio-Template): MeshPart-Klon ──
-		-- Die Skin-TEXTUR legt jeder Client lokal drauf (SkinTextures.lua,
-		-- EditableImage via Tag "SkinBody") — wie CS-Skins: Fade, Galaxie, …
+		-- Die ECHTE AWP-Textur bleibt drauf; der Skin tönt sie nur (MeshPart.Color
+		-- multipliziert mit der Textur). Prozedurale Volltexturen sahen auf dem
+		-- UV-Atlas des Meshes kaputt aus — Tint erhält alle Details (Panels,
+		-- Schrauben, Verschattung) und färbt trotzdem sichtbar um.
 		local body = awpInfo.template:Clone()
 		body:ClearAllChildren()   -- Kit-Templates schleppen Welds/SurfaceAppearance mit
 		body.Name = "Body"
 		body.Size = awpInfo.nativeSize * awpInfo.scale
 		body.Material = Enum.Material.Metal   -- PBR-Highlights statt mattem Plastik
 		body:SetAttribute("SkinId", skin.id)
-		CollectionService:AddTag(body, "SkinBody")
+		if skin.id == "standard" then
+			body.Color = Color3.new(1, 1, 1)              -- Original-Look pur
+		else
+			body.Color = skin.body:Lerp(Color3.new(1, 1, 1), 0.25)
+		end
 		weldTo(handle, body, CFrame.new(0, 0.05, -0.6) * awpInfo.rot)
 
 		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05

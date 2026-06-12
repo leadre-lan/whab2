@@ -212,7 +212,64 @@ local function watchForAwpTemplate()
 	end)
 end
 
--- ── Waffe geben (Lobby + Arena: der Skin ist immer sichtbar) ──────────────────
+-- ── Waffe geben (Lobby: geholstert auf dem Rücken, Match: Tool in der Hand) ───
+-- In der Lobby ist die Waffe NICHT equipped — das Tool-Hold-Pose macht die
+-- Lauf-Animation kaputt und gesnipet wird dort eh nicht. Der Skin bleibt
+-- trotzdem sichtbar: quer über dem Rücken (Showroom-Flex).
+local function isInCombat(player)
+	if arenaService and arenaService.isInMatch and arenaService.isInMatch(player) then
+		return true
+	end
+	if defuseService and defuseService.isInMatch and defuseService.isInMatch(player) then
+		return true
+	end
+	return false
+end
+
+-- Waffe quer auf den Rücken schnallen (Mündung zeigt schräg nach oben-links)
+local function mountOnBack(char, tool)
+	local torso = char:FindFirstChild("UpperTorso") or char:FindFirstChild("Torso")
+	local handle = tool:FindFirstChild("Handle")
+	if not torso or not handle then
+		tool:Destroy()
+		return
+	end
+
+	local model = Instance.new("Model")
+	model.Name = "BackSniper"
+	for _, child in ipairs(tool:GetChildren()) do
+		if child:IsA("BasePart") then
+			child.Parent = model
+		end
+	end
+	local equipSound = handle:FindFirstChild("EquipSound")
+	if equipSound then equipSound:Destroy() end
+	for _, p in ipairs(model:GetChildren()) do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+			p.CanCollide = false
+			p.CanQuery = false
+			p.Massless = true
+		end
+	end
+	model.Parent = char
+
+	-- Diagonale über den Rücken: Waffen-Z (Lauf) → Torso-Diagonale,
+	-- Waffen-Y (Scope) → vom Rücken weg
+	local a = math.rad(38)
+	local zCol = Vector3.new(math.sin(a), -math.cos(a), 0)
+	local yCol = Vector3.new(0, 0, 1)
+	local rot = CFrame.fromMatrix(Vector3.zero, yCol:Cross(zCol), yCol, zCol)
+	handle.CFrame = torso.CFrame * CFrame.new(0, 0.15, 0.72) * rot
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = torso
+	weld.Part1 = handle
+	weld.Parent = handle
+
+	tool:Destroy()
+end
+
 function WeaponService.giveWeapon(player)
 	local data = dataService.get(player)
 	if not data then return end
@@ -226,10 +283,21 @@ function WeaponService.giveWeapon(player)
 			if old then old:Destroy() end
 		end
 	end
+	if char then
+		local oldBack = char:FindFirstChild("BackSniper")
+		if oldBack then oldBack:Destroy() end
+	end
 	if not bp then return end
 
+	local combat = isInCombat(player)
 	local tool = SniperBuilder.buildTool(skin)
-	tool.Parent = bp
+	if combat then
+		tool.Parent = bp
+	elseif char then
+		mountOnBack(char, tool)
+	else
+		tool:Destroy()
+	end
 
 	-- Charakter-Aura: Godly+ bekommt eine wirbelnde Skin-Aura, Prime goldenen
 	-- Glanz dazu — der Status-Flex ist in der Lobby sofort sichtbar
@@ -269,9 +337,9 @@ function WeaponService.giveWeapon(player)
 		end
 	end
 
-	-- Auto-Equip
+	-- Auto-Equip (nur im Match — in der Lobby bleibt die Waffe auf dem Rücken)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
-	if hum then
+	if combat and hum then
 		task.defer(function()
 			if tool.Parent == bp then hum:EquipTool(tool) end
 		end)

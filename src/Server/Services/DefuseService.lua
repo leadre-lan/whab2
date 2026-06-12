@@ -1,10 +1,10 @@
 -- DefuseService.lua — CS-Style Bomben-Defusal (3v3, Spieler + Bots).
 --
--- Ablauf pro Runde: Angreifer (T) müssen die Bombe am Bombenplatz legen,
--- Verteidiger (CT) halten den Platz / entschärfen. Kein Respawn in der Runde
--- (CS-Regeln) — wer stirbt, schaut von der Zuschauer-Plattform zu.
--- Bots laufen Routen (Mid/Links/Rechts), kämpfen gegen Spieler UND Bots,
--- T-Bots legen die Bombe, CT-Bots entschärfen. Seitenwechsel jede Runde.
+-- Map: "Dorado" — sandige Wüstenstadt im Dust-2-Stil. Drei Lanes
+-- (Long / Mid mit Doppeltür / Tunnels) führen zu ZWEI Bombenplätzen (A Ost,
+-- B West). T-Bots wählen pro Runde ein Ziel-Site, CT-Bots verteilen sich auf
+-- A / B / Mid. Kein Respawn in der Runde (CS-Regeln) — wer stirbt, schaut von
+-- der Zuschauer-Plattform zu. Seitenwechsel jede Runde.
 local DefuseService = {}
 
 local Players = game:GetService("Players")
@@ -14,32 +14,53 @@ local Debris  = game:GetService("Debris")
 local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
-local dataService = nil
-local botService  = nil
-local net         = nil
+local dataService   = nil
+local botService    = nil
+local weaponService = nil
+local net           = nil
 
 -- ── Map-Layout (eine Map, ein Match gleichzeitig) ─────────────────────────────
 local C = Vector3.new(-1500, 0, 0)   -- Map-Zentrum
 local T_COLOR  = Color3.fromRGB(255, 170, 60)
 local CT_COLOR = Color3.fromRGB(80, 170, 255)
 
-local sitePart    = nil   -- Bombenplatz-Zone (Prompt-Träger)
-local spectatorCF = CFrame.new(C + Vector3.new(0, 85, 0))
-local tSpawnCF    = CFrame.new(C + Vector3.new(0, 4, 62)) * CFrame.Angles(0, math.rad(180), 0)
-local ctSpawnCF   = CFrame.new(C + Vector3.new(0, 4, -62))
+local sitePartA   = nil   -- Bombenplatz-Zonen (Prompt-Träger)
+local sitePartB   = nil
+local spectatorCF = CFrame.new(C + Vector3.new(0, 100, -10))
+local tSpawnCF    = CFrame.new(C + Vector3.new(0, 4, 105))                                  -- blickt nach Norden
+local ctSpawnCF   = CFrame.new(C + Vector3.new(0, 4, -118)) * CFrame.Angles(0, math.rad(180), 0)
 
--- Bot-Routen (Welt-Koordinaten): T drückt Richtung Bombenplatz (z -30)
+-- Bot-Routen (Welt-Koordinaten). Wichtig: MoveTo hat KEIN Pathfinding —
+-- jedes Segment muss eine freie Gerade innerhalb der Korridore sein.
 local function P(x, z) return C + Vector3.new(x, 1, z) end
-local T_ROUTES = {
-	{ P(6, 40), P(6, 12), P(-1, -8), P(0, -28) },        -- Mid (um die Kisten herum)
-	{ P(-36, 42), P(-30, 24), P(-36, 4), P(-16, -28) },  -- Links
-	{ P(36, 42), P(30, 24), P(36, 4), P(16, -28) },      -- Rechts
+
+-- T-Angriffsrouten pro Ziel-Site (Long/Mid Richtung A, Tunnels/Mid Richtung B)
+local T_SETS = {
+	A = {
+		{ P(80, 95), P(80, 42), P(80, 18), P(82, -49), P(80, -77) },                      -- Long A
+		{ P(0, 95), P(0, 20), P(0, -8), P(0, -49), P(45, -49), P(62, -62), P(80, -77) },  -- Mid → A
+		{ P(76, 95), P(76, 40), P(84, 16), P(78, -49), P(86, -72) },                      -- Long A (Variante)
+	},
+	B = {
+		{ P(-77, 95), P(-77, 50), P(-77, 28), P(-80, -49), P(-80, -77) },                       -- Tunnels B
+		{ P(0, 95), P(0, 20), P(0, -8), P(0, -49), P(-45, -49), P(-62, -62), P(-80, -77) },     -- Mid → B
+		{ P(-73, 95), P(-73, 48), P(-81, 26), P(-76, -49), P(-86, -72) },                       -- Tunnels (Variante)
+	},
 }
-local CT_HOLDS = { P(0, -50), P(-20, -40), P(20, -40), P(-8, -22), P(8, -22) }
-local CT_ROUTES = {
-	{ P(-12, -50), P(-18, -38) },
-	{ P(12, -50), P(18, -38) },
-	{ P(0, -52), P(0, -40) },
+-- T nach dem Plant: Site verteidigen
+local T_DEFEND = {
+	A = { P(62, -62), P(95, -88), P(60, -49) },
+	B = { P(-62, -62), P(-95, -88), P(-60, -49) },
+}
+
+-- CT: Bot 1 hält A, Bot 2 hält B, Bot 3 spielt Mid (durch den CT-Tunnel)
+local CT_ASSIGN = {
+	{ route = { P(70, -118), P(70, -90) },
+	  loiter = { P(62, -88), P(92, -68), P(70, -58) } },
+	{ route = { P(-70, -118), P(-70, -90) },
+	  loiter = { P(-62, -88), P(-92, -68), P(-70, -58) } },
+	{ route = { P(0, -110), P(0, -80), P(0, -58), P(0, -49) },
+	  loiter = { P(-20, -49), P(20, -49), P(0, -60) } },
 }
 
 -- ── Map bauen ─────────────────────────────────────────────────────────────────
@@ -57,98 +78,203 @@ local function part(props, parent)
 	return p
 end
 
-local function buildMap()
-	local folder = Instance.new("Folder")
-	folder.Name = "DefuseMap"
-	folder.Parent = workspace
+-- Sandstein-Block mit Putz-Textur (Gebäude/Wände)
+local function sandBlock(folder, size, pos, color)
+	local p = part({ size = size, pos = pos, material = Enum.Material.Sandstone,
+		color = color or Color3.fromRGB(205, 178, 128) }, folder)
+	p:SetAttribute("EnvKind", "plaster")
+	p:SetAttribute("EnvFaces", "Front,Back,Left,Right")
+	p:SetAttribute("EnvStuds", 12)
+	p:SetAttribute("EnvAlpha", 0.35)
+	game:GetService("CollectionService"):AddTag(p, "EnvTexture")
+	return p
+end
 
-	local DARK  = Color3.fromRGB(30, 32, 46)
-	local FLOOR = Color3.fromRGB(36, 38, 54)
-	local COVER = Color3.fromRGB(56, 60, 84)
+-- Holzkiste (Deckung)
+local function crate(folder, size, pos)
+	return part({ size = size, pos = pos, material = Enum.Material.WoodPlanks,
+		color = Color3.fromRGB(152, 112, 64) }, folder)
+end
 
-	-- Boden + Wände
-	local floorPart = part({ size = Vector3.new(210, 2, 170), pos = C + Vector3.new(0, -1, 0),
-		material = Enum.Material.SmoothPlastic, color = FLOOR }, folder)
-	floorPart.Reflectance = 0.1
-	floorPart:SetAttribute("EnvKind", "panels")
-	floorPart:SetAttribute("EnvFaces", "Top")
-	floorPart:SetAttribute("EnvStuds", 16)
-	floorPart:SetAttribute("EnvAlpha", 0.2)
-	game:GetService("CollectionService"):AddTag(floorPart, "EnvTexture")
-
-	for _, w in ipairs({
-		{ Vector3.new(210, 26, 2), C + Vector3.new(0, 13, -85) },
-		{ Vector3.new(210, 26, 2), C + Vector3.new(0, 13, 85) },
-		{ Vector3.new(2, 26, 170), C + Vector3.new(-105, 13, 0) },
-		{ Vector3.new(2, 26, 170), C + Vector3.new(105, 13, 0) },
-	}) do
-		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
-	end
-
-	-- Lane-Trennwände (Mid vs Links/Rechts) mit Durchgängen
-	for _, side in ipairs({ -1, 1 }) do
-		part({ size = Vector3.new(2, 9, 60), pos = C + Vector3.new(side * 22, 4.5, 18),
-			material = Enum.Material.Concrete, color = DARK }, folder)
-		part({ size = Vector3.new(2, 9, 34), pos = C + Vector3.new(side * 22, 4.5, -46),
-			material = Enum.Material.Concrete, color = DARK }, folder)
-	end
-
-	-- Deckung: Kisten in den Lanes + am Bombenplatz
-	for _, c in ipairs({
-		{ x = 0, z = 22, s = Vector3.new(8, 4, 4) },
-		{ x = -6, z = -4, s = Vector3.new(5, 5, 5) },
-		{ x = 8, z = 4, s = Vector3.new(5, 3.4, 5) },
-		{ x = -36, z = 18, s = Vector3.new(6, 5, 6) },
-		{ x = 36, z = 14, s = Vector3.new(6, 5, 6) },
-		{ x = -34, z = -20, s = Vector3.new(5, 4, 5) },
-		{ x = 34, z = -24, s = Vector3.new(5, 4, 5) },
-		{ x = -10, z = -34, s = Vector3.new(6, 4, 5) },
-		{ x = 10, z = -38, s = Vector3.new(6, 4, 5) },
-	}) do
-		part({ size = c.s, pos = C + Vector3.new(c.x, c.s.Y / 2, c.z),
-			material = Enum.Material.Metal, color = COVER }, folder)
-	end
-
-	-- Bombenplatz A (markierte Zone)
-	sitePart = part({ size = Vector3.new(26, 0.4, 26), pos = C + Vector3.new(0, 0.2, -30),
-		material = Enum.Material.Neon, color = Color3.fromRGB(255, 170, 60),
-		transparency = 0.55, name = "BombSite" }, folder)
+-- Bombenplatz-Zone: aufgemalte Bodenfläche + Schild
+local function buildSite(folder, label, pos)
+	local pad = part({ size = Vector3.new(30, 0.4, 30), pos = pos + Vector3.new(0, 0.2, 0),
+		material = Enum.Material.Concrete, color = Color3.fromRGB(196, 120, 44),
+		transparency = 0.25, name = "BombSite" .. label }, folder)
 	local siteBB = Instance.new("BillboardGui")
-	siteBB.Size = UDim2.new(0, 120, 0, 40)
-	siteBB.StudsOffset = Vector3.new(0, 8, 0)
-	siteBB.MaxDistance = 200
-	siteBB.Parent = sitePart
+	siteBB.Size = UDim2.new(0, 120, 0, 44)
+	siteBB.StudsOffset = Vector3.new(0, 9, 0)
+	siteBB.MaxDistance = 300
+	siteBB.Parent = pad
 	local siteLbl = Instance.new("TextLabel")
 	siteLbl.Size = UDim2.new(1, 0, 1, 0)
 	siteLbl.BackgroundTransparency = 1
-	siteLbl.Text = "💣 A"
+	siteLbl.Text = "💣 " .. label
 	siteLbl.TextColor3 = Color3.fromRGB(255, 170, 60)
 	siteLbl.TextStrokeTransparency = 0
 	siteLbl.TextScaled = true
 	siteLbl.Font = Enum.Font.GothamBold
 	siteLbl.Parent = siteBB
+	return pad
+end
 
-	-- Team-Spawns markieren
-	part({ size = Vector3.new(14, 0.4, 14), pos = C + Vector3.new(0, 0.2, 62),
-		material = Enum.Material.Neon, color = T_COLOR, transparency = 0.5 }, folder)
-	part({ size = Vector3.new(14, 0.4, 14), pos = C + Vector3.new(0, 0.2, -62),
-		material = Enum.Material.Neon, color = CT_COLOR, transparency = 0.5 }, folder)
+-- Palme (Deko): Stamm-Zylinder + zwei Blätter-Kugeln
+local function palm(folder, x, z)
+	local trunk = part({ size = Vector3.new(13, 1.7, 1.7), pos = C + Vector3.new(x, 6.5, z),
+		material = Enum.Material.Wood, color = Color3.fromRGB(124, 88, 52), collide = false }, folder)
+	trunk.Shape = Enum.PartType.Cylinder
+	trunk.CFrame = CFrame.new(C + Vector3.new(x, 6.5, z)) * CFrame.Angles(0, 0, math.rad(90))
+	for i, off in ipairs({ Vector3.new(0, 13.5, 0), Vector3.new(1.6, 12.6, 1.2) }) do
+		local leaf = part({ size = Vector3.new(7 - i, 2.6, 7 - i), pos = C + Vector3.new(x, 0, z) + off,
+			material = Enum.Material.Grass, color = Color3.fromRGB(92, 142, 64), collide = false }, folder)
+		leaf.Shape = Enum.PartType.Ball
+	end
+end
 
-	-- Flutlichter
-	for _, z in ipairs({ -55, 0, 55 }) do
-		local lamp = part({ size = Vector3.new(2.4, 0.6, 2.4), pos = C + Vector3.new(0, 22, z),
-			material = Enum.Material.Neon, color = Color3.fromRGB(230, 222, 255), collide = false }, folder)
-		local pl = Instance.new("PointLight")
-		pl.Color = Color3.fromRGB(220, 212, 255)
-		pl.Range = 60
-		pl.Brightness = 1.0
-		pl.Parent = lamp
+local function buildMap()
+	local folder = Instance.new("Folder")
+	folder.Name = "DefuseMap"
+	folder.Parent = workspace
+
+	local SAND      = Color3.fromRGB(214, 189, 142)   -- Boden
+	local WALL      = Color3.fromRGB(199, 170, 120)   -- Außenmauern
+	local BUILDING  = Color3.fromRGB(208, 182, 132)   -- Häuserblöcke
+	local BUILDING2 = Color3.fromRGB(190, 160, 112)   -- dunklere Variante
+	local TRIM      = Color3.fromRGB(140, 112, 76)    -- Bögen/Stürze
+
+	-- Sandboden (Spielfeld) + weite Sandfläche außenrum (Horizont)
+	local floorPart = part({ size = Vector3.new(246, 2, 276), pos = C + Vector3.new(0, -1, -5),
+		material = Enum.Material.Sandstone, color = SAND }, folder)
+	floorPart:SetAttribute("EnvKind", "sand")
+	floorPart:SetAttribute("EnvFaces", "Top")
+	floorPart:SetAttribute("EnvStuds", 24)
+	floorPart:SetAttribute("EnvAlpha", 0.25)
+	game:GetService("CollectionService"):AddTag(floorPart, "EnvTexture")
+	part({ size = Vector3.new(900, 1, 900), pos = C + Vector3.new(0, -1.6, -5),
+		material = Enum.Material.Sand, color = Color3.fromRGB(206, 180, 132) }, folder)
+
+	-- Außenmauern (hoch genug, dass niemand rausschaut)
+	for _, w in ipairs({
+		{ Vector3.new(246, 20, 3), C + Vector3.new(0, 10, -133) },
+		{ Vector3.new(246, 20, 3), C + Vector3.new(0, 10, 123) },
+		{ Vector3.new(3, 20, 256), C + Vector3.new(-120, 10, -5) },
+		{ Vector3.new(3, 20, 256), C + Vector3.new(120, 10, -5) },
+	}) do
+		sandBlock(folder, w[1], w[2], WALL)
 	end
 
+	-- Häuserblöcke: trennen die drei Lanes (Tunnels West / Mid / Long Ost)
+	sandBlock(folder, Vector3.new(30, 16, 114), C + Vector3.new(-37, 8, 15), BUILDING)
+	sandBlock(folder, Vector3.new(30, 16, 114), C + Vector3.new(37, 8, 15), BUILDING2)
+	sandBlock(folder, Vector3.new(20, 14, 114), C + Vector3.new(-110, 7, 15), BUILDING2)
+	sandBlock(folder, Vector3.new(20, 14, 114), C + Vector3.new(110, 7, 15), BUILDING)
+	-- Nord-Zentrum (trennt A und B; Lücke x±7 = CT-Mid-Tunnel)
+	sandBlock(folder, Vector3.new(35, 18, 46), C + Vector3.new(-24.5, 9, -79), BUILDING)
+	sandBlock(folder, Vector3.new(35, 18, 46), C + Vector3.new(24.5, 9, -79), BUILDING2)
+	-- Dach-Aufbauten = Skyline (reine Optik, unbegehbar)
+	sandBlock(folder, Vector3.new(14, 6, 18), C + Vector3.new(-34, 19, -10), BUILDING2)
+	sandBlock(folder, Vector3.new(12, 8, 14), C + Vector3.new(40, 20, 40), BUILDING)
+	sandBlock(folder, Vector3.new(16, 5, 16), C + Vector3.new(20, 20.5, -82), BUILDING)
+
+	-- Mid-Doppeltür (Lücke x ±4)
+	sandBlock(folder, Vector3.new(18, 12, 3), C + Vector3.new(-13, 6, 8), BUILDING2)
+	sandBlock(folder, Vector3.new(18, 12, 3), C + Vector3.new(13, 6, 8), BUILDING2)
+	part({ size = Vector3.new(10, 3, 3), pos = C + Vector3.new(0, 10.5, 8),
+		material = Enum.Material.Wood, color = TRIM }, folder)
+
+	-- Long-Tor (Lücke x 72..88) mit Sturz
+	sandBlock(folder, Vector3.new(20, 12, 3), C + Vector3.new(62, 6, 30), BUILDING)
+	sandBlock(folder, Vector3.new(32, 12, 3), C + Vector3.new(104, 6, 30), BUILDING)
+	part({ size = Vector3.new(18, 4, 3), pos = C + Vector3.new(80, 14, 30),
+		material = Enum.Material.Wood, color = TRIM }, folder)
+
+	-- Tunnel-Bogen West (Lücke x -86..-68)
+	sandBlock(folder, Vector3.new(14, 12, 3), C + Vector3.new(-93, 6, 40), BUILDING2)
+	sandBlock(folder, Vector3.new(16, 12, 3), C + Vector3.new(-60, 6, 40), BUILDING2)
+	part({ size = Vector3.new(20, 4, 3), pos = C + Vector3.new(-77, 14, 40),
+		material = Enum.Material.Wood, color = TRIM }, folder)
+
+	-- Bombenplätze: A Ost, B West
+	sitePartA = buildSite(folder, "A", C + Vector3.new(80, 0, -77))
+	sitePartB = buildSite(folder, "B", C + Vector3.new(-80, 0, -77))
+
+	-- Deckung: Kisten-Stacks an den Sites, Boxen in den Lanes
+	crate(folder, Vector3.new(6, 5, 6),  C + Vector3.new(80, 2.5, -80))
+	crate(folder, Vector3.new(4, 4, 4),  C + Vector3.new(80, 7, -79))
+	crate(folder, Vector3.new(5, 4, 5),  C + Vector3.new(64, 2, -90))
+	crate(folder, Vector3.new(5, 5, 5),  C + Vector3.new(98, 2.5, -62))
+	crate(folder, Vector3.new(6, 5, 6),  C + Vector3.new(-80, 2.5, -80))
+	crate(folder, Vector3.new(4, 4, 4),  C + Vector3.new(-80, 7, -79))
+	crate(folder, Vector3.new(5, 4, 5),  C + Vector3.new(-64, 2, -90))
+	crate(folder, Vector3.new(7, 4, 5),  C + Vector3.new(0, 2, -20))
+	crate(folder, Vector3.new(5, 4, 5),  C + Vector3.new(-12, 2, 46))
+	crate(folder, Vector3.new(5, 4, 5),  C + Vector3.new(76, 2, -8))
+	crate(folder, Vector3.new(6, 5, 6),  C + Vector3.new(98, 2.5, 52))
+	crate(folder, Vector3.new(6, 5, 6),  C + Vector3.new(-76, 2.5, 18))
+	crate(folder, Vector3.new(5, 4, 5),  C + Vector3.new(-92, 2, -12))
+	crate(folder, Vector3.new(6, 5, 6),  C + Vector3.new(32, 2.5, 98))
+	crate(folder, Vector3.new(5, 4, 5),  C + Vector3.new(-36, 2, 92))
+	-- Fass am B-Platz
+	local barrel = part({ size = Vector3.new(4, 3, 3), pos = C + Vector3.new(-98, 2, -62),
+		material = Enum.Material.CorrodedMetal, color = Color3.fromRGB(120, 80, 48) }, folder)
+	barrel.Shape = Enum.PartType.Cylinder
+	barrel.CFrame = CFrame.new(C + Vector3.new(-98, 2, -62)) * CFrame.Angles(0, 0, math.rad(90))
+	-- Niedrige Mauern im Connector
+	sandBlock(folder, Vector3.new(10, 3, 3), C + Vector3.new(30, 1.5, -45), BUILDING2)
+	sandBlock(folder, Vector3.new(10, 3, 3), C + Vector3.new(-30, 1.5, -45), BUILDING2)
+
+	-- Team-Spawns markieren (dezent — Wüste, kein Neon)
+	part({ size = Vector3.new(16, 0.4, 16), pos = C + Vector3.new(0, 0.2, 105),
+		material = Enum.Material.Concrete, color = T_COLOR, transparency = 0.6 }, folder)
+	part({ size = Vector3.new(16, 0.4, 16), pos = C + Vector3.new(0, 0.2, -118),
+		material = Enum.Material.Concrete, color = CT_COLOR, transparency = 0.6 }, folder)
+
+	-- Palmen in den Ecken (Wüsten-Vibe)
+	palm(folder, -106, 114)
+	palm(folder, 106, 114)
+	palm(folder, -106, -126)
+	palm(folder, 106, -126)
+
 	-- Zuschauer-Plattform (Tote schauen von oben zu)
-	part({ size = Vector3.new(14, 1, 14), pos = C + Vector3.new(0, 80, 0),
-		material = Enum.Material.Glass, color = Color3.fromRGB(120, 130, 170),
+	part({ size = Vector3.new(14, 1, 14), pos = C + Vector3.new(0, 95, -10),
+		material = Enum.Material.Glass, color = Color3.fromRGB(170, 160, 130),
 		transparency = 0.4, name = "SpectatorPerch" }, folder)
+
+	-- Eigene Store-Assets: Modelle aus ReplicatedStorage/Assets/MapProps werden
+	-- automatisch an Deko-Punkten verteilt (Toolbox-Modell in Studio reinziehen,
+	-- speichern, fertig — zur LAUFZEIT lässt Roblox fremde Assets nicht laden).
+	local assets = RS:FindFirstChild("Assets")
+	local props = assets and assets:FindFirstChild("MapProps")
+	if props then
+		local spots = {
+			Vector3.new(-48, 0, 100), Vector3.new(48, 0, 100),
+			Vector3.new(-30, 0, -118), Vector3.new(30, 0, -118),
+			Vector3.new(95, 0, -95), Vector3.new(-95, 0, -95),
+			Vector3.new(95, 0, 80), Vector3.new(-95, 0, 80),
+		}
+		for i, prop in ipairs(props:GetChildren()) do
+			local spot = C + spots[((i - 1) % #spots) + 1]
+			local clone = prop:Clone()
+			for _, d in ipairs(clone:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+				elseif d:IsA("BaseScript") or d:IsA("ModuleScript") then
+					d:Destroy()   -- Sicherheit: fremde Toolbox-Scripts NIE ausführen
+				end
+			end
+			if clone:IsA("Model") then
+				local _, size = clone:GetBoundingBox()
+				clone:PivotTo(CFrame.new(spot + Vector3.new(0, size.Y / 2, 0)))
+				clone.Parent = folder
+			elseif clone:IsA("BasePart") then
+				clone.Anchored = true
+				clone.CFrame = CFrame.new(spot + Vector3.new(0, clone.Size.Y / 2, 0))
+				clone.Parent = folder
+			else
+				clone:Destroy()
+			end
+		end
+	end
 
 	return folder
 end
@@ -293,7 +419,6 @@ end
 
 -- ── Runden-Logik ──────────────────────────────────────────────────────────────
 local endRound   -- forward
-local plantPrompt = nil
 
 local function plantBomb(pos)
 	if not match or match.ended or not match.live or match.bombPlanted then return end
@@ -318,7 +443,18 @@ local function plantBomb(pos)
 			end
 			if defender then
 				defender.defusing = true
-				defender.bot.setRoute({ bombPos }, function(bot)
+				-- Anrückroute: über den Connector zur richtigen Site (MoveTo hat
+				-- kein Pathfinding); steht der Bot schon am Platz → Direktweg
+				local route
+				local botPos = defender.bot.model.PrimaryPart and defender.bot.model.PrimaryPart.Position
+				if botPos and (botPos - bombPos).Magnitude < 45 then
+					route = { bombPos }
+				elseif (bombPos - C).X > 0 then
+					route = { P(45, -49), P(62, -62), bombPos }
+				else
+					route = { P(-45, -49), P(-62, -62), bombPos }
+				end
+				defender.bot.setRoute(route, function(bot)
 					-- am Ziel: entschärfen (unterbrochen, wenn der Bot stirbt)
 					task.delay(Config.DEFUSE_DEFUSE_TIME, function()
 						if match and match.live and match.bombPlanted and bot.alive
@@ -334,25 +470,39 @@ local function plantBomb(pos)
 	end)
 end
 
+-- Plant-Prompts auf BEIDEN Sites (nur Spieler im T-Team)
+local plantPrompts = {}
+
+local function setPlantPromptsEnabled(enabled)
+	for _, prompt in ipairs(plantPrompts) do
+		prompt.Enabled = enabled
+	end
+end
+
 local function setPrompts()
-	-- Plant-Prompt (nur Spieler im T-Team)
-	if plantPrompt then plantPrompt:Destroy() end
-	plantPrompt = Instance.new("ProximityPrompt")
-	plantPrompt.ActionText = "Bombe legen"
-	plantPrompt.ObjectText = "Bombenplatz A"
-	plantPrompt.HoldDuration = Config.DEFUSE_PLANT_TIME
-	plantPrompt.MaxActivationDistance = 16
-	plantPrompt.RequiresLineOfSight = false
-	plantPrompt.Enabled = false
-	plantPrompt.Parent = sitePart
-	plantPrompt.Triggered:Connect(function(plr)
-		if match and plr == match.player and match.playerTeam == "T"
-			and match.live and not match.bombPlanted then
-			local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-			plantBomb(root and root.Position or sitePart.Position)
-			plantPrompt.Enabled = false
-		end
-	end)
+	for _, prompt in ipairs(plantPrompts) do
+		prompt:Destroy()
+	end
+	plantPrompts = {}
+	for label, site in pairs({ A = sitePartA, B = sitePartB }) do
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Bombe legen"
+		prompt.ObjectText = "Bombenplatz " .. label
+		prompt.HoldDuration = Config.DEFUSE_PLANT_TIME
+		prompt.MaxActivationDistance = 18
+		prompt.RequiresLineOfSight = false
+		prompt.Enabled = false
+		prompt.Parent = site
+		prompt.Triggered:Connect(function(plr)
+			if match and plr == match.player and match.playerTeam == "T"
+				and match.live and not match.bombPlanted then
+				local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+				plantBomb(root and root.Position or site.Position)
+				setPlantPromptsEnabled(false)
+			end
+		end)
+		table.insert(plantPrompts, prompt)
+	end
 end
 
 local function startRound()
@@ -383,8 +533,14 @@ local function startRound()
 	local pe = { player = match.player, team = match.playerTeam, alive = true }
 	table.insert(match.entities, pe)
 	teleport(match.player, match.playerTeam == "T" and tSpawnCF or ctSpawnCF)
+	if weaponService then weaponService.giveWeapon(match.player) end   -- Tool in die Hand
 	local root = match.player.Character and match.player.Character:FindFirstChild("HumanoidRootPart")
 	if root then root.Anchored = true end
+
+	-- Ziel-Site der Runde: T-Bots committen geschlossen auf A oder B
+	match.targetSite = (math.random(2) == 1) and "A" or "B"
+	local tRoutes = T_SETS[match.targetSite]
+	local tDefend = T_DEFEND[match.targetSite]
 
 	-- Ziel-Suche: nächster lebender Feind (Spieler oder Bot) des Teams.
 	-- entity.bot wird direkt nach dem Spawn gesetzt — der Closure liest es lazy.
@@ -432,7 +588,8 @@ local function startRound()
 	local function spawnTeamBots(team, count)
 		for i = 1, count do
 			local isT = team == "T"
-			local route = isT and T_ROUTES[((i - 1) % #T_ROUTES) + 1] or CT_ROUTES[((i - 1) % #CT_ROUTES) + 1]
+			local assign = (not isT) and CT_ASSIGN[((i - 1) % #CT_ASSIGN) + 1] or nil
+			local route = isT and tRoutes[((i - 1) % #tRoutes) + 1] or assign.route
 			local spawnBase = isT and tSpawnCF or ctSpawnCF
 			local entity = { team = team }
 			local bot = botService.spawn({
@@ -444,7 +601,7 @@ local function startRound()
 				end,
 				acquire = acquireFor(team, entity),
 				route = route,
-				loiter = isT and { P(0, -28), P(-12, -30), P(12, -30) } or CT_HOLDS,
+				loiter = isT and tDefend or assign.loiter,
 				onRouteDone = isT and function(bot)
 					-- T-Bot am Platz: legen (wenn noch keiner gelegt hat)
 					task.delay(Config.DEFUSE_PLANT_TIME, function()
@@ -474,7 +631,7 @@ local function startRound()
 		if r then r.Anchored = false end
 		match.live = true
 		match.deadline = os.clock() + Config.DEFUSE_ROUND_TIME
-		plantPrompt.Enabled = (match.playerTeam == "T")
+		setPlantPromptsEnabled(match.playerTeam == "T")
 		sendState("live")
 
 		-- Runden-Loop
@@ -507,7 +664,7 @@ endRound = function(winnerTeam, reason)
 	match.live = false
 	match.bombPlanted = false
 	destroyBomb()
-	plantPrompt.Enabled = false
+	setPlantPromptsEnabled(false)
 	match.score[winnerTeam] += 1
 
 	local playerWonRound = winnerTeam == match.playerTeam
@@ -618,13 +775,17 @@ function DefuseService.stop(playerWon)
 		teleport(p, lobbyCFrame())
 	end
 	match = nil
+	if p.Parent and weaponService then
+		weaponService.giveWeapon(p)   -- zurück ins Rücken-Holster
+	end
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────
-function DefuseService.init(ds, bs, netRef)
-	dataService = ds
-	botService  = bs
-	net         = netRef
+function DefuseService.init(ds, bs, ws, netRef)
+	dataService   = ds
+	botService    = bs
+	weaponService = ws
+	net           = netRef
 
 	local old = workspace:FindFirstChild("DefuseMap")
 	if old then old:Destroy() end

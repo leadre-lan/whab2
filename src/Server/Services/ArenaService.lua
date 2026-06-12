@@ -6,9 +6,10 @@ local RS      = game:GetService("ReplicatedStorage")
 
 local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 
-local dataService = nil
-local botService  = nil   -- via setBotService (Server-Wiring)
-local net         = nil
+local dataService   = nil
+local weaponService = nil
+local botService    = nil   -- via setBotService (Server-Wiring)
+local net           = nil
 
 local queue          = {}    -- Array von { player, wager }
 local playerMatch    = {}    -- [player] = match
@@ -236,6 +237,7 @@ local function endMatch(match, winner)
 				or ("💀 Niederlage. +" .. Config.LOSS_REWARD .. " " .. Config.CURRENCY_NAME))
 			sendStateForPlayer(p, match, winner)
 			teleport(p, lobbyCFrame())
+			if weaponService then weaponService.giveWeapon(p) end   -- zurück ins Holster
 		end
 	end
 
@@ -290,10 +292,11 @@ local function startMatch(a, b, wager)
 	playerMatch[b] = match
 
 	task.spawn(function()
-		-- Teleport auf die Spawns + einfrieren
+		-- Teleport auf die Spawns + einfrieren + Waffe in die Hand
 		for i, p in ipairs(match.players) do
 			teleport(p, arenaSpawns[arenaIdx][i])
 			net.PlaySFX:FireClient(p, "Teleport", 0.6)
+			if weaponService then weaponService.giveWeapon(p) end
 			local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
 			if root then root.Anchored = true end
 		end
@@ -414,6 +417,7 @@ local function endBotMatch(match, playerWon)
 			youWon = playerWon == true,
 		})
 		teleport(p, lobbyCFrame())
+		if weaponService then weaponService.giveWeapon(p) end   -- zurück ins Holster
 	end
 
 	task.defer(tryStartMatchesRef)
@@ -503,6 +507,7 @@ function ArenaService.startBotMatch(player)
 	task.spawn(function()
 		teleport(player, arenaSpawns[arenaIdx][1])
 		net.PlaySFX:FireClient(player, "Teleport", 0.6)
+		if weaponService then weaponService.giveWeapon(player) end
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if root then root.Anchored = true end
 
@@ -560,6 +565,12 @@ end
 function ArenaService.isInLiveMatch(player)
 	local match = playerMatch[player]
 	return match ~= nil and match.live and not match.ended
+end
+
+-- Auch Countdown zählt (WeaponService: Tool in der Hand vs. Rücken-Holster)
+function ArenaService.isInMatch(player)
+	local match = playerMatch[player]
+	return match ~= nil and not match.ended
 end
 
 function ArenaService.canDamage(shooter, victim)
@@ -641,9 +652,10 @@ function ArenaService.toggleQueue(player, wager)
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────
-function ArenaService.init(ds, _ws, netRef)
-	dataService = ds
-	net         = netRef
+function ArenaService.init(ds, ws, netRef)
+	dataService   = ds
+	weaponService = ws
+	net           = netRef
 
 	local folder = Instance.new("Folder")
 	folder.Name = "Arenas"

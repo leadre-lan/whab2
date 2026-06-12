@@ -82,8 +82,18 @@ Roblox die API, solange dieser Haken fehlt:
 „Mesh-/Bild-APIs aktivieren" ✓** (Nutzungsbedingungen bestätigen)
 
 Ohne den Haken sind Waffen und Boden im Live-Spiel nur eingefärbt statt
-texturiert. Zusätzlich braucht das Waffen-Mesh das AWP-Template
-(Einzeiler oben) — die Skin-Texturen liegen auf dem echten AWP-Modell.
+texturiert. Hinweis seit v1.6: Die WAFFE selbst behält immer ihre echte
+AWP-Textur (Skins tinten sie nur noch) — der Haken betrifft die
+Umgebungs-Texturen (Lobby-Panels, Sand, Putz).
+
+## Store-Assets auf der Defuse-Map (optional)
+
+Roblox blockt fremde Toolbox-Assets zur LAUFZEIT (`LoadAsset`-Permission).
+Der Weg, der funktioniert: In Studio beliebige Modelle aus der Toolbox in
+**ReplicatedStorage → Assets → MapProps** ziehen (Ordner ggf. anlegen) und
+speichern/veröffentlichen. Die Defuse-Map verteilt alles aus dem Ordner
+automatisch an Deko-Punkten (Spawn-Plaza, Site-Ränder). Fremde Scripts in
+den Modellen werden dabei aus Sicherheitsgründen entfernt.
 
 ## Mobile-Steuerung
 

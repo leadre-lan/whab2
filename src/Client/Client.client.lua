@@ -32,21 +32,9 @@ local WeaponCtrl       = require(Controllers:WaitForChild("WeaponController"))
 UICtrl.init(net, EffectsCtrl)
 WeaponCtrl.init(net, EffectsCtrl, UICtrl)
 
--- ── Lighting 2.0: tiefes Schwarz + KNALLIGES Neon (Cyber-Punch) ───────────────
--- Wenig Ambient = Kontrast, fettes Bloom = Glow. Die Licht-Pylonen/Flutlichter
--- übernehmen die Lesbarkeit von Spielern und Waffen.
-Lighting.ClockTime = 0
-Lighting.Brightness = 2.2
-Lighting.ExposureCompensation = 0.15
-Lighting.ShadowSoftness = 0.25
-Lighting.EnvironmentDiffuseScale = 1
-Lighting.EnvironmentSpecularScale = 1
-Lighting.OutdoorAmbient = Color3.fromRGB(82, 82, 110)
-Lighting.Ambient = Color3.fromRGB(48, 48, 70)
-Lighting.FogColor = Color3.fromRGB(16, 14, 28)
-Lighting.FogStart = 180
-Lighting.FogEnd = 750
-
+-- ── Lighting: zwei Presets ────────────────────────────────────────────────────
+-- Neon  = Lobby/Arena (tiefes Schwarz + knalliges Bloom, der "bloomy" Look)
+-- Desert = Defuse-Map (Wüsten-Sonne, warmer Dunst — Dust-Vibe)
 local function ensureEffect(class, name, props)
 	local e = Lighting:FindFirstChild(name)
 	if not e or e.ClassName ~= class then
@@ -57,25 +45,67 @@ local function ensureEffect(class, name, props)
 	end
 	for k, v in pairs(props) do e[k] = v end
 end
--- Fettes Neon-Bloom: alles Leuchtende glüht satt (der "bloomy" Look)
-ensureEffect("BloomEffect", "GameBloom", { Intensity = 1.1, Size = 48, Threshold = 0.85 })
--- Cinematic Grade: Kontrast + satte Farben
-ensureEffect("ColorCorrectionEffect", "GameGrade", {
-	Contrast = 0.12, Saturation = 0.24, Brightness = 0.01,
-	TintColor = Color3.fromRGB(250, 244, 255),
-})
--- Dezente Tiefenschärfe: Distanz weicht auf → wirkt sofort gerendert
-ensureEffect("DepthOfFieldEffect", "GameDOF", {
-	FarIntensity = 0.15, NearIntensity = 0, FocusDistance = 30, InFocusRadius = 48,
-})
-local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
-if not atmosphere then
-	atmosphere = Instance.new("Atmosphere")
-	atmosphere.Parent = Lighting
+
+local function getAtmosphere()
+	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
+	if not atmosphere then
+		atmosphere = Instance.new("Atmosphere")
+		atmosphere.Parent = Lighting
+	end
+	return atmosphere
 end
-atmosphere.Density = 0.3
-atmosphere.Color = Color3.fromRGB(80, 60, 125)
-atmosphere.Haze = 2
+
+local function applyNeonLighting()
+	Lighting.ClockTime = 0
+	Lighting.Brightness = 2.2
+	Lighting.ExposureCompensation = 0.15
+	Lighting.ShadowSoftness = 0.25
+	Lighting.EnvironmentDiffuseScale = 1
+	Lighting.EnvironmentSpecularScale = 1
+	Lighting.OutdoorAmbient = Color3.fromRGB(82, 82, 110)
+	Lighting.Ambient = Color3.fromRGB(48, 48, 70)
+	Lighting.FogColor = Color3.fromRGB(16, 14, 28)
+	Lighting.FogStart = 180
+	Lighting.FogEnd = 750
+	ensureEffect("BloomEffect", "GameBloom", { Intensity = 1.1, Size = 48, Threshold = 0.85 })
+	ensureEffect("ColorCorrectionEffect", "GameGrade", {
+		Contrast = 0.12, Saturation = 0.24, Brightness = 0.01,
+		TintColor = Color3.fromRGB(250, 244, 255),
+	})
+	ensureEffect("DepthOfFieldEffect", "GameDOF", {
+		FarIntensity = 0.15, NearIntensity = 0, FocusDistance = 30, InFocusRadius = 48,
+	})
+	local atmosphere = getAtmosphere()
+	atmosphere.Density = 0.3
+	atmosphere.Color = Color3.fromRGB(80, 60, 125)
+	atmosphere.Haze = 2
+end
+
+local function applyDesertLighting()
+	Lighting.ClockTime = 14
+	Lighting.Brightness = 2.6
+	Lighting.ExposureCompensation = 0.05
+	Lighting.ShadowSoftness = 0.18
+	Lighting.OutdoorAmbient = Color3.fromRGB(152, 140, 116)
+	Lighting.Ambient = Color3.fromRGB(118, 106, 88)
+	Lighting.FogColor = Color3.fromRGB(226, 204, 158)
+	Lighting.FogStart = 300
+	Lighting.FogEnd = 1500
+	ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.45, Size = 26, Threshold = 1.05 })
+	ensureEffect("ColorCorrectionEffect", "GameGrade", {
+		Contrast = 0.07, Saturation = 0.1, Brightness = 0.01,
+		TintColor = Color3.fromRGB(255, 248, 228),
+	})
+	ensureEffect("DepthOfFieldEffect", "GameDOF", {
+		FarIntensity = 0.1, NearIntensity = 0, FocusDistance = 40, InFocusRadius = 70,
+	})
+	local atmosphere = getAtmosphere()
+	atmosphere.Density = 0.34
+	atmosphere.Color = Color3.fromRGB(204, 178, 128)
+	atmosphere.Haze = 1.6
+end
+
+applyNeonLighting()
 
 -- ── Musik (Lobby ↔ Arena, Crossfade; erste ladbare ID gewinnt) ────────────────
 local MUSIC_VOLUME = 0.25
@@ -123,33 +153,15 @@ end
 
 playMusic(Assets.MUSIC.Lobby)
 
--- ── Skin-Texturen (CS-Style: Fade, Galaxie, Flammen …) ────────────────────────
--- Der Server taggt jeden AWP-Mesh-Körper mit "SkinBody" + SkinId; jeder Client
--- generiert die Textur deterministisch (EditableImage) und legt sie lokal
--- drauf → alle sehen denselben Skin, ganz ohne Asset-Uploads.
+-- ── Umgebungs-Texturen (EditableImage, deterministisch pro Client) ────────────
+-- Die WAFFE behält ihre echte AWP-Textur (Skins tinten sie nur — prozedurale
+-- Volltexturen sahen auf dem UV-Atlas des Meshes kaputt aus).
 do
 	local CollectionService = game:GetService("CollectionService")
 	local SkinTextures = require(RS:WaitForChild("Shared"):WaitForChild("SkinTextures"))
 
-	local function applySkinTexture(part)
-		if not part:IsA("MeshPart") then return end
-		task.spawn(function()
-			local content = SkinTextures.get(part:GetAttribute("SkinId"))
-			if content and part.Parent then
-				pcall(function()
-					part.TextureContent = content
-				end)
-			end
-		end)
-	end
-
-	CollectionService:GetInstanceAddedSignal("SkinBody"):Connect(applySkinTexture)
-	for _, part in ipairs(CollectionService:GetTagged("SkinBody")) do
-		applySkinTexture(part)
-	end
-
-	-- Umgebungs-Texturen: getaggte Parts ("EnvTexture") bekommen kachelnde
-	-- Oberflächen (Tech-Panels, gravierter Stein) statt flacher Farben
+	-- Getaggte Parts ("EnvTexture") bekommen kachelnde Oberflächen
+	-- (Tech-Panels, Stein, Sand, Putz) statt flacher Farben
 	local function applyEnvTexture(part)
 		if not part:IsA("BasePart") then return end
 		task.spawn(function()
@@ -228,14 +240,24 @@ net.ScreenFlash.OnClientEvent:Connect(function(color)
 	EffectsCtrl.screenFlash(UICtrl.getScreenGui(), color)
 end)
 
+local desertActive = false
 net.MatchState.OnClientEvent:Connect(function(payload)
 	UICtrl.onMatchState(payload)
 	if payload.state == "countdown" or payload.state == "live" then
 		playMusic(Assets.MUSIC.Arena)
 		WeaponCtrl.setInMatch(true)   -- Ego-Zwang + Waffe scharf
+		-- Defuse-Map = Wüste: Lighting auf Mittagssonne umschalten
+		if payload.mode == "defuse" and not desertActive then
+			desertActive = true
+			applyDesertLighting()
+		end
 	elseif payload.state == "ended" then
 		playMusic(Assets.MUSIC.Lobby)
 		WeaponCtrl.setInMatch(false)
+		if desertActive then
+			desertActive = false
+			applyNeonLighting()
+		end
 	end
 end)
 

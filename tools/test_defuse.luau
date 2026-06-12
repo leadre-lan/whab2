@@ -149,8 +149,9 @@ local eggStub = { claimDaily = function() end }
 local dataStub = { eachPlayer = function() return pairs({}) end, get = function() return nil end }
 
 local botStub = { spawn = function() return { model = Instance.new("Model"), alive = true, kill = function() end, destroy = function() end, setRoute = function() end } end }
+local weaponStub = { giveWeapon = function() end }
 local ok, err = pcall(function()
-	DefuseService.init(dataStub, botStub, netStub)
+	DefuseService.init(dataStub, botStub, weaponStub, netStub)
 end)
 print("RESULT:", ok, err)
 print("DefuseMap children:", #workspaceStub:FindFirstChild("DefuseMap"):GetChildren())
