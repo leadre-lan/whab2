@@ -112,6 +112,32 @@ end
 
 playMusic(Assets.MUSIC.Lobby)
 
+-- ── Skin-Texturen (CS-Style: Fade, Galaxie, Flammen …) ────────────────────────
+-- Der Server taggt jeden AWP-Mesh-Körper mit "SkinBody" + SkinId; jeder Client
+-- generiert die Textur deterministisch (EditableImage) und legt sie lokal
+-- drauf → alle sehen denselben Skin, ganz ohne Asset-Uploads.
+do
+	local CollectionService = game:GetService("CollectionService")
+	local SkinTextures = require(RS:WaitForChild("Shared"):WaitForChild("SkinTextures"))
+
+	local function applySkinTexture(part)
+		if not part:IsA("MeshPart") then return end
+		task.spawn(function()
+			local content = SkinTextures.get(part:GetAttribute("SkinId"))
+			if content and part.Parent then
+				pcall(function()
+					part.TextureContent = content
+				end)
+			end
+		end)
+	end
+
+	CollectionService:GetInstanceAddedSignal("SkinBody"):Connect(applySkinTexture)
+	for _, part in ipairs(CollectionService:GetTagged("SkinBody")) do
+		applySkinTexture(part)
+	end
+end
+
 -- ── Preload (kein Ruckeln beim ersten Schuss/Hatch) ───────────────────────────
 task.spawn(function()
 	local ContentProvider = game:GetService("ContentProvider")

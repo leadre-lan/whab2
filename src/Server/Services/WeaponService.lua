@@ -84,13 +84,25 @@ local function setupFromMeshPart(mp)
 	local nativeLen = barrelAxis:Dot(ms)
 	local scale = AWP_TARGET_LEN / nativeLen
 
+	-- Sauberer Template-Klon für den Builder (Skins klonen DIESEN MeshPart —
+	-- nur so funktionieren die prozeduralen Skin-Texturen via TextureContent)
+	local template = mp:Clone()
+	template:ClearAllChildren()
+	template.Anchored = false
+	template.CanCollide = false
+	template.Massless = true
+	template.CastShadow = false
+	template.Transparency = 0
+
 	SniperBuilder.setAwpInfo({
-		meshId    = mp.MeshId,
-		textureId = mp.TextureID,
-		scale     = scale,
-		rot       = rot,
-		length    = AWP_TARGET_LEN,
-		height    = upAxis:Dot(ms) * scale,
+		template   = template,
+		nativeSize = ms,
+		meshId     = mp.MeshId,
+		textureId  = mp.TextureID,
+		scale      = scale,
+		rot        = rot,
+		length     = AWP_TARGET_LEN,
+		height     = upAxis:Dot(ms) * scale,
 	})
 	print(("[WeaponService] Echtes AWP aktiv (Mesh %s, %.1f Studs nativ)")
 		:format(mp.MeshId, nativeLen))

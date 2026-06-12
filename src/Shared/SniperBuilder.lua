@@ -34,16 +34,6 @@ function SniperBuilder.hasAwpMesh()
 	return awpInfo ~= nil
 end
 
--- VertexColor-Tönung: multipliziert die AWP-Textur pro Skin.
--- standard = Original-Textur (1,1,1); helle Skins boosten, dunkle dimmen.
-local function tintFor(skin)
-	if skin.id == "standard" then
-		return Vector3.new(1, 1, 1)
-	end
-	local c = skin.body
-	return Vector3.new(0.35 + c.R * 1.65, 0.35 + c.G * 1.65, 0.35 + c.B * 1.65)
-end
-
 local function weldTo(handle, part, offset)
 	part.Anchored = false
 	part.CanCollide = false
@@ -111,16 +101,14 @@ function SniperBuilder.buildTool(skin)
 	local muzzleZ, barrelY
 
 	if awpInfo then
-		-- ── Echtes texturiertes AWP-Mesh (Studio-Template) ──
-		local body = mkPart({ size = Vector3.new(0.5, 1.2, awpInfo.length), color = skin.body, name = "Body" })
-		local mesh = Instance.new("SpecialMesh")
-		mesh.Name = "BodyMesh"
-		mesh.MeshType = Enum.MeshType.FileMesh
-		mesh.MeshId = awpInfo.meshId
-		mesh.TextureId = awpInfo.textureId
-		mesh.Scale = Vector3.new(awpInfo.scale, awpInfo.scale, awpInfo.scale)
-		mesh.VertexColor = tintFor(skin)
-		mesh.Parent = body
+		-- ── Echtes AWP-Mesh (Studio-Template): MeshPart-Klon ──
+		-- Die Skin-TEXTUR legt jeder Client lokal drauf (SkinTextures.lua,
+		-- EditableImage via Tag "SkinBody") — wie CS-Skins: Fade, Galaxie, …
+		local body = awpInfo.template:Clone()
+		body.Name = "Body"
+		body.Size = awpInfo.nativeSize * awpInfo.scale
+		body:SetAttribute("SkinId", skin.id)
+		CollectionService:AddTag(body, "SkinBody")
 		weldTo(handle, body, CFrame.new(0, 0.05, -0.6) * awpInfo.rot)
 
 		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05

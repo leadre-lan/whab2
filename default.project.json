@@ -20,7 +20,8 @@
         "Skins":         { "$path": "src/Shared/Skins.lua" },
         "Assets":        { "$path": "src/Shared/Assets.lua" },
         "UITheme":       { "$path": "src/Shared/UITheme.lua" },
-        "SniperBuilder": { "$path": "src/Shared/SniperBuilder.lua" }
+        "SniperBuilder": { "$path": "src/Shared/SniperBuilder.lua" },
+        "SkinTextures":  { "$path": "src/Shared/SkinTextures.lua" }
       }
     },
     "ServerScriptService": {
