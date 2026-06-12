@@ -531,11 +531,11 @@ local function buildLobbyBase(folder, rng)
 	-- Polierter Glanzboden + kachelnde Tech-Panel-Textur (client-seitig via
 	-- EditableImage — echte Oberfläche statt flacher Farbe)
 	local floorPart = part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
-		material = Enum.Material.SmoothPlastic, color = FLOOR, reflectance = 0.22, name = "LobbyFloor" }, folder)
+		material = Enum.Material.SmoothPlastic, color = Color3.fromRGB(21, 22, 35), reflectance = 0.22, name = "LobbyFloor" }, folder)
 	floorPart:SetAttribute("EnvKind", "panels")
 	floorPart:SetAttribute("EnvFaces", "Top")
 	floorPart:SetAttribute("EnvStuds", 22)
-	floorPart:SetAttribute("EnvAlpha", 0.15)
+	floorPart:SetAttribute("EnvAlpha", 0.35)
 	CollectionService:AddTag(floorPart, "EnvTexture")
 
 	-- Dezentere Neon-Gridlinien (das Panel-Muster trägt jetzt den Boden)

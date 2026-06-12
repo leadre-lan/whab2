@@ -28,6 +28,7 @@ Assets.SFX = {
 	ChimeSoft = "rbxassetid://9116394876",  -- Magic Glow Chime (UI/Unlock)
 	Coin      = "rbxassetid://9113848490",  -- Coin Bounce (Credits)
 	Teleport  = "rbxassetid://9116394545",  -- Magic Glow (Arena-Teleport)
+	Whoosh    = "rbxassetid://9126284532",  -- Wood Swish (verifiziert — Slide)
 }
 
 -- Echte AWP-Sounds (CS-Ports) zuerst — wenn einer lädt, spielt der Client ihn

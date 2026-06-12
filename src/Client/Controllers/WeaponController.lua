@@ -1,16 +1,23 @@
--- WeaponController.lua — Schießen, Scope-Zoom, Mobile-Buttons, Cooldown-UI
+-- WeaponController.lua — Schießen, Scope-Zoom, Slide, Mobile-Buttons
 --
--- Desktop: Linksklick = Schuss (Hüfte: auf den Cursor), Rechtsklick halten = Scope
--- Mobile:  eigene FEUER-/SCOPE-Buttons (ein Tap aufs Display schießt NICHT —
---          sonst feuert jede Kamera-Drehung); gezielt wird über die Bildmitte
+-- Regeln:
+--  • Geschossen/gescoped wird NUR im Match (Lobby = Showroom für die Skins)
+--  • Im Match herrscht Ego-Perspektive (kein 3rd-Person-Peeken um Deckungen)
+--  • Slide: Ctrl/C im Lauf (Mobile: 🏃-Button) — Boost + geduckte Kamera
+--
+-- Desktop: Linksklick = Schuss (Hüfte: Cursor), Rechtsklick halten = Scope
+-- Mobile:  FEUER-/SCOPE-/SLIDE-Buttons (nur im Match sichtbar); gezielt wird
+--          über die Bildmitte
 local WeaponController = {}
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
+local Debris           = game:GetService("Debris")
 local RS               = game:GetService("ReplicatedStorage")
 
 local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local player = Players.LocalPlayer
 local mouse  = player:GetMouse()
@@ -22,8 +29,10 @@ local net      = nil
 local effects  = nil
 local uiCtrl   = nil
 
+local inMatch    = false
 local lastShot   = 0
 local scoped     = false
+local touchGui   = nil
 local BASE_FOV   = 70
 local SCOPE_FOV  = isTouch and 24 or 16   -- Mobile etwas weniger Zoom (Touch-Look skaliert nicht mit)
 
@@ -39,9 +48,19 @@ local function setWeaponHidden(hidden)
 	end
 end
 
+-- Kamera-Modus: im Match IMMER Ego (kein 3rd-Person-Peek um Deckungen)
+local function applyCameraMode()
+	pcall(function()
+		player.CameraMode = (inMatch or scoped)
+			and Enum.CameraMode.LockFirstPerson
+			or Enum.CameraMode.Classic
+	end)
+end
+
 -- ── Scope ─────────────────────────────────────────────────────────────────────
 local function setScoped(state)
 	if scoped == state then return end
+	if state and not inMatch then return end   -- Scopen nur im Match
 	scoped = state
 	local camera = workspace.CurrentCamera
 	if camera then
@@ -51,13 +70,9 @@ local function setScoped(state)
 	end
 	if uiCtrl then uiCtrl.setScopeVisible(state) end
 	setWeaponHidden(state)
+	applyCameraMode()
 
-	-- Anti-Zappeln: im Scope in die Ego-Sicht wechseln und die Maus-
-	-- Empfindlichkeit auf das FOV runterskalieren — sonst ist 16° FOV bei
-	-- voller Sensitivität unkontrollierbar
-	pcall(function()
-		player.CameraMode = state and Enum.CameraMode.LockFirstPerson or Enum.CameraMode.Classic
-	end)
+	-- Anti-Zappeln: Maus-Empfindlichkeit auf das FOV runterskalieren
 	pcall(function()
 		UserInputService.MouseDeltaSensitivity = state and (SCOPE_FOV / BASE_FOV) or 1
 	end)
@@ -91,6 +106,7 @@ local function getTargetPos()
 end
 
 local function shoot()
+	if not inMatch then return end   -- in der Overworld wird nicht gesnipet
 	if not net or not hasWeaponEquipped() then return end
 	local now = os.clock()
 	if now - lastShot < Config.SHOT_COOLDOWN then return end
@@ -101,12 +117,59 @@ local function shoot()
 	if uiCtrl then uiCtrl.startCooldownBar(Config.SHOT_COOLDOWN) end
 end
 
--- ── Mobile-Buttons (FEUER + SCOPE) ────────────────────────────────────────────
+-- ── Slide (Ctrl/C im Lauf — Movement-Skill, überall erlaubt) ──────────────────
+local lastSlide = 0
+
+local function doSlide()
+	local now = os.clock()
+	if now - lastSlide < Config.SLIDE_COOLDOWN then return end
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
+	if not root or not hum or hum.Health <= 0 then return end
+	if hum.FloorMaterial == Enum.Material.Air then return end   -- nur am Boden
+	local dir = hum.MoveDirection
+	if dir.Magnitude < 0.2 then return end                      -- nur im Lauf
+	lastSlide = now
+
+	-- Boost in Bewegungsrichtung
+	local att = Instance.new("Attachment")
+	att.Parent = root
+	local lv = Instance.new("LinearVelocity")
+	lv.Attachment0 = att
+	lv.MaxForce = 1e6
+	lv.VectorVelocity = dir.Unit * Config.SLIDE_SPEED
+	lv.Parent = root
+	Debris:AddItem(lv, Config.SLIDE_TIME)
+	Debris:AddItem(att, Config.SLIDE_TIME + 0.1)
+
+	-- Geduckte Kamera + kleiner FOV-Punch = Speed-Gefühl
+	TweenService:Create(hum, TweenInfo.new(0.1), { CameraOffset = Vector3.new(0, -1.6, 0) }):Play()
+	local camera = workspace.CurrentCamera
+	if camera and not scoped then
+		TweenService:Create(camera, TweenInfo.new(0.12), { FieldOfView = BASE_FOV + 8 }):Play()
+	end
+	Assets.play2D(Assets.SFX.Whoosh, 0.55, 0.85)
+
+	task.delay(Config.SLIDE_TIME, function()
+		local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if h then
+			TweenService:Create(h, TweenInfo.new(0.18), { CameraOffset = Vector3.new(0, 0, 0) }):Play()
+		end
+		local cam = workspace.CurrentCamera
+		if cam and not scoped then
+			TweenService:Create(cam, TweenInfo.new(0.18), { FieldOfView = BASE_FOV }):Play()
+		end
+	end)
+end
+
+-- ── Mobile-Buttons (FEUER + SCOPE + SLIDE) ────────────────────────────────────
 local function buildTouchControls()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "TouchWeaponControls"
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 10
+	gui.Enabled = false   -- nur im Match sichtbar
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	local function roundButton(text, size, pos)
@@ -141,6 +204,28 @@ local function buildTouchControls()
 		setScoped(not scoped)
 		scopeBtn.BackgroundColor3 = scoped and Color3.fromRGB(150, 80, 255) or Color3.fromRGB(25, 27, 42)
 	end)
+
+	-- SLIDE
+	local slideBtn = roundButton("🏃", 64, UDim2.new(1, -222, 1, -130))
+	slideBtn.Activated:Connect(doSlide)
+
+	touchGui = gui
+end
+
+-- ── Match-Status (vom Client-Entry bei MatchState gesetzt) ────────────────────
+function WeaponController.setInMatch(state)
+	if inMatch == state then return end
+	inMatch = state
+	if not state then
+		setScoped(false)
+	end
+	applyCameraMode()
+	if touchGui then
+		touchGui.Enabled = state
+	end
+	if uiCtrl and uiCtrl.setCombatVisible then
+		uiCtrl.setCombatVisible(state)
+	end
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────
@@ -155,6 +240,8 @@ function WeaponController.init(netRef, effectsCtrl, uiController)
 			shoot()
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			setScoped(true)
+		elseif input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.C then
+			doSlide()
 		end
 	end)
 
@@ -168,9 +255,14 @@ function WeaponController.init(netRef, effectsCtrl, uiController)
 		buildTouchControls()
 	end
 
-	-- Scope beim Tod/Respawn zurücksetzen
+	-- Scope/Kamera beim Tod/Respawn zurücksetzen (Match-Status bleibt)
 	player.CharacterAdded:Connect(function()
-		setScoped(false)
+		scoped = false
+		pcall(function()
+			UserInputService.MouseDeltaSensitivity = 1
+		end)
+		if uiCtrl then uiCtrl.setScopeVisible(false) end
+		applyCameraMode()
 	end)
 end
 

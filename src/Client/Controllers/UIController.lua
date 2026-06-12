@@ -232,6 +232,15 @@ function UIController.startCooldownBar(duration)
 		{ Size = UDim2.new(1, 0, 1, 0) }):Play()
 end
 
+-- Kampf-HUD (Fadenkreuz + Cooldown-Bar) nur im Match zeigen — in der Lobby
+-- wird nicht gesnipet
+function UIController.setCombatVisible(state)
+	crosshair.Visible = state
+	cdBar.Visible = state
+end
+crosshair.Visible = false   -- Start in der Lobby
+cdBar.Visible = false
+
 -- ── Match-HUD (oben Mitte) ────────────────────────────────────────────────────
 local matchHud = Instance.new("Frame")
 matchHud.Size = UDim2.new(0, 320, 0, 64)

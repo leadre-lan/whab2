@@ -32,18 +32,18 @@ local WeaponCtrl       = require(Controllers:WaitForChild("WeaponController"))
 UICtrl.init(net, EffectsCtrl)
 WeaponCtrl.init(net, EffectsCtrl, UICtrl)
 
--- ── Lighting 2.0: Nacht + Neon, aber mit PBR-Tiefe statt Pixel-Flachheit ──────
--- Weiche Schatten, volle Environment-Reflexionen, leichte Tiefenschärfe und
--- knackiges Bloom — das nimmt dem Part-Look die harte Klötzchen-Optik.
+-- ── Lighting 2.0: tiefes Schwarz + KNALLIGES Neon (Cyber-Punch) ───────────────
+-- Wenig Ambient = Kontrast, fettes Bloom = Glow. Die Licht-Pylonen/Flutlichter
+-- übernehmen die Lesbarkeit von Spielern und Waffen.
 Lighting.ClockTime = 0
-Lighting.Brightness = 2.4
-Lighting.ExposureCompensation = 0.25
+Lighting.Brightness = 2.2
+Lighting.ExposureCompensation = 0.15
 Lighting.ShadowSoftness = 0.25
 Lighting.EnvironmentDiffuseScale = 1
 Lighting.EnvironmentSpecularScale = 1
-Lighting.OutdoorAmbient = Color3.fromRGB(105, 105, 135)
-Lighting.Ambient = Color3.fromRGB(72, 72, 98)
-Lighting.FogColor = Color3.fromRGB(22, 20, 36)
+Lighting.OutdoorAmbient = Color3.fromRGB(82, 82, 110)
+Lighting.Ambient = Color3.fromRGB(48, 48, 70)
+Lighting.FogColor = Color3.fromRGB(16, 14, 28)
 Lighting.FogStart = 180
 Lighting.FogEnd = 750
 
@@ -57,25 +57,25 @@ local function ensureEffect(class, name, props)
 	end
 	for k, v in pairs(props) do e[k] = v end
 end
--- Knackiges Neon-Bloom (kleiner Radius = Glow statt Matsch)
-ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.95, Size = 26, Threshold = 1.08 })
--- Cinematic Grade: mehr Kontrast, leicht kühler Magenta-Stich
+-- Fettes Neon-Bloom: alles Leuchtende glüht satt (der "bloomy" Look)
+ensureEffect("BloomEffect", "GameBloom", { Intensity = 1.1, Size = 48, Threshold = 0.85 })
+-- Cinematic Grade: Kontrast + satte Farben
 ensureEffect("ColorCorrectionEffect", "GameGrade", {
-	Contrast = 0.14, Saturation = 0.14, Brightness = 0.015,
-	TintColor = Color3.fromRGB(248, 242, 255),
+	Contrast = 0.12, Saturation = 0.24, Brightness = 0.01,
+	TintColor = Color3.fromRGB(250, 244, 255),
 })
 -- Dezente Tiefenschärfe: Distanz weicht auf → wirkt sofort gerendert
 ensureEffect("DepthOfFieldEffect", "GameDOF", {
-	FarIntensity = 0.18, NearIntensity = 0, FocusDistance = 28, InFocusRadius = 42,
+	FarIntensity = 0.15, NearIntensity = 0, FocusDistance = 30, InFocusRadius = 48,
 })
 local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 if not atmosphere then
 	atmosphere = Instance.new("Atmosphere")
 	atmosphere.Parent = Lighting
 end
-atmosphere.Density = 0.25
-atmosphere.Color = Color3.fromRGB(90, 75, 130)
-atmosphere.Haze = 1.8
+atmosphere.Density = 0.3
+atmosphere.Color = Color3.fromRGB(80, 60, 125)
+atmosphere.Haze = 2
 
 -- ── Musik (Lobby ↔ Arena, Crossfade; erste ladbare ID gewinnt) ────────────────
 local MUSIC_VOLUME = 0.25
@@ -232,8 +232,10 @@ net.MatchState.OnClientEvent:Connect(function(payload)
 	UICtrl.onMatchState(payload)
 	if payload.state == "countdown" or payload.state == "live" then
 		playMusic(Assets.MUSIC.Arena)
+		WeaponCtrl.setInMatch(true)   -- Ego-Zwang + Waffe scharf
 	elseif payload.state == "ended" then
 		playMusic(Assets.MUSIC.Lobby)
+		WeaponCtrl.setInMatch(false)
 	end
 end)
 
@@ -255,7 +257,7 @@ do
 	hint.TextStrokeTransparency = 0.5
 	hint.TextSize = 13
 	hint.Font = Enum.Font.Gotham
-	hint.Text = "🖱 Klick: Schießen  |  Rechtsklick: Scope  |  E: Interagieren  |  Rotes Pad: 1v1"
+	hint.Text = "⚔ Snipen nur in der Arena  |  Rechtsklick: Scope  |  Ctrl/C: Slide  |  E: Interagieren"
 	hint.TextXAlignment = Enum.TextXAlignment.Left
 	hint.Parent = UICtrl.getScreenGui()
 end

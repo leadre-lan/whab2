@@ -107,6 +107,7 @@ function SniperBuilder.buildTool(skin)
 		local body = awpInfo.template:Clone()
 		body.Name = "Body"
 		body.Size = awpInfo.nativeSize * awpInfo.scale
+		body.Material = Enum.Material.Metal   -- PBR-Highlights statt mattem Plastik
 		body:SetAttribute("SkinId", skin.id)
 		CollectionService:AddTag(body, "SkinBody")
 		weldTo(handle, body, CFrame.new(0, 0.05, -0.6) * awpInfo.rot)
@@ -114,11 +115,12 @@ function SniperBuilder.buildTool(skin)
 		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05
 		barrelY = 0.12
 
-		-- Akzent: Unterlauf-Glow-Strip (trägt die Skin-Farbe sichtbar)
+		-- Akzent: kurzer Glow-Strip am Vorderschaft (feste Position — die
+		-- berechnete Mesh-Höhe hat je nach Modell durch die Waffe geclippt)
 		accent(weldTo(handle, mkPart({
-			size = Vector3.new(0.07, 0.07, awpInfo.length * 0.38),
+			size = Vector3.new(0.06, 0.06, 1.5),
 			color = skin.accent, material = accentMat,
-		}), CFrame.new(0, 0.05 - awpInfo.height / 2 - 0.05, -0.8)))
+		}), CFrame.new(0, -0.38, -1.3)))
 	else
 	-- ── Part-Fallback: AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
 	local furnMat  = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)

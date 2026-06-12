@@ -2,7 +2,7 @@
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.1 — Mobile + Scope-Feel"
+Config.VERSION = "v1.2 — Arena-Only-Sniping + Slide"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -27,7 +27,12 @@ Config.COUNTDOWN       = 3
 -- ── Waffe (IMMER gleich für alle Skins — 100% skill-basiert) ──────────────────
 Config.SHOT_COOLDOWN   = 1.4         -- Bolt-Action-Takt
 Config.SHOT_RANGE      = 800
-Config.LOBBY_SHOOTING  = true        -- in der Lobby knallt's, aber ohne Schaden
+Config.LOBBY_SHOOTING  = false       -- Snipen NUR in der Arena (Lobby = Showroom)
+
+-- ── Slide (Movement-Skill: Ctrl/C im Lauf) ────────────────────────────────────
+Config.SLIDE_SPEED    = 44           -- Boost in Bewegungsrichtung
+Config.SLIDE_TIME     = 0.42         -- Sekunden Rutschphase
+Config.SLIDE_COOLDOWN = 2.0
 
 -- Das Waffen-Modell (texturiertes Roblox-Gewehr-Mesh) ist in Shared/Assets.lua
 -- definiert (Assets.WEAPON) — Roblox-eigenes Asset, lädt garantiert überall.

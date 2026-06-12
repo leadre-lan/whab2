@@ -51,6 +51,7 @@ Assets.SFX = {
 	ChimeSoft = "rbxassetid://9116394876",  -- Magic Glow Chime (UI/Unlock)
 	Coin      = "rbxassetid://9113848490",  -- Coin Bounce (Credits)
 	Teleport  = "rbxassetid://9116394545",  -- Magic Glow (Arena-Teleport)
+	Whoosh    = "rbxassetid://9126284532",  -- Wood Swish (verifiziert — Slide)
 }
 
 -- Echte AWP-Sounds (CS-Ports) zuerst — wenn einer lädt, spielt der Client ihn
@@ -168,7 +169,7 @@ return Assets
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.1 — Mobile + Scope-Feel"
+Config.VERSION = "v1.2 — Arena-Only-Sniping + Slide"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -193,7 +194,12 @@ Config.COUNTDOWN       = 3
 -- ── Waffe (IMMER gleich für alle Skins — 100% skill-basiert) ──────────────────
 Config.SHOT_COOLDOWN   = 1.4         -- Bolt-Action-Takt
 Config.SHOT_RANGE      = 800
-Config.LOBBY_SHOOTING  = true        -- in der Lobby knallt's, aber ohne Schaden
+Config.LOBBY_SHOOTING  = false       -- Snipen NUR in der Arena (Lobby = Showroom)
+
+-- ── Slide (Movement-Skill: Ctrl/C im Lauf) ────────────────────────────────────
+Config.SLIDE_SPEED    = 44           -- Boost in Bewegungsrichtung
+Config.SLIDE_TIME     = 0.42         -- Sekunden Rutschphase
+Config.SLIDE_COOLDOWN = 2.0
 
 -- Das Waffen-Modell (texturiertes Roblox-Gewehr-Mesh) ist in Shared/Assets.lua
 -- definiert (Assets.WEAPON) — Roblox-eigenes Asset, lädt garantiert überall.
@@ -517,7 +523,12 @@ local function generate(skinId)
 			local fy = py / (SIZE - 1)
 			local rowBase = py * SIZE * 4
 			for px = 0, SIZE - 1 do
-				local r, g, b = recipe(px / (SIZE - 1), fy)
+				local fx = px / (SIZE - 1)
+				local r, g, b = recipe(fx, fy)
+				-- Post-Pass: Grund-Aufhellung + Metall-Sheen-Band, damit die
+				-- Waffe auch in dunkler Umgebung als Material lesbar bleibt
+				local sheen = math.abs(math.sin((fx * 0.6 + fy) * 9)) * 16 + 12
+				r, g, b = r + sheen, g + sheen, b + sheen * 1.15
 				local o = rowBase + px * 4
 				buffer.writeu8(buf, o, math.clamp(math.floor(r + 0.5), 0, 255))
 				buffer.writeu8(buf, o + 1, math.clamp(math.floor(g + 0.5), 0, 255))
@@ -879,6 +890,7 @@ function SniperBuilder.buildTool(skin)
 		local body = awpInfo.template:Clone()
 		body.Name = "Body"
 		body.Size = awpInfo.nativeSize * awpInfo.scale
+		body.Material = Enum.Material.Metal   -- PBR-Highlights statt mattem Plastik
 		body:SetAttribute("SkinId", skin.id)
 		CollectionService:AddTag(body, "SkinBody")
 		weldTo(handle, body, CFrame.new(0, 0.05, -0.6) * awpInfo.rot)
@@ -886,11 +898,12 @@ function SniperBuilder.buildTool(skin)
 		muzzleZ = -0.6 - awpInfo.length / 2 + 0.05
 		barrelY = 0.12
 
-		-- Akzent: Unterlauf-Glow-Strip (trägt die Skin-Farbe sichtbar)
+		-- Akzent: kurzer Glow-Strip am Vorderschaft (feste Position — die
+		-- berechnete Mesh-Höhe hat je nach Modell durch die Waffe geclippt)
 		accent(weldTo(handle, mkPart({
-			size = Vector3.new(0.07, 0.07, awpInfo.length * 0.38),
+			size = Vector3.new(0.06, 0.06, 1.5),
 			color = skin.accent, material = accentMat,
-		}), CFrame.new(0, 0.05 - awpInfo.height / 2 - 0.05, -0.8)))
+		}), CFrame.new(0, -0.38, -1.3)))
 	else
 	-- ── Part-Fallback: AWP-Körper (CS:GO-Proportionen, gebaut entlang -Z) ──
 	local furnMat  = skin.material or (fx.metallic and Enum.Material.Metal or Enum.Material.SmoothPlastic)
@@ -2952,11 +2965,11 @@ local function buildLobbyBase(folder, rng)
 	-- Polierter Glanzboden + kachelnde Tech-Panel-Textur (client-seitig via
 	-- EditableImage — echte Oberfläche statt flacher Farbe)
 	local floorPart = part({ size = Vector3.new(200, 2, 200), pos = Vector3.new(0, -1, 10),
-		material = Enum.Material.SmoothPlastic, color = FLOOR, reflectance = 0.22, name = "LobbyFloor" }, folder)
+		material = Enum.Material.SmoothPlastic, color = Color3.fromRGB(21, 22, 35), reflectance = 0.22, name = "LobbyFloor" }, folder)
 	floorPart:SetAttribute("EnvKind", "panels")
 	floorPart:SetAttribute("EnvFaces", "Top")
 	floorPart:SetAttribute("EnvStuds", 22)
-	floorPart:SetAttribute("EnvAlpha", 0.15)
+	floorPart:SetAttribute("EnvAlpha", 0.35)
 	CollectionService:AddTag(floorPart, "EnvTexture")
 
 	-- Dezentere Neon-Gridlinien (das Panel-Muster trägt jetzt den Boden)
@@ -3913,18 +3926,18 @@ local WeaponCtrl       = require(Controllers:WaitForChild("WeaponController"))
 UICtrl.init(net, EffectsCtrl)
 WeaponCtrl.init(net, EffectsCtrl, UICtrl)
 
--- ── Lighting 2.0: Nacht + Neon, aber mit PBR-Tiefe statt Pixel-Flachheit ──────
--- Weiche Schatten, volle Environment-Reflexionen, leichte Tiefenschärfe und
--- knackiges Bloom — das nimmt dem Part-Look die harte Klötzchen-Optik.
+-- ── Lighting 2.0: tiefes Schwarz + KNALLIGES Neon (Cyber-Punch) ───────────────
+-- Wenig Ambient = Kontrast, fettes Bloom = Glow. Die Licht-Pylonen/Flutlichter
+-- übernehmen die Lesbarkeit von Spielern und Waffen.
 Lighting.ClockTime = 0
-Lighting.Brightness = 2.4
-Lighting.ExposureCompensation = 0.25
+Lighting.Brightness = 2.2
+Lighting.ExposureCompensation = 0.15
 Lighting.ShadowSoftness = 0.25
 Lighting.EnvironmentDiffuseScale = 1
 Lighting.EnvironmentSpecularScale = 1
-Lighting.OutdoorAmbient = Color3.fromRGB(105, 105, 135)
-Lighting.Ambient = Color3.fromRGB(72, 72, 98)
-Lighting.FogColor = Color3.fromRGB(22, 20, 36)
+Lighting.OutdoorAmbient = Color3.fromRGB(82, 82, 110)
+Lighting.Ambient = Color3.fromRGB(48, 48, 70)
+Lighting.FogColor = Color3.fromRGB(16, 14, 28)
 Lighting.FogStart = 180
 Lighting.FogEnd = 750
 
@@ -3938,25 +3951,25 @@ local function ensureEffect(class, name, props)
 	end
 	for k, v in pairs(props) do e[k] = v end
 end
--- Knackiges Neon-Bloom (kleiner Radius = Glow statt Matsch)
-ensureEffect("BloomEffect", "GameBloom", { Intensity = 0.95, Size = 26, Threshold = 1.08 })
--- Cinematic Grade: mehr Kontrast, leicht kühler Magenta-Stich
+-- Fettes Neon-Bloom: alles Leuchtende glüht satt (der "bloomy" Look)
+ensureEffect("BloomEffect", "GameBloom", { Intensity = 1.1, Size = 48, Threshold = 0.85 })
+-- Cinematic Grade: Kontrast + satte Farben
 ensureEffect("ColorCorrectionEffect", "GameGrade", {
-	Contrast = 0.14, Saturation = 0.14, Brightness = 0.015,
-	TintColor = Color3.fromRGB(248, 242, 255),
+	Contrast = 0.12, Saturation = 0.24, Brightness = 0.01,
+	TintColor = Color3.fromRGB(250, 244, 255),
 })
 -- Dezente Tiefenschärfe: Distanz weicht auf → wirkt sofort gerendert
 ensureEffect("DepthOfFieldEffect", "GameDOF", {
-	FarIntensity = 0.18, NearIntensity = 0, FocusDistance = 28, InFocusRadius = 42,
+	FarIntensity = 0.15, NearIntensity = 0, FocusDistance = 30, InFocusRadius = 48,
 })
 local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 if not atmosphere then
 	atmosphere = Instance.new("Atmosphere")
 	atmosphere.Parent = Lighting
 end
-atmosphere.Density = 0.25
-atmosphere.Color = Color3.fromRGB(90, 75, 130)
-atmosphere.Haze = 1.8
+atmosphere.Density = 0.3
+atmosphere.Color = Color3.fromRGB(80, 60, 125)
+atmosphere.Haze = 2
 
 -- ── Musik (Lobby ↔ Arena, Crossfade; erste ladbare ID gewinnt) ────────────────
 local MUSIC_VOLUME = 0.25
@@ -4113,8 +4126,10 @@ net.MatchState.OnClientEvent:Connect(function(payload)
 	UICtrl.onMatchState(payload)
 	if payload.state == "countdown" or payload.state == "live" then
 		playMusic(Assets.MUSIC.Arena)
+		WeaponCtrl.setInMatch(true)   -- Ego-Zwang + Waffe scharf
 	elseif payload.state == "ended" then
 		playMusic(Assets.MUSIC.Lobby)
+		WeaponCtrl.setInMatch(false)
 	end
 end)
 
@@ -4136,7 +4151,7 @@ do
 	hint.TextStrokeTransparency = 0.5
 	hint.TextSize = 13
 	hint.Font = Enum.Font.Gotham
-	hint.Text = "🖱 Klick: Schießen  |  Rechtsklick: Scope  |  E: Interagieren  |  Rotes Pad: 1v1"
+	hint.Text = "⚔ Snipen nur in der Arena  |  Rechtsklick: Scope  |  Ctrl/C: Slide  |  E: Interagieren"
 	hint.TextXAlignment = Enum.TextXAlignment.Left
 	hint.Parent = UICtrl.getScreenGui()
 end
@@ -4561,6 +4576,15 @@ function UIController.startCooldownBar(duration)
 	TweenService:Create(cdFill, TweenInfo.new(duration, Enum.EasingStyle.Linear),
 		{ Size = UDim2.new(1, 0, 1, 0) }):Play()
 end
+
+-- Kampf-HUD (Fadenkreuz + Cooldown-Bar) nur im Match zeigen — in der Lobby
+-- wird nicht gesnipet
+function UIController.setCombatVisible(state)
+	crosshair.Visible = state
+	cdBar.Visible = state
+end
+crosshair.Visible = false   -- Start in der Lobby
+cdBar.Visible = false
 
 -- ── Match-HUD (oben Mitte) ────────────────────────────────────────────────────
 local matchHud = Instance.new("Frame")
@@ -5280,19 +5304,26 @@ return UIController
         <Item class="ModuleScript" referent="26">
           <Properties>
             <string name="Name">WeaponController</string>
-            <string name="Source"><![CDATA[-- WeaponController.lua — Schießen, Scope-Zoom, Mobile-Buttons, Cooldown-UI
+            <string name="Source"><![CDATA[-- WeaponController.lua — Schießen, Scope-Zoom, Slide, Mobile-Buttons
 --
--- Desktop: Linksklick = Schuss (Hüfte: auf den Cursor), Rechtsklick halten = Scope
--- Mobile:  eigene FEUER-/SCOPE-Buttons (ein Tap aufs Display schießt NICHT —
---          sonst feuert jede Kamera-Drehung); gezielt wird über die Bildmitte
+-- Regeln:
+--  • Geschossen/gescoped wird NUR im Match (Lobby = Showroom für die Skins)
+--  • Im Match herrscht Ego-Perspektive (kein 3rd-Person-Peeken um Deckungen)
+--  • Slide: Ctrl/C im Lauf (Mobile: 🏃-Button) — Boost + geduckte Kamera
+--
+-- Desktop: Linksklick = Schuss (Hüfte: Cursor), Rechtsklick halten = Scope
+-- Mobile:  FEUER-/SCOPE-/SLIDE-Buttons (nur im Match sichtbar); gezielt wird
+--          über die Bildmitte
 local WeaponController = {}
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService     = game:GetService("TweenService")
+local Debris           = game:GetService("Debris")
 local RS               = game:GetService("ReplicatedStorage")
 
 local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
 local player = Players.LocalPlayer
 local mouse  = player:GetMouse()
@@ -5304,8 +5335,10 @@ local net      = nil
 local effects  = nil
 local uiCtrl   = nil
 
+local inMatch    = false
 local lastShot   = 0
 local scoped     = false
+local touchGui   = nil
 local BASE_FOV   = 70
 local SCOPE_FOV  = isTouch and 24 or 16   -- Mobile etwas weniger Zoom (Touch-Look skaliert nicht mit)
 
@@ -5321,9 +5354,19 @@ local function setWeaponHidden(hidden)
 	end
 end
 
+-- Kamera-Modus: im Match IMMER Ego (kein 3rd-Person-Peek um Deckungen)
+local function applyCameraMode()
+	pcall(function()
+		player.CameraMode = (inMatch or scoped)
+			and Enum.CameraMode.LockFirstPerson
+			or Enum.CameraMode.Classic
+	end)
+end
+
 -- ── Scope ─────────────────────────────────────────────────────────────────────
 local function setScoped(state)
 	if scoped == state then return end
+	if state and not inMatch then return end   -- Scopen nur im Match
 	scoped = state
 	local camera = workspace.CurrentCamera
 	if camera then
@@ -5333,13 +5376,9 @@ local function setScoped(state)
 	end
 	if uiCtrl then uiCtrl.setScopeVisible(state) end
 	setWeaponHidden(state)
+	applyCameraMode()
 
-	-- Anti-Zappeln: im Scope in die Ego-Sicht wechseln und die Maus-
-	-- Empfindlichkeit auf das FOV runterskalieren — sonst ist 16° FOV bei
-	-- voller Sensitivität unkontrollierbar
-	pcall(function()
-		player.CameraMode = state and Enum.CameraMode.LockFirstPerson or Enum.CameraMode.Classic
-	end)
+	-- Anti-Zappeln: Maus-Empfindlichkeit auf das FOV runterskalieren
 	pcall(function()
 		UserInputService.MouseDeltaSensitivity = state and (SCOPE_FOV / BASE_FOV) or 1
 	end)
@@ -5373,6 +5412,7 @@ local function getTargetPos()
 end
 
 local function shoot()
+	if not inMatch then return end   -- in der Overworld wird nicht gesnipet
 	if not net or not hasWeaponEquipped() then return end
 	local now = os.clock()
 	if now - lastShot < Config.SHOT_COOLDOWN then return end
@@ -5383,12 +5423,59 @@ local function shoot()
 	if uiCtrl then uiCtrl.startCooldownBar(Config.SHOT_COOLDOWN) end
 end
 
--- ── Mobile-Buttons (FEUER + SCOPE) ────────────────────────────────────────────
+-- ── Slide (Ctrl/C im Lauf — Movement-Skill, überall erlaubt) ──────────────────
+local lastSlide = 0
+
+local function doSlide()
+	local now = os.clock()
+	if now - lastSlide < Config.SLIDE_COOLDOWN then return end
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
+	if not root or not hum or hum.Health <= 0 then return end
+	if hum.FloorMaterial == Enum.Material.Air then return end   -- nur am Boden
+	local dir = hum.MoveDirection
+	if dir.Magnitude < 0.2 then return end                      -- nur im Lauf
+	lastSlide = now
+
+	-- Boost in Bewegungsrichtung
+	local att = Instance.new("Attachment")
+	att.Parent = root
+	local lv = Instance.new("LinearVelocity")
+	lv.Attachment0 = att
+	lv.MaxForce = 1e6
+	lv.VectorVelocity = dir.Unit * Config.SLIDE_SPEED
+	lv.Parent = root
+	Debris:AddItem(lv, Config.SLIDE_TIME)
+	Debris:AddItem(att, Config.SLIDE_TIME + 0.1)
+
+	-- Geduckte Kamera + kleiner FOV-Punch = Speed-Gefühl
+	TweenService:Create(hum, TweenInfo.new(0.1), { CameraOffset = Vector3.new(0, -1.6, 0) }):Play()
+	local camera = workspace.CurrentCamera
+	if camera and not scoped then
+		TweenService:Create(camera, TweenInfo.new(0.12), { FieldOfView = BASE_FOV + 8 }):Play()
+	end
+	Assets.play2D(Assets.SFX.Whoosh, 0.55, 0.85)
+
+	task.delay(Config.SLIDE_TIME, function()
+		local h = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if h then
+			TweenService:Create(h, TweenInfo.new(0.18), { CameraOffset = Vector3.new(0, 0, 0) }):Play()
+		end
+		local cam = workspace.CurrentCamera
+		if cam and not scoped then
+			TweenService:Create(cam, TweenInfo.new(0.18), { FieldOfView = BASE_FOV }):Play()
+		end
+	end)
+end
+
+-- ── Mobile-Buttons (FEUER + SCOPE + SLIDE) ────────────────────────────────────
 local function buildTouchControls()
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "TouchWeaponControls"
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 10
+	gui.Enabled = false   -- nur im Match sichtbar
 	gui.Parent = player:WaitForChild("PlayerGui")
 
 	local function roundButton(text, size, pos)
@@ -5423,6 +5510,28 @@ local function buildTouchControls()
 		setScoped(not scoped)
 		scopeBtn.BackgroundColor3 = scoped and Color3.fromRGB(150, 80, 255) or Color3.fromRGB(25, 27, 42)
 	end)
+
+	-- SLIDE
+	local slideBtn = roundButton("🏃", 64, UDim2.new(1, -222, 1, -130))
+	slideBtn.Activated:Connect(doSlide)
+
+	touchGui = gui
+end
+
+-- ── Match-Status (vom Client-Entry bei MatchState gesetzt) ────────────────────
+function WeaponController.setInMatch(state)
+	if inMatch == state then return end
+	inMatch = state
+	if not state then
+		setScoped(false)
+	end
+	applyCameraMode()
+	if touchGui then
+		touchGui.Enabled = state
+	end
+	if uiCtrl and uiCtrl.setCombatVisible then
+		uiCtrl.setCombatVisible(state)
+	end
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────
@@ -5437,6 +5546,8 @@ function WeaponController.init(netRef, effectsCtrl, uiController)
 			shoot()
 		elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
 			setScoped(true)
+		elseif input.KeyCode == Enum.KeyCode.LeftControl or input.KeyCode == Enum.KeyCode.C then
+			doSlide()
 		end
 	end)
 
@@ -5450,9 +5561,14 @@ function WeaponController.init(netRef, effectsCtrl, uiController)
 		buildTouchControls()
 	end
 
-	-- Scope beim Tod/Respawn zurücksetzen
+	-- Scope/Kamera beim Tod/Respawn zurücksetzen (Match-Status bleibt)
 	player.CharacterAdded:Connect(function()
-		setScoped(false)
+		scoped = false
+		pcall(function()
+			UserInputService.MouseDeltaSensitivity = 1
+		end)
+		if uiCtrl then uiCtrl.setScopeVisible(false) end
+		applyCameraMode()
 	end)
 end
 

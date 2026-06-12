@@ -244,7 +244,12 @@ local function generate(skinId)
 			local fy = py / (SIZE - 1)
 			local rowBase = py * SIZE * 4
 			for px = 0, SIZE - 1 do
-				local r, g, b = recipe(px / (SIZE - 1), fy)
+				local fx = px / (SIZE - 1)
+				local r, g, b = recipe(fx, fy)
+				-- Post-Pass: Grund-Aufhellung + Metall-Sheen-Band, damit die
+				-- Waffe auch in dunkler Umgebung als Material lesbar bleibt
+				local sheen = math.abs(math.sin((fx * 0.6 + fy) * 9)) * 16 + 12
+				r, g, b = r + sheen, g + sheen, b + sheen * 1.15
 				local o = rowBase + px * 4
 				buffer.writeu8(buf, o, math.clamp(math.floor(r + 0.5), 0, 255))
 				buffer.writeu8(buf, o + 1, math.clamp(math.floor(g + 0.5), 0, 255))
