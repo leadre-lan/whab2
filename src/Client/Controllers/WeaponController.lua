@@ -227,6 +227,9 @@ function WeaponController.setInMatch(state)
 	if uiCtrl and uiCtrl.setCombatVisible then
 		uiCtrl.setCombatVisible(state)
 	end
+	if uiCtrl and uiCtrl.setInMatch then
+		uiCtrl.setInMatch(state)
+	end
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────────

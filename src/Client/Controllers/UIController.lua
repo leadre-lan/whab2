@@ -17,6 +17,7 @@ local C = Theme.COLORS
 
 local net       = nil
 local effects   = nil
+local inMatchUI = false   -- im Match sind Menüs gesperrt
 local localData = {
 	credits = 0, skins = { standard = 1 }, equipped = "standard",
 	kills = 0, wins = 0, hatches = 0, luckUntil = 0,
@@ -405,6 +406,10 @@ local function refreshEggWindow()
 end
 
 function UIController.openEgg()
+	if inMatchUI then
+		UIController.showNotify("📦 Nicht im Match — erst das Duell beenden!")
+		return
+	end
 	refreshEggWindow()
 	eggWin.Visible = true
 end
@@ -769,6 +774,7 @@ for i, w in ipairs(Config.WAGER_OPTIONS) do
 end
 
 function UIController.openWager()
+	if inMatchUI then return end
 	wagerWin.Visible = true
 end
 
@@ -864,6 +870,10 @@ end
 
 -- ── Trade-Fenster von außen öffnen (Handelskiosk) ─────────────────────────────
 function UIController.openTradeList()
+	if inMatchUI then
+		UIController.showNotify("🤝 Nicht im Match — erst das Duell beenden!")
+		return
+	end
 	if sessionFrame.Visible then
 		tradeWin.Visible = true
 		return
@@ -945,6 +955,54 @@ function UIController.refresh(data)
 	prevCredits = data.credits
 
 	if eggWin.Visible then refreshEggWindow() end
+end
+
+-- ── Maus-Freigabe für Menüs ───────────────────────────────────────────────────
+-- In First Person lockt Roblox die Maus in die Bildmitte → Menü-Buttons sind
+-- nicht klickbar und man kommt nicht mehr raus. Solange eines unserer Fenster
+-- offen ist, erzwingen wir pro Frame die freie Maus.
+local UserInputService = game:GetService("UserInputService")
+local RunService       = game:GetService("RunService")
+
+local function anyWindowOpen()
+	return eggWin.Visible or tradeWin.Visible or primeWin.Visible
+		or wagerWin.Visible or hatchOverlay.Visible
+end
+
+RunService.RenderStepped:Connect(function()
+	if anyWindowOpen() then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		UserInputService.MouseIconEnabled = true
+	end
+end)
+
+-- Esc-Ersatz: X schließt alle Fenster (zusätzlich zu den ✕-Buttons)
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.X and anyWindowOpen() then
+		eggWin.Visible = false
+		primeWin.Visible = false
+		wagerWin.Visible = false
+		if tradeWin.Visible then
+			tradeWin.Visible = false
+			net.TradeCancel:FireServer()
+		end
+	end
+end)
+
+-- Im Match: Menüs zu und gesperrt (kein Case-Opening mitten im Duell)
+function UIController.setInMatch(state)
+	inMatchUI = state
+	if state then
+		eggWin.Visible = false
+		primeWin.Visible = false
+		wagerWin.Visible = false
+		tradeWin.Visible = false
+	end
+end
+
+function UIController.isInMatch()
+	return inMatchUI
 end
 
 function UIController.init(netRef, effectsCtrl)

@@ -105,6 +105,7 @@ function SniperBuilder.buildTool(skin)
 		-- Die Skin-TEXTUR legt jeder Client lokal drauf (SkinTextures.lua,
 		-- EditableImage via Tag "SkinBody") — wie CS-Skins: Fade, Galaxie, …
 		local body = awpInfo.template:Clone()
+		body:ClearAllChildren()   -- Kit-Templates schleppen Welds/SurfaceAppearance mit
 		body.Name = "Body"
 		body.Size = awpInfo.nativeSize * awpInfo.scale
 		body.Material = Enum.Material.Metal   -- PBR-Highlights statt mattem Plastik

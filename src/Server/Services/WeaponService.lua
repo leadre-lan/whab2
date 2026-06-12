@@ -116,12 +116,15 @@ end
 local function trySetupAwpTemplate()
 	local assets = RS:FindFirstChild("Assets")
 	if not assets then return false end
-	-- Namens-tolerant: Awp / AWP / awp …
-	local tpl = nil
-	for _, child in ipairs(assets:GetChildren()) do
-		if child.Name:lower() == "awp" then
-			tpl = child
-			break
+	-- Das gebakte Template (exakt "Awp") hat Vorrang vor manuell eingefügten
+	-- Kits; sonst namens-tolerant (AWP/awp …)
+	local tpl = assets:FindFirstChild("Awp")
+	if not tpl then
+		for _, child in ipairs(assets:GetChildren()) do
+			if child.Name:lower() == "awp" then
+				tpl = child
+				break
+			end
 		end
 	end
 	if not tpl then return false end
