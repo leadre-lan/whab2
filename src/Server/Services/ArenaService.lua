@@ -422,33 +422,40 @@ end
 local function spawnBotForMatch(match)
 	if match.ended or not botService then return end
 	local p = match.players[1]
+
+	local function onHitPlayer()
+		if match.ended or not match.live then return end
+		local char = p.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return end
+		hum.Health = 0
+		match.botScore += 1
+		sendBotState(match, "live", { killBy = Config.BOT_NAME })
+
+		if match.botScore >= Config.KILLS_TO_WIN then
+			endBotMatch(match, false)
+			return
+		end
+		task.delay(Config.RESPAWN_DELAY, function()
+			if p.Parent and playerMatch[p] == match and not match.ended then
+				p:LoadCharacter()
+			end
+		end)
+	end
+
 	match.bot = botService.spawn({
-		spawnCF   = arenaSpawns[match.arenaIdx][2],
-		waypoints = arenaWaypoints[match.arenaIdx] or {},
-		getTarget = function()
-			return p.Parent and p or nil
-		end,
+		spawnCF = arenaSpawns[match.arenaIdx][2],
+		loiter  = arenaWaypoints[match.arenaIdx] or {},
 		shouldAct = function()
 			return match.live and not match.ended
 		end,
-		onHitPlayer = function(victim)
-			if match.ended or not match.live or victim ~= p then return end
-			local char = victim.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			if not hum or hum.Health <= 0 then return end
-			hum.Health = 0
-			match.botScore += 1
-			sendBotState(match, "live", { killBy = Config.BOT_NAME })
-
-			if match.botScore >= Config.KILLS_TO_WIN then
-				endBotMatch(match, false)
-				return
-			end
-			task.delay(Config.RESPAWN_DELAY, function()
-				if victim.Parent and playerMatch[victim] == match and not match.ended then
-					victim:LoadCharacter()
-				end
-			end)
+		acquire = function()
+			if not p.Parent then return nil end
+			local char = p.Character
+			local head = char and char:FindFirstChild("Head")
+			local hum  = char and char:FindFirstChildOfClass("Humanoid")
+			if not head or not hum or hum.Health <= 0 then return nil end
+			return { head = head, applyHit = onHitPlayer }
 		end,
 	})
 end

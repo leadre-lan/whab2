@@ -10,14 +10,19 @@ local Config        = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 local Skins         = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
 local SniperBuilder = require(RS:WaitForChild("Shared"):WaitForChild("SniperBuilder"))
 
-local dataService  = nil
-local arenaService = nil
-local net          = nil
+local dataService   = nil
+local arenaService  = nil
+local defuseService = nil
+local net           = nil
 
 local lastShot = {}   -- [player] = os.clock()
 
 function WeaponService.setArenaService(svc)
 	arenaService = svc
+end
+
+function WeaponService.setDefuseService(svc)
+	defuseService = svc
 end
 
 -- ── Echtes AWP-Mesh: Template ODER Auto-Load aus dem Creator Store ────────────
@@ -295,9 +300,13 @@ local function handleShoot(player, targetPos)
 	if lastShot[player] and now - lastShot[player] < Config.SHOT_COOLDOWN then return end
 	lastShot[player] = now
 
-	-- In der Lobby nur Show, in der Arena tödlich
-	local inMatch = arenaService and arenaService.isInLiveMatch(player)
+	-- In der Lobby nur Show, in Arena/Defuse tödlich
+	local inArena  = arenaService and arenaService.isInLiveMatch(player)
+	local inDefuse = defuseService and defuseService.isInLiveMatch(player)
+	local inMatch = inArena or inDefuse
 	if not inMatch and not Config.LOBBY_SHOOTING then return end
+	-- Defuse: Tote schießen nicht (kein Respawn in der Runde)
+	if inDefuse and not defuseService.canShoot(player) then return end
 
 	local origin = head.Position
 	local dir = targetPos - origin
@@ -319,14 +328,16 @@ local function handleShoot(player, targetPos)
 		victim = hitModel and Players:GetPlayerFromCharacter(hitModel)
 	end
 
-	-- Trainings-Bot getroffen?
+	-- Bot getroffen? (1v1-Trainings-Bot oder Defuse-Bot)
 	if hitModel and not victim and inMatch and CollectionService:HasTag(hitModel, "ArenaBot") then
-		if arenaService.tryHitBot(player, hitModel) then
+		if inArena and arenaService.tryHitBot(player, hitModel) then
 			killed = true
 			local pdata = dataService.get(player)
 			if pdata then pdata.kills += 1 end
 			dataService.addCredits(player, Config.BOT_KILL_REWARD)
 			net.PlaySFX:FireClient(player, "ChimeSoft", 0.5, 1.6)
+		elseif inDefuse and defuseService.tryHitBot(player, hitModel) then
+			killed = true
 		end
 	end
 

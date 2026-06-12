@@ -272,6 +272,38 @@ local function flashCenter(text, color, dur)
 end
 
 function UIController.onMatchState(payload)
+	-- ── Defuse-Mode: eigenes HUD-Format ──
+	if payload.mode == "defuse" then
+		if payload.state == "countdown" then
+			matchHud.Visible = true
+			matchScore.Text = "💣 RUNDE " .. (payload.round or 1)
+			matchInfo.Text = (payload.yourTeam == "T")
+				and "Du greifst AN — leg die Bombe am Platz A!"
+				or "Du VERTEIDIGST — halte Platz A!"
+			flashCenter(tostring(payload.countdown), C.accent2, 0.9)
+			Assets.play2D(Assets.SFX.ChimeSoft, 0.5, 1.3)
+		elseif payload.state == "live" then
+			matchHud.Visible = true
+			matchScore.Text = ("🟠 %d : %d 🔵  ·  R%d"):format(payload.tScore or 0, payload.ctScore or 0, payload.round or 1)
+			local roleText = (payload.yourTeam == "T") and "Angreifer 💣" or "Verteidiger 🛡"
+			local bombText = payload.bombPlanted
+				and ("💣 GELEGT! " .. (payload.timeLeft or 0) .. "s")
+				or ((payload.timeLeft or 0) .. "s")
+			matchInfo.Text = roleText .. "  ·  " .. bombText
+			if payload.youDied then
+				flashCenter("💀 Tot bis Rundenende", C.red, 1.6)
+			end
+		elseif payload.state == "ended" then
+			matchHud.Visible = false
+			if payload.youWon then
+				flashCenter("🏆 DEFUSE GEWONNEN!", C.gold, 2.4)
+			else
+				flashCenter("Bot-Team gewinnt", C.red, 2.2)
+			end
+		end
+		return
+	end
+
 	if payload.state == "countdown" then
 		matchHud.Visible = true
 		matchScore.Text = "VS " .. (payload.opponent or "?")
@@ -414,7 +446,7 @@ function UIController.openEgg()
 	eggWin.Visible = true
 end
 
--- ── Case-Spinner (CS-Style: Tile-Band dreht und bremst auf den Gewinn) ────────
+-- ── Ei-Hatch-Animation (Wackeln → Cracks → Reveal) ───────────────────────────
 local hatchOverlay = Instance.new("Frame")
 hatchOverlay.Size = UDim2.new(1, 0, 1, 0)
 hatchOverlay.BackgroundColor3 = Color3.fromRGB(4, 4, 10)
@@ -424,77 +456,21 @@ hatchOverlay.Visible = false
 hatchOverlay.ZIndex = 35
 hatchOverlay.Parent = screenGui
 
-label(hatchOverlay, "📦 " .. Config.EGGS.omega.name, UDim2.new(1, 0, 0, 40), UDim2.new(0, 0, 0.18, 0),
+label(hatchOverlay, "🥚 " .. Config.EGGS.omega.name, UDim2.new(1, 0, 0, 40), UDim2.new(0, 0, 0.12, 0),
 	{ textSize = 30, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 }).ZIndex = 36
 
--- Sichtfenster mit Tile-Band
-local TILE_W = 124
-local spinWindow = Instance.new("Frame")
-spinWindow.Size = UDim2.new(0, 640, 0, 110)
-spinWindow.Position = UDim2.new(0.5, -320, 0.36, 0)
-spinWindow.BackgroundColor3 = C.panel
-spinWindow.BorderSizePixel = 0
-spinWindow.ClipsDescendants = true
-spinWindow.ZIndex = 36
-Theme.applyCorner(spinWindow, Theme.CORNER_LG)
-Theme.applyStroke(spinWindow, C.accent, 2)
-spinWindow.Parent = hatchOverlay
+local hatchEgg = label(hatchOverlay, "🥚", UDim2.new(0, 220, 0, 220), UDim2.new(0.5, -110, 0.38, -110),
+	{ textSize = 150, align = Enum.TextXAlignment.Center })
+hatchEgg.ZIndex = 36
 
-local spinStrip = Instance.new("Frame")
-spinStrip.Size = UDim2.new(0, TILE_W * 60, 1, -12)
-spinStrip.Position = UDim2.new(0, 0, 0, 6)
-spinStrip.BackgroundTransparency = 1
-spinStrip.ZIndex = 36
-spinStrip.Parent = spinWindow
-
--- Mittelmarker
-local marker = Instance.new("Frame")
-marker.Size = UDim2.new(0, 3, 1, 6)
-marker.Position = UDim2.new(0.5, -1, 0, -3)
-marker.BackgroundColor3 = C.gold
-marker.BorderSizePixel = 0
-marker.ZIndex = 38
-marker.Parent = spinWindow
-
-local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 130), UDim2.new(0, 0, 0.56, 0),
+local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 140), UDim2.new(0, 0, 0.6, 0),
 	{ textSize = 38, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 })
 hatchText.ZIndex = 36
 hatchText.TextWrapped = true
 
-local pityLabel = label(hatchOverlay, "", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0.78, 0),
+local pityLabel = label(hatchOverlay, "", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0.82, 0),
 	{ color = C.textDim, textSize = 16, align = Enum.TextXAlignment.Center, stroke = 0.5 })
 pityLabel.ZIndex = 36
-
-local function makeSpinTile(skin, x)
-	local t = Instance.new("Frame")
-	t.Size = UDim2.new(0, TILE_W - 8, 1, 0)
-	t.Position = UDim2.new(0, x, 0, 0)
-	t.BackgroundColor3 = C.panel2
-	t.BorderSizePixel = 0
-	t.ZIndex = 37
-	Theme.applyCorner(t)
-	Theme.applyStroke(t, Skins.TIERS[skin.tier].color, 2)
-	t.Parent = spinStrip
-	local n = label(t, skin.name, UDim2.new(1, -8, 0, 44), UDim2.new(0, 4, 0, 14),
-		{ textSize = 15, font = Theme.FONTS.header, align = Enum.TextXAlignment.Center })
-	n.TextWrapped = true
-	n.ZIndex = 37
-	label(t, Skins.TIERS[skin.tier].label, UDim2.new(1, 0, 0, 16), UDim2.new(0, 0, 1, -26),
-		{ color = Skins.TIERS[skin.tier].color, textSize = 12, align = Enum.TextXAlignment.Center }).ZIndex = 37
-	return t
-end
-
--- Gewichteter Zufalls-Skin fürs Band (nur Optik)
-local function randomStripSkin()
-	local r = math.random()
-	local tierName = (r < 0.62 and "Common") or (r < 0.90 and "Rare")
-		or (r < 0.975 and "Legendary") or (r < 0.995 and "Godly") or "Mythical"
-	local pool = {}
-	for _, s in ipairs(Skins.CATALOG) do
-		if s.tier == tierName and Skins.inCasePool(s) then table.insert(pool, s) end
-	end
-	return pool[math.random(1, #pool)]
-end
 
 local hatching = false
 function UIController.playHatch(skinId, _count, pityLeft)
@@ -509,48 +485,29 @@ function UIController.playHatch(skinId, _count, pityLeft)
 	local tierColor = Skins.TIERS[skin.tier].color
 	local order = Skins.TIERS[skin.tier].order
 
-	-- Band aufbauen: 48 Tiles, der Gewinn liegt bei Index 42
-	spinStrip:ClearAllChildren()
-	local TARGET = 42
-	for i = 1, 48 do
-		makeSpinTile(i == TARGET and skin or randomStripSkin(), (i - 1) * TILE_W)
-	end
-
 	hatchOverlay.Visible = true
 	hatchText.Text = ""
 	pityLabel.Text = ""
+	hatchEgg.TextTransparency = 0
+	hatchEgg.Rotation = 0
 	Assets.play2D(Assets.SFX.DrumRoll, 0.5)
 
 	task.spawn(function()
-		-- Spin: schnell starten, hart abbremsen, exakt auf dem Gewinn landen
-		local windowCenter = 320
-		local jitter = (math.random() - 0.5) * (TILE_W * 0.4)
-		local targetX = -((TARGET - 0.5) * TILE_W - windowCenter + jitter)
-		local startX = 0
-		spinStrip.Position = UDim2.new(0, startX, 0, 6)
-
-		local dur = 3.6 + order * 0.3
-		local t0 = os.clock()
-		local lastTile = 0
-		while true do
-			local a = math.min(1, (os.clock() - t0) / dur)
-			local eased = 1 - (1 - a) ^ 3   -- Cubic-Out
-			local x = startX + (targetX - startX) * eased
-			spinStrip.Position = UDim2.new(0, x, 0, 6)
-
-			-- Tick-Sound bei jedem Tile-Übergang unterm Marker
-			local tileIdx = math.floor((windowCenter - x) / TILE_W)
-			if tileIdx ~= lastTile then
-				lastTile = tileIdx
-				Assets.play2D(Assets.SFX.Bolt, 0.25, 1.3 + a * 0.4)
+		-- Wackeln + Cracks — je seltener, desto länger die Spannung
+		local shakes = 16 + order * 7
+		for i = 1, shakes do
+			hatchEgg.Rotation = math.sin(i * 1.7) * (6 + i * 0.7)
+			if i % 7 == 0 then
+				Assets.play2D((i % 14 == 0) and Assets.SFX.EggCrack2 or Assets.SFX.EggCrack, 0.8)
+				effects.shake(0.5)
 			end
-			if a >= 1 then break end
-			task.wait()
+			task.wait(0.07)
 		end
 
 		-- Reveal: "GEWONNEN!"
-		Assets.play2D(Assets.SFX.EggCrack2, 0.9)
+		Assets.play2D(Assets.SFX.EggCrack2, 1)
 		Assets.play2D(Assets.SFX.Chime, order >= 3 and 0.95 or 0.55, 0.9 + order * 0.1)
+		hatchEgg.TextTransparency = 1
 		hatchText.Text = "GEWONNEN!\n" .. skin.name .. "\nSELTENHEIT: " .. Skins.TIERS[skin.tier].label
 			.. (skin.flavor and ("\n\"" .. skin.flavor .. "\"") or "")
 		hatchText.TextColor3 = tierColor
@@ -560,7 +517,7 @@ function UIController.playHatch(skinId, _count, pityLeft)
 			effects.confetti(screenGui, tierColor, 14 + order * 10)
 		end
 
-		task.wait(order >= 4 and 3.6 or 2.4)
+		task.wait(order >= 4 and 3.4 or 2.2)
 		hatchOverlay.Visible = false
 		hatching = false
 		refreshEggWindow()
@@ -904,7 +861,7 @@ local function barButton(emoji, tip, yOrder, cb)
 	return b
 end
 
-barButton("📦", "Omega-Gehäuse & Skins", 1, function()
+barButton("🥚", "Omega-Ei & Skins", 1, function()
 	refreshEggWindow()
 	eggWin.Visible = not eggWin.Visible
 end)

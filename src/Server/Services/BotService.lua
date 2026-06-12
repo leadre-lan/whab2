@@ -40,9 +40,9 @@ local function motor(name, p0, p1, c0, c1, parent)
 	m.Parent = parent
 end
 
-local function buildRig(spawnCF)
+local function buildRig(spawnCF, name, visorColor)
 	local model = Instance.new("Model")
-	model.Name = Config.BOT_NAME
+	model.Name = name or Config.BOT_NAME
 
 	local hrp = bodyPart("HumanoidRootPart", Vector3.new(2, 2, 1), BODY, model)
 	hrp.Transparency = 1
@@ -52,7 +52,7 @@ local function buildRig(spawnCF)
 	local head  = bodyPart("Head", Vector3.new(1.6, 1.2, 1.2), BODY:Lerp(Color3.new(1, 1, 1), 0.08), model)
 	-- Neon-Visier (liest sich sofort als "Bot") — erst positionieren, DANN
 	-- welden, sonst übernimmt der Weld den falschen Versatz
-	local visor = bodyPart("Visor", Vector3.new(1.2, 0.32, 0.2), VISOR, model)
+	local visor = bodyPart("Visor", Vector3.new(1.2, 0.32, 0.2), visorColor or VISOR, model)
 	visor.Material = Enum.Material.Neon
 	visor.CFrame = head.CFrame * CFrame.new(0, 0.05, -0.55)
 	local visorWeld = Instance.new("WeldConstraint")
@@ -92,11 +92,11 @@ local function buildRig(spawnCF)
 	local tl = Instance.new("TextLabel")
 	tl.Size = UDim2.new(1, 0, 1, 0)
 	tl.BackgroundTransparency = 1
-	tl.TextColor3 = VISOR
+	tl.TextColor3 = visorColor or VISOR
 	tl.TextStrokeTransparency = 0.2
 	tl.TextScaled = true
 	tl.Font = Enum.Font.GothamBold
-	tl.Text = Config.BOT_NAME
+	tl.Text = name or Config.BOT_NAME
 	tl.Parent = bb
 
 	CollectionService:AddTag(model, "ArenaBot")
@@ -105,16 +105,21 @@ local function buildRig(spawnCF)
 	return model, hum, head
 end
 
--- ── Public: Bot spawnen ───────────────────────────────────────────────────────
+-- ── Public: Kampf-Bot spawnen ─────────────────────────────────────────────────
 -- opts = {
---   spawnCF    = CFrame,
---   waypoints  = { Vector3, ... },        -- Deckungen auf der Bot-Hälfte
---   getTarget  = function() -> Player?,   -- wen der Bot bekämpft
---   shouldAct  = function() -> bool,      -- Match live?
---   onHitPlayer = function(victim),       -- Bot hat getroffen (Arena wertet)
+--   spawnCF     = CFrame,
+--   name        = string?,            -- Anzeigename ("[T] Bot 2", …)
+--   visorColor  = Color3?,            -- Team-Farbe des Visiers
+--   shouldAct   = function() -> bool, -- Runde live?
+--   acquire     = function() -> { head = BasePart, applyHit = function() } | nil,
+--                                     -- nächstes FEINDziel (Spieler ODER Bot)
+--   route       = { Vector3, ... }?,  -- wird einmal abgelaufen (Objective)
+--   loiter      = { Vector3, ... }?,  -- danach/sonst: Patrouille
+--   onRouteDone = function(bot)?,     -- z.B. Bombe legen/entschärfen
 -- }
+-- bot = { model, alive, kill(), destroy(), setRoute(route, onDone) }
 function BotService.spawn(opts)
-	local model, hum, head = buildRig(opts.spawnCF)
+	local model, hum, head = buildRig(opts.spawnCF, opts.name, opts.visorColor)
 	model.Parent = workspace
 
 	-- Sniper in die Hand (Standard-Skin — der Bot flext nicht)
@@ -123,6 +128,19 @@ function BotService.spawn(opts)
 	hum:EquipTool(tool)
 
 	local bot = { model = model, alive = true }
+
+	local route = opts.route and table.clone(opts.route) or nil
+	local routeIdx = 1
+	local routeDone = opts.onRouteDone
+	local routeFinished = (route == nil)
+
+	-- Neues Ziel/neue Route von außen (z.B. CT-Bot → Bombe entschärfen)
+	function bot.setRoute(newRoute, onDone)
+		route = table.clone(newRoute)
+		routeIdx = 1
+		routeDone = onDone
+		routeFinished = false
+	end
 
 	-- Tod: Joints lösen, Teile verstreuen, Modell entsorgen
 	function bot.kill()
@@ -162,34 +180,32 @@ function BotService.spawn(opts)
 				aimTime = 0
 				continue
 			end
+			if not head.Parent then continue end
 
-			local target = opts.getTarget()
-			local tChar = target and target.Character
-			local tHead = tChar and tChar:FindFirstChild("Head")
-			local tHum  = tChar and tChar:FindFirstChildOfClass("Humanoid")
-			if not tHead or not tHum or tHum.Health <= 0 or not head.Parent then
-				aimTime = 0
-				continue
-			end
-
-			-- Positionswechsel zwischen Deckungen
-			local now = os.clock()
-			if now >= nextMove and #opts.waypoints > 0 then
-				nextMove = now + rng:NextNumber(Config.BOT_MOVE_EVERY[1], Config.BOT_MOVE_EVERY[2])
-				hum:MoveTo(opts.waypoints[rng:NextInteger(1, #opts.waypoints)])
+			-- Ziel suchen (Spieler oder feindlicher Bot)
+			local target = opts.acquire and opts.acquire() or nil
+			local tHead = target and target.head
+			if tHead and not tHead.Parent then
+				target, tHead = nil, nil
 			end
 
 			-- Sichtkontakt?
-			losParams.FilterDescendantsInstances = { model }
-			local toTarget = tHead.Position - head.Position
-			local hit = workspace:Raycast(head.Position, toTarget, losParams)
-			local sees = hit ~= nil
-				and hit.Instance:FindFirstAncestorOfClass("Model") == tChar
+			local sees = false
+			if tHead then
+				losParams.FilterDescendantsInstances = { model }
+				local toTarget = tHead.Position - head.Position
+				local hit = workspace:Raycast(head.Position, toTarget, losParams)
+				sees = hit ~= nil and hit.Instance:IsDescendantOf(tHead.Parent)
+			end
 
-			-- Zum Ziel drehen, sobald es sichtbar ist
+			-- ── Bewegung ──
+			local now = os.clock()
 			if sees then
+				-- Stehen bleiben + zum Ziel drehen (Duell-Stellung)
 				local hrp = model.PrimaryPart
 				if hrp then
+					hum:MoveTo(hrp.Position)
+					local toTarget = tHead.Position - head.Position
 					local flat = Vector3.new(toTarget.X, 0, toTarget.Z)
 					if flat.Magnitude > 0.5 then
 						hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
@@ -198,9 +214,33 @@ function BotService.spawn(opts)
 				aimTime += TICK
 			else
 				aimTime = math.max(0, aimTime - TICK * 2)
+
+				if not routeFinished and route then
+					-- Objective-Route ablaufen
+					local point = route[routeIdx]
+					if point then
+						local hrp = model.PrimaryPart
+						if hrp and (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(point.X, 0, point.Z)).Magnitude < 5 then
+							routeIdx += 1
+							if routeIdx > #route then
+								routeFinished = true
+								if routeDone then
+									task.spawn(routeDone, bot)
+								end
+							end
+						else
+							hum:MoveTo(point)
+						end
+					else
+						routeFinished = true
+					end
+				elseif opts.loiter and #opts.loiter > 0 and now >= nextMove then
+					nextMove = now + rng:NextNumber(Config.BOT_MOVE_EVERY[1], Config.BOT_MOVE_EVERY[2])
+					hum:MoveTo(opts.loiter[rng:NextInteger(1, #opts.loiter)])
+				end
 			end
 
-			-- Schuss
+			-- ── Schuss ──
 			if sees and aimTime >= reaction and now - lastShot >= Config.BOT_SHOT_CD then
 				lastShot = now
 				reaction = rng:NextNumber(Config.BOT_REACTION[1], Config.BOT_REACTION[2])
@@ -213,14 +253,13 @@ function BotService.spawn(opts)
 				if hits then
 					toPos = tHead.Position
 				else
-					-- Fehlschuss: sichtbar knapp daneben
 					toPos = tHead.Position + Vector3.new(
 						rng:NextNumber(-4, 4), rng:NextNumber(-1, 3), rng:NextNumber(-4, 4))
 				end
 
 				net.ShotFired:FireAllClients(fromPos, toPos, "standard", hits)
 				if hits then
-					opts.onHitPlayer(target)
+					task.spawn(target.applyHit)
 				end
 			end
 		end

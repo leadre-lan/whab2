@@ -2,7 +2,7 @@
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.4.1 — Menü-Maus-Fix"
+Config.VERSION = "v1.5 — Omega-Ei + Defuse-Mode"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -51,7 +51,7 @@ Config.BOT_WIN_REWARD  = 40
 -- (EggService + UI sind komplett config-getrieben).
 Config.EGGS = {
 	omega = {
-		name  = "Omega-Gehäuse",
+		name  = "Omega-Ei",
 		cost  = 750,
 		color = Color3.fromRGB(150, 80, 255),
 	},
@@ -60,6 +60,16 @@ Config.EGGS = {
 -- Pity-System: spätestens nach so vielen Pulls ohne Legendary+ ist der
 -- nächste Pull garantiert Legendary oder besser (Zähler in der Case-UI)
 Config.PITY_LEGENDARY = 45
+
+-- ── Defuse-Mode (3v3 vs Bots — CS-Style Bomben-Defusal) ──────────────────────
+Config.DEFUSE_TEAM_SIZE   = 3      -- pro Team (Spieler + Bots aufgefüllt)
+Config.DEFUSE_ROUND_TIME  = 90     -- Sekunden bis zur Plant-Deadline
+Config.DEFUSE_BOMB_TIME   = 35     -- Sekunden bis zur Explosion
+Config.DEFUSE_PLANT_TIME  = 3      -- Halten zum Legen
+Config.DEFUSE_DEFUSE_TIME = 5      -- Halten zum Entschärfen
+Config.DEFUSE_ROUNDS_WIN  = 3      -- erster auf 3 Runden gewinnt
+Config.DEFUSE_ROUND_REWARD = 50
+Config.DEFUSE_WIN_REWARD   = 150
 
 -- ── Wager-Duelle (1v1 um Credits) ─────────────────────────────────────────────
 Config.WAGER_OPTIONS = { 0, 50, 100, 250, 500 }   -- 0 = Casual

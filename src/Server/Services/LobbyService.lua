@@ -13,10 +13,11 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
-local arenaService = nil
-local eggService   = nil
-local dataService  = nil
-local net          = nil
+local arenaService  = nil
+local eggService    = nil
+local defuseService = nil
+local dataService   = nil
+local net           = nil
 
 local CYAN    = Color3.fromRGB(70, 200, 255)
 local MAGENTA = Color3.fromRGB(255, 70, 200)
@@ -156,11 +157,28 @@ local function buildOmegaCase(folder)
 	part({ size = Vector3.new(16, 0.4, 16), pos = center + Vector3.new(0, 1.6, 0),
 		material = Enum.Material.Neon, color = egg.color, transparency = 0.4, collide = false }, folder)
 
-	-- Das schwebende Artefakt-Gehäuse (Würfel + Neon-Kanten, dreht/schwebt
-	-- client-seitig). Heller Korpus + Eigenlicht, damit es nachts nicht im
-	-- Schwarz verschwindet und nur die Kanten schweben.
-	local case = part({ size = Vector3.new(7, 7, 7), pos = center + Vector3.new(0, 9, 0),
-		material = Enum.Material.Slate, color = Color3.fromRGB(66, 58, 96), reflectance = 0.15, name = "OmegaCase" }, folder)
+	-- Das schwebende OMEGA-EI (Sphere-Mesh vertikal gestreckt, dreht/schwebt
+	-- client-seitig) — mit Eigenlicht, damit es nachts leuchtet
+	local case = part({ size = Vector3.new(8.5, 8.5, 8.5), pos = center + Vector3.new(0, 9, 0),
+		material = Enum.Material.SmoothPlastic, color = egg.color, reflectance = 0.12, name = "OmegaEgg" }, folder)
+	local eggMesh = Instance.new("SpecialMesh")
+	eggMesh.MeshType = Enum.MeshType.Sphere
+	eggMesh.Scale = Vector3.new(1, 1.32, 1)
+	eggMesh.Parent = case
+	-- Helle Sprenkel wie eine Eierschale
+	for i = 1, 7 do
+		local ang = i / 7 * math.pi * 2
+		local fleck = part({ size = Vector3.new(1.2, 1.2, 1.2),
+			pos = center + Vector3.new(math.cos(ang) * 3.4, 9 + math.sin(i * 2.4) * 3.2, math.sin(ang) * 3.4),
+			shape = Enum.PartType.Ball,
+			material = Enum.Material.Neon, color = Color3.fromRGB(220, 200, 255),
+			transparency = 0.45, collide = false }, folder)
+		local fw = Instance.new("WeldConstraint")
+		fw.Part0 = case
+		fw.Part1 = fleck
+		fw.Parent = fleck
+		fleck.Anchored = false
+	end
 	local caseGlow = Instance.new("SurfaceLight")
 	caseGlow.Face = Enum.NormalId.Bottom
 	caseGlow.Color = egg.color
@@ -179,27 +197,6 @@ local function buildOmegaCase(folder)
 	shellWeld.Parent = shell
 	shell.Anchored = false
 	CollectionService:AddTag(case, "EggFloat")
-	for _, off in ipairs({
-		Vector3.new(3.5, 0, 3.5), Vector3.new(-3.5, 0, 3.5),
-		Vector3.new(3.5, 0, -3.5), Vector3.new(-3.5, 0, -3.5),
-	}) do
-		local edge = part({ size = Vector3.new(0.35, 7.4, 0.35), pos = case.Position + off,
-			material = Enum.Material.Neon, color = egg.color, collide = false }, folder)
-		local w = Instance.new("WeldConstraint")
-		w.Part0 = case
-		w.Part1 = edge
-		w.Parent = edge
-		edge.Anchored = false
-	end
-	for _, dy in ipairs({ 3.7, -3.7 }) do
-		local frame = part({ size = Vector3.new(7.6, 0.35, 7.6), pos = case.Position + Vector3.new(0, dy, 0),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.2, collide = false }, folder)
-		local w = Instance.new("WeldConstraint")
-		w.Part0 = case
-		w.Part1 = frame
-		w.Parent = frame
-		frame.Anchored = false
-	end
 
 	-- Statische Leucht-Ringe (gekippt — bewusst NICHT getaggt, s. EggFloat-Handler)
 	for i, tilt in ipairs({ 18, -14 }) do
@@ -232,11 +229,11 @@ local function buildOmegaCase(folder)
 	light.Brightness = 1.6
 	light.Parent = case
 
-	billboard(case, Vector3.new(0, 7.5, 0),
-		"📦 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
+	billboard(case, Vector3.new(0, 8, 0),
+		"🥚 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
 
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Gehäuse öffnen"
+	prompt.ActionText = "Ei öffnen"
 	prompt.ObjectText = egg.name
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0
@@ -300,21 +297,23 @@ local function buildPortal5v5(folder, rng)
 	plight.Parent = portal
 
 	billboard(portal, Vector3.new(0, 13.5, 0),
-		"COMPETITIVE: 5V5 BOMBEN-DEFUSAL", "Matchmaking in Entwicklung — Rang steigt im 1v1!", PURPLE, 340)
+		"COMPETITIVE: BOMBEN-DEFUSAL", "Durchlaufen: 3v3 vs Bots — Bombe legen & entschärfen!", PURPLE, 340)
 
 	-- Anker für das client-seitige Rangschild ("DEIN RANG: …" sieht jeder nur für sich)
 	local anchor = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(cx, 7.5, cz - 7),
 		transparency = 1, collide = false, name = "RankShieldAnchor" }, folder)
 	anchor.CanQuery = false
 
-	-- Touch-Hinweis
+	-- Durchlaufen = Defuse-Match starten (3v3 vs Bots)
 	local touchCd = {}
 	portal.Touched:Connect(function(hit)
 		local player = hit and hit.Parent and Players:GetPlayerFromCharacter(hit.Parent)
 		if not player then return end
-		if os.clock() - (touchCd[player] or 0) < 4 then return end
+		if os.clock() - (touchCd[player] or 0) < 5 then return end
 		touchCd[player] = os.clock()
-		net.Notify:FireClient(player, "🚧 5v5 Bomben-Defusal kommt bald — dein Rang steigt im 1v1!")
+		if defuseService then
+			defuseService.start(player)
+		end
 	end)
 
 	-- RANGTABELLE-Terminal (rechts neben dem Portal)
@@ -706,11 +705,12 @@ function LobbyService.pushTicker(text)
 	end
 end
 
-function LobbyService.init(arenaSvc, eggSvc, ds, netRef)
-	arenaService = arenaSvc
-	eggService   = eggSvc
-	dataService  = ds
-	net          = netRef
+function LobbyService.init(arenaSvc, eggSvc, defuseSvc, ds, netRef)
+	arenaService  = arenaSvc
+	eggService    = eggSvc
+	defuseService = defuseSvc
+	dataService   = ds
+	net           = netRef
 
 	local old = workspace:FindFirstChild("Lobby")
 	if old then old:Destroy() end

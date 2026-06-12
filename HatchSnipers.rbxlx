@@ -194,7 +194,7 @@ return Assets
 local Config = {}
 
 -- Wird im HUD angezeigt — so siehst du sofort, ob der richtige Build läuft
-Config.VERSION = "v1.4.1 — Menü-Maus-Fix"
+Config.VERSION = "v1.5 — Omega-Ei + Defuse-Mode"
 
 -- ── Währung / Economy ─────────────────────────────────────────────────────────
 Config.CURRENCY_NAME   = "Credits"
@@ -243,7 +243,7 @@ Config.BOT_WIN_REWARD  = 40
 -- (EggService + UI sind komplett config-getrieben).
 Config.EGGS = {
 	omega = {
-		name  = "Omega-Gehäuse",
+		name  = "Omega-Ei",
 		cost  = 750,
 		color = Color3.fromRGB(150, 80, 255),
 	},
@@ -252,6 +252,16 @@ Config.EGGS = {
 -- Pity-System: spätestens nach so vielen Pulls ohne Legendary+ ist der
 -- nächste Pull garantiert Legendary oder besser (Zähler in der Case-UI)
 Config.PITY_LEGENDARY = 45
+
+-- ── Defuse-Mode (3v3 vs Bots — CS-Style Bomben-Defusal) ──────────────────────
+Config.DEFUSE_TEAM_SIZE   = 3      -- pro Team (Spieler + Bots aufgefüllt)
+Config.DEFUSE_ROUND_TIME  = 90     -- Sekunden bis zur Plant-Deadline
+Config.DEFUSE_BOMB_TIME   = 35     -- Sekunden bis zur Explosion
+Config.DEFUSE_PLANT_TIME  = 3      -- Halten zum Legen
+Config.DEFUSE_DEFUSE_TIME = 5      -- Halten zum Entschärfen
+Config.DEFUSE_ROUNDS_WIN  = 3      -- erster auf 3 Runden gewinnt
+Config.DEFUSE_ROUND_REWARD = 50
+Config.DEFUSE_WIN_REWARD   = 150
 
 -- ── Wager-Duelle (1v1 um Credits) ─────────────────────────────────────────────
 Config.WAGER_OPTIONS = { 0, 50, 100, 250, 500 }   -- 0 = Casual
@@ -1204,6 +1214,7 @@ local EggService    = require(Services:WaitForChild("EggService"))
 local WeaponService = require(Services:WaitForChild("WeaponService"))
 local ArenaService  = require(Services:WaitForChild("ArenaService"))
 local BotService    = require(Services:WaitForChild("BotService"))
+local DefuseService = require(Services:WaitForChild("DefuseService"))
 local LobbyService  = require(Services:WaitForChild("LobbyService"))
 local TradeService  = require(Services:WaitForChild("TradeService"))
 local PrimeService  = require(Services:WaitForChild("PrimeService"))
@@ -1220,12 +1231,14 @@ safeInit("DataService",   DataService.init, net)
 safeInit("WeaponService", WeaponService.init, DataService, net)
 safeInit("ArenaService",  ArenaService.init, DataService, WeaponService, net)
 safeInit("BotService",    BotService.init, net)
+safeInit("DefuseService", DefuseService.init, DataService, BotService, net)
 safeInit("EggService",    EggService.init, DataService, net)
-safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, DataService, net)
+safeInit("LobbyService",  LobbyService.init, ArenaService, EggService, DefuseService, DataService, net)
 safeInit("TradeService",  TradeService.init, DataService, WeaponService, net)
 safeInit("PrimeService",  PrimeService.init, DataService, WeaponService, net)
 
 WeaponService.setArenaService(ArenaService)
+WeaponService.setDefuseService(DefuseService)
 ArenaService.setBotService(BotService)
 TradeService.onTicker = LobbyService.pushTicker
 
@@ -1684,33 +1697,40 @@ end
 local function spawnBotForMatch(match)
 	if match.ended or not botService then return end
 	local p = match.players[1]
+
+	local function onHitPlayer()
+		if match.ended or not match.live then return end
+		local char = p.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not hum or hum.Health <= 0 then return end
+		hum.Health = 0
+		match.botScore += 1
+		sendBotState(match, "live", { killBy = Config.BOT_NAME })
+
+		if match.botScore >= Config.KILLS_TO_WIN then
+			endBotMatch(match, false)
+			return
+		end
+		task.delay(Config.RESPAWN_DELAY, function()
+			if p.Parent and playerMatch[p] == match and not match.ended then
+				p:LoadCharacter()
+			end
+		end)
+	end
+
 	match.bot = botService.spawn({
-		spawnCF   = arenaSpawns[match.arenaIdx][2],
-		waypoints = arenaWaypoints[match.arenaIdx] or {},
-		getTarget = function()
-			return p.Parent and p or nil
-		end,
+		spawnCF = arenaSpawns[match.arenaIdx][2],
+		loiter  = arenaWaypoints[match.arenaIdx] or {},
 		shouldAct = function()
 			return match.live and not match.ended
 		end,
-		onHitPlayer = function(victim)
-			if match.ended or not match.live or victim ~= p then return end
-			local char = victim.Character
-			local hum = char and char:FindFirstChildOfClass("Humanoid")
-			if not hum or hum.Health <= 0 then return end
-			hum.Health = 0
-			match.botScore += 1
-			sendBotState(match, "live", { killBy = Config.BOT_NAME })
-
-			if match.botScore >= Config.KILLS_TO_WIN then
-				endBotMatch(match, false)
-				return
-			end
-			task.delay(Config.RESPAWN_DELAY, function()
-				if victim.Parent and playerMatch[victim] == match and not match.ended then
-					victim:LoadCharacter()
-				end
-			end)
+		acquire = function()
+			if not p.Parent then return nil end
+			local char = p.Character
+			local head = char and char:FindFirstChild("Head")
+			local hum  = char and char:FindFirstChildOfClass("Humanoid")
+			if not head or not hum or hum.Health <= 0 then return nil end
+			return { head = head, applyHit = onHitPlayer }
 		end,
 	})
 end
@@ -2002,9 +2022,9 @@ local function motor(name, p0, p1, c0, c1, parent)
 	m.Parent = parent
 end
 
-local function buildRig(spawnCF)
+local function buildRig(spawnCF, name, visorColor)
 	local model = Instance.new("Model")
-	model.Name = Config.BOT_NAME
+	model.Name = name or Config.BOT_NAME
 
 	local hrp = bodyPart("HumanoidRootPart", Vector3.new(2, 2, 1), BODY, model)
 	hrp.Transparency = 1
@@ -2014,7 +2034,7 @@ local function buildRig(spawnCF)
 	local head  = bodyPart("Head", Vector3.new(1.6, 1.2, 1.2), BODY:Lerp(Color3.new(1, 1, 1), 0.08), model)
 	-- Neon-Visier (liest sich sofort als "Bot") — erst positionieren, DANN
 	-- welden, sonst übernimmt der Weld den falschen Versatz
-	local visor = bodyPart("Visor", Vector3.new(1.2, 0.32, 0.2), VISOR, model)
+	local visor = bodyPart("Visor", Vector3.new(1.2, 0.32, 0.2), visorColor or VISOR, model)
 	visor.Material = Enum.Material.Neon
 	visor.CFrame = head.CFrame * CFrame.new(0, 0.05, -0.55)
 	local visorWeld = Instance.new("WeldConstraint")
@@ -2054,11 +2074,11 @@ local function buildRig(spawnCF)
 	local tl = Instance.new("TextLabel")
 	tl.Size = UDim2.new(1, 0, 1, 0)
 	tl.BackgroundTransparency = 1
-	tl.TextColor3 = VISOR
+	tl.TextColor3 = visorColor or VISOR
 	tl.TextStrokeTransparency = 0.2
 	tl.TextScaled = true
 	tl.Font = Enum.Font.GothamBold
-	tl.Text = Config.BOT_NAME
+	tl.Text = name or Config.BOT_NAME
 	tl.Parent = bb
 
 	CollectionService:AddTag(model, "ArenaBot")
@@ -2067,16 +2087,21 @@ local function buildRig(spawnCF)
 	return model, hum, head
 end
 
--- ── Public: Bot spawnen ───────────────────────────────────────────────────────
+-- ── Public: Kampf-Bot spawnen ─────────────────────────────────────────────────
 -- opts = {
---   spawnCF    = CFrame,
---   waypoints  = { Vector3, ... },        -- Deckungen auf der Bot-Hälfte
---   getTarget  = function() -> Player?,   -- wen der Bot bekämpft
---   shouldAct  = function() -> bool,      -- Match live?
---   onHitPlayer = function(victim),       -- Bot hat getroffen (Arena wertet)
+--   spawnCF     = CFrame,
+--   name        = string?,            -- Anzeigename ("[T] Bot 2", …)
+--   visorColor  = Color3?,            -- Team-Farbe des Visiers
+--   shouldAct   = function() -> bool, -- Runde live?
+--   acquire     = function() -> { head = BasePart, applyHit = function() } | nil,
+--                                     -- nächstes FEINDziel (Spieler ODER Bot)
+--   route       = { Vector3, ... }?,  -- wird einmal abgelaufen (Objective)
+--   loiter      = { Vector3, ... }?,  -- danach/sonst: Patrouille
+--   onRouteDone = function(bot)?,     -- z.B. Bombe legen/entschärfen
 -- }
+-- bot = { model, alive, kill(), destroy(), setRoute(route, onDone) }
 function BotService.spawn(opts)
-	local model, hum, head = buildRig(opts.spawnCF)
+	local model, hum, head = buildRig(opts.spawnCF, opts.name, opts.visorColor)
 	model.Parent = workspace
 
 	-- Sniper in die Hand (Standard-Skin — der Bot flext nicht)
@@ -2085,6 +2110,19 @@ function BotService.spawn(opts)
 	hum:EquipTool(tool)
 
 	local bot = { model = model, alive = true }
+
+	local route = opts.route and table.clone(opts.route) or nil
+	local routeIdx = 1
+	local routeDone = opts.onRouteDone
+	local routeFinished = (route == nil)
+
+	-- Neues Ziel/neue Route von außen (z.B. CT-Bot → Bombe entschärfen)
+	function bot.setRoute(newRoute, onDone)
+		route = table.clone(newRoute)
+		routeIdx = 1
+		routeDone = onDone
+		routeFinished = false
+	end
 
 	-- Tod: Joints lösen, Teile verstreuen, Modell entsorgen
 	function bot.kill()
@@ -2124,34 +2162,32 @@ function BotService.spawn(opts)
 				aimTime = 0
 				continue
 			end
+			if not head.Parent then continue end
 
-			local target = opts.getTarget()
-			local tChar = target and target.Character
-			local tHead = tChar and tChar:FindFirstChild("Head")
-			local tHum  = tChar and tChar:FindFirstChildOfClass("Humanoid")
-			if not tHead or not tHum or tHum.Health <= 0 or not head.Parent then
-				aimTime = 0
-				continue
-			end
-
-			-- Positionswechsel zwischen Deckungen
-			local now = os.clock()
-			if now >= nextMove and #opts.waypoints > 0 then
-				nextMove = now + rng:NextNumber(Config.BOT_MOVE_EVERY[1], Config.BOT_MOVE_EVERY[2])
-				hum:MoveTo(opts.waypoints[rng:NextInteger(1, #opts.waypoints)])
+			-- Ziel suchen (Spieler oder feindlicher Bot)
+			local target = opts.acquire and opts.acquire() or nil
+			local tHead = target and target.head
+			if tHead and not tHead.Parent then
+				target, tHead = nil, nil
 			end
 
 			-- Sichtkontakt?
-			losParams.FilterDescendantsInstances = { model }
-			local toTarget = tHead.Position - head.Position
-			local hit = workspace:Raycast(head.Position, toTarget, losParams)
-			local sees = hit ~= nil
-				and hit.Instance:FindFirstAncestorOfClass("Model") == tChar
+			local sees = false
+			if tHead then
+				losParams.FilterDescendantsInstances = { model }
+				local toTarget = tHead.Position - head.Position
+				local hit = workspace:Raycast(head.Position, toTarget, losParams)
+				sees = hit ~= nil and hit.Instance:IsDescendantOf(tHead.Parent)
+			end
 
-			-- Zum Ziel drehen, sobald es sichtbar ist
+			-- ── Bewegung ──
+			local now = os.clock()
 			if sees then
+				-- Stehen bleiben + zum Ziel drehen (Duell-Stellung)
 				local hrp = model.PrimaryPart
 				if hrp then
+					hum:MoveTo(hrp.Position)
+					local toTarget = tHead.Position - head.Position
 					local flat = Vector3.new(toTarget.X, 0, toTarget.Z)
 					if flat.Magnitude > 0.5 then
 						hrp.CFrame = CFrame.lookAt(hrp.Position, hrp.Position + flat.Unit)
@@ -2160,9 +2196,33 @@ function BotService.spawn(opts)
 				aimTime += TICK
 			else
 				aimTime = math.max(0, aimTime - TICK * 2)
+
+				if not routeFinished and route then
+					-- Objective-Route ablaufen
+					local point = route[routeIdx]
+					if point then
+						local hrp = model.PrimaryPart
+						if hrp and (Vector3.new(hrp.Position.X, 0, hrp.Position.Z) - Vector3.new(point.X, 0, point.Z)).Magnitude < 5 then
+							routeIdx += 1
+							if routeIdx > #route then
+								routeFinished = true
+								if routeDone then
+									task.spawn(routeDone, bot)
+								end
+							end
+						else
+							hum:MoveTo(point)
+						end
+					else
+						routeFinished = true
+					end
+				elseif opts.loiter and #opts.loiter > 0 and now >= nextMove then
+					nextMove = now + rng:NextNumber(Config.BOT_MOVE_EVERY[1], Config.BOT_MOVE_EVERY[2])
+					hum:MoveTo(opts.loiter[rng:NextInteger(1, #opts.loiter)])
+				end
 			end
 
-			-- Schuss
+			-- ── Schuss ──
 			if sees and aimTime >= reaction and now - lastShot >= Config.BOT_SHOT_CD then
 				lastShot = now
 				reaction = rng:NextNumber(Config.BOT_REACTION[1], Config.BOT_REACTION[2])
@@ -2175,14 +2235,13 @@ function BotService.spawn(opts)
 				if hits then
 					toPos = tHead.Position
 				else
-					-- Fehlschuss: sichtbar knapp daneben
 					toPos = tHead.Position + Vector3.new(
 						rng:NextNumber(-4, 4), rng:NextNumber(-1, 3), rng:NextNumber(-4, 4))
 				end
 
 				net.ShotFired:FireAllClients(fromPos, toPos, "standard", hits)
 				if hits then
-					opts.onHitPlayer(target)
+					task.spawn(target.applyHit)
 				end
 			end
 		end
@@ -2346,6 +2405,716 @@ return DataService
       </Item>
       <Item class="ModuleScript" referent="17">
         <Properties>
+          <string name="Name">DefuseService</string>
+          <string name="Source"><![CDATA[-- DefuseService.lua — CS-Style Bomben-Defusal (3v3, Spieler + Bots).
+--
+-- Ablauf pro Runde: Angreifer (T) müssen die Bombe am Bombenplatz legen,
+-- Verteidiger (CT) halten den Platz / entschärfen. Kein Respawn in der Runde
+-- (CS-Regeln) — wer stirbt, schaut von der Zuschauer-Plattform zu.
+-- Bots laufen Routen (Mid/Links/Rechts), kämpfen gegen Spieler UND Bots,
+-- T-Bots legen die Bombe, CT-Bots entschärfen. Seitenwechsel jede Runde.
+local DefuseService = {}
+
+local Players = game:GetService("Players")
+local RS      = game:GetService("ReplicatedStorage")
+local Debris  = game:GetService("Debris")
+
+local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
+local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
+
+local dataService = nil
+local botService  = nil
+local net         = nil
+
+-- ── Map-Layout (eine Map, ein Match gleichzeitig) ─────────────────────────────
+local C = Vector3.new(-1500, 0, 0)   -- Map-Zentrum
+local T_COLOR  = Color3.fromRGB(255, 170, 60)
+local CT_COLOR = Color3.fromRGB(80, 170, 255)
+
+local sitePart    = nil   -- Bombenplatz-Zone (Prompt-Träger)
+local spectatorCF = CFrame.new(C + Vector3.new(0, 85, 0))
+local tSpawnCF    = CFrame.new(C + Vector3.new(0, 4, 62)) * CFrame.Angles(0, math.rad(180), 0)
+local ctSpawnCF   = CFrame.new(C + Vector3.new(0, 4, -62))
+
+-- Bot-Routen (Welt-Koordinaten): T drückt Richtung Bombenplatz (z -30)
+local function P(x, z) return C + Vector3.new(x, 1, z) end
+local T_ROUTES = {
+	{ P(6, 40), P(6, 12), P(-1, -8), P(0, -28) },        -- Mid (um die Kisten herum)
+	{ P(-36, 42), P(-30, 24), P(-36, 4), P(-16, -28) },  -- Links
+	{ P(36, 42), P(30, 24), P(36, 4), P(16, -28) },      -- Rechts
+}
+local CT_HOLDS = { P(0, -50), P(-20, -40), P(20, -40), P(-8, -22), P(8, -22) }
+local CT_ROUTES = {
+	{ P(-12, -50), P(-18, -38) },
+	{ P(12, -50), P(18, -38) },
+	{ P(0, -52), P(0, -40) },
+}
+
+-- ── Map bauen ─────────────────────────────────────────────────────────────────
+local function part(props, parent)
+	local p = Instance.new("Part")
+	p.Size = props.size
+	if props.cframe then p.CFrame = props.cframe else p.Position = props.pos end
+	p.Material = props.material or Enum.Material.SmoothPlastic
+	if props.color then p.Color = props.color end
+	p.Anchored = true
+	p.CanCollide = props.collide ~= false
+	if props.transparency then p.Transparency = props.transparency end
+	if props.name then p.Name = props.name end
+	p.Parent = parent
+	return p
+end
+
+local function buildMap()
+	local folder = Instance.new("Folder")
+	folder.Name = "DefuseMap"
+	folder.Parent = workspace
+
+	local DARK  = Color3.fromRGB(30, 32, 46)
+	local FLOOR = Color3.fromRGB(36, 38, 54)
+	local COVER = Color3.fromRGB(56, 60, 84)
+
+	-- Boden + Wände
+	local floorPart = part({ size = Vector3.new(210, 2, 170), pos = C + Vector3.new(0, -1, 0),
+		material = Enum.Material.SmoothPlastic, color = FLOOR }, folder)
+	floorPart.Reflectance = 0.1
+	floorPart:SetAttribute("EnvKind", "panels")
+	floorPart:SetAttribute("EnvFaces", "Top")
+	floorPart:SetAttribute("EnvStuds", 16)
+	floorPart:SetAttribute("EnvAlpha", 0.2)
+	game:GetService("CollectionService"):AddTag(floorPart, "EnvTexture")
+
+	for _, w in ipairs({
+		{ Vector3.new(210, 26, 2), C + Vector3.new(0, 13, -85) },
+		{ Vector3.new(210, 26, 2), C + Vector3.new(0, 13, 85) },
+		{ Vector3.new(2, 26, 170), C + Vector3.new(-105, 13, 0) },
+		{ Vector3.new(2, 26, 170), C + Vector3.new(105, 13, 0) },
+	}) do
+		part({ size = w[1], pos = w[2], material = Enum.Material.Concrete, color = DARK }, folder)
+	end
+
+	-- Lane-Trennwände (Mid vs Links/Rechts) mit Durchgängen
+	for _, side in ipairs({ -1, 1 }) do
+		part({ size = Vector3.new(2, 9, 60), pos = C + Vector3.new(side * 22, 4.5, 18),
+			material = Enum.Material.Concrete, color = DARK }, folder)
+		part({ size = Vector3.new(2, 9, 34), pos = C + Vector3.new(side * 22, 4.5, -46),
+			material = Enum.Material.Concrete, color = DARK }, folder)
+	end
+
+	-- Deckung: Kisten in den Lanes + am Bombenplatz
+	for _, c in ipairs({
+		{ x = 0, z = 22, s = Vector3.new(8, 4, 4) },
+		{ x = -6, z = -4, s = Vector3.new(5, 5, 5) },
+		{ x = 8, z = 4, s = Vector3.new(5, 3.4, 5) },
+		{ x = -36, z = 18, s = Vector3.new(6, 5, 6) },
+		{ x = 36, z = 14, s = Vector3.new(6, 5, 6) },
+		{ x = -34, z = -20, s = Vector3.new(5, 4, 5) },
+		{ x = 34, z = -24, s = Vector3.new(5, 4, 5) },
+		{ x = -10, z = -34, s = Vector3.new(6, 4, 5) },
+		{ x = 10, z = -38, s = Vector3.new(6, 4, 5) },
+	}) do
+		part({ size = c.s, pos = C + Vector3.new(c.x, c.s.Y / 2, c.z),
+			material = Enum.Material.Metal, color = COVER }, folder)
+	end
+
+	-- Bombenplatz A (markierte Zone)
+	sitePart = part({ size = Vector3.new(26, 0.4, 26), pos = C + Vector3.new(0, 0.2, -30),
+		material = Enum.Material.Neon, color = Color3.fromRGB(255, 170, 60),
+		transparency = 0.55, name = "BombSite" }, folder)
+	local siteBB = Instance.new("BillboardGui")
+	siteBB.Size = UDim2.new(0, 120, 0, 40)
+	siteBB.StudsOffset = Vector3.new(0, 8, 0)
+	siteBB.MaxDistance = 200
+	siteBB.Parent = sitePart
+	local siteLbl = Instance.new("TextLabel")
+	siteLbl.Size = UDim2.new(1, 0, 1, 0)
+	siteLbl.BackgroundTransparency = 1
+	siteLbl.Text = "💣 A"
+	siteLbl.TextColor3 = Color3.fromRGB(255, 170, 60)
+	siteLbl.TextStrokeTransparency = 0
+	siteLbl.TextScaled = true
+	siteLbl.Font = Enum.Font.GothamBold
+	siteLbl.Parent = siteBB
+
+	-- Team-Spawns markieren
+	part({ size = Vector3.new(14, 0.4, 14), pos = C + Vector3.new(0, 0.2, 62),
+		material = Enum.Material.Neon, color = T_COLOR, transparency = 0.5 }, folder)
+	part({ size = Vector3.new(14, 0.4, 14), pos = C + Vector3.new(0, 0.2, -62),
+		material = Enum.Material.Neon, color = CT_COLOR, transparency = 0.5 }, folder)
+
+	-- Flutlichter
+	for _, z in ipairs({ -55, 0, 55 }) do
+		local lamp = part({ size = Vector3.new(2.4, 0.6, 2.4), pos = C + Vector3.new(0, 22, z),
+			material = Enum.Material.Neon, color = Color3.fromRGB(230, 222, 255), collide = false }, folder)
+		local pl = Instance.new("PointLight")
+		pl.Color = Color3.fromRGB(220, 212, 255)
+		pl.Range = 60
+		pl.Brightness = 1.0
+		pl.Parent = lamp
+	end
+
+	-- Zuschauer-Plattform (Tote schauen von oben zu)
+	part({ size = Vector3.new(14, 1, 14), pos = C + Vector3.new(0, 80, 0),
+		material = Enum.Material.Glass, color = Color3.fromRGB(120, 130, 170),
+		transparency = 0.4, name = "SpectatorPerch" }, folder)
+
+	return folder
+end
+
+-- ── Match-State ───────────────────────────────────────────────────────────────
+local match = nil   -- nur EIN Defuse-Match gleichzeitig (eine Map)
+
+local function teleport(player, cf)
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root then
+		root.Anchored = false
+		root.CFrame = cf
+	end
+end
+
+local function lobbyCFrame()
+	local spawnLoc = workspace:FindFirstChild("LobbySpawn", true)
+	return spawnLoc and (spawnLoc.CFrame + Vector3.new(0, 4, 0)) or CFrame.new(0, 6, -30)
+end
+
+local function sendState(state, extra)
+	if not match or not match.player.Parent then return end
+	local payload = {
+		state    = state,
+		mode     = "defuse",
+		opponent = "Bot-Team",
+		round    = match.round,
+		yourTeam = match.playerTeam,
+		score    = { you = match.score[match.playerTeam],
+			enemy = match.score[match.playerTeam == "T" and "CT" or "T"] },
+		tScore   = match.score.T,
+		ctScore  = match.score.CT,
+		bombPlanted = match.bombPlanted == true,
+		timeLeft = math.max(0, math.ceil((match.deadline or 0) - os.clock())),
+	}
+	if extra then
+		for k, v in pairs(extra) do payload[k] = v end
+	end
+	net.MatchState:FireClient(match.player, payload)
+end
+
+local function countAlive(team)
+	if not match then return 0 end
+	local n = 0
+	for _, e in ipairs(match.entities) do
+		if e.team == team then
+			if e.bot then
+				if e.bot.alive then n += 1 end
+			elseif e.alive then
+				n += 1
+			end
+		end
+	end
+	return n
+end
+
+-- ── Bombe ─────────────────────────────────────────────────────────────────────
+local bombModel = nil
+
+local function destroyBomb()
+	if bombModel then
+		bombModel:Destroy()
+		bombModel = nil
+	end
+end
+
+local function spawnBombModel(pos)
+	destroyBomb()
+	local b = Instance.new("Part")
+	b.Name = "Bomb"
+	b.Size = Vector3.new(1.6, 0.8, 1.1)
+	b.Position = pos + Vector3.new(0, 0.5, 0)
+	b.Color = Color3.fromRGB(45, 48, 56)
+	b.Material = Enum.Material.Metal
+	b.Anchored = true
+	b.Parent = workspace
+
+	local light = Instance.new("Part")
+	light.Size = Vector3.new(0.3, 0.15, 0.3)
+	light.Position = b.Position + Vector3.new(0.4, 0.5, 0)
+	light.Color = Color3.fromRGB(255, 40, 40)
+	light.Material = Enum.Material.Neon
+	light.Anchored = true
+	light.CanCollide = false
+	light.Parent = b
+
+	-- Blinken + Piepen (beschleunigt gegen Ende)
+	task.spawn(function()
+		while b.Parent and match and match.bombPlanted do
+			local left = math.max(0.5, (match.deadline or 0) - os.clock())
+			local rate = math.clamp(left / Config.DEFUSE_BOMB_TIME, 0.12, 1)
+			light.Transparency = 0
+			Assets.playAt(b.Position, Assets.SFX.Bolt, 0.6, 1.7, 1.8)
+			task.wait(0.12)
+			light.Transparency = 0.8
+			task.wait(math.max(0.15, rate * 0.9))
+		end
+	end)
+
+	bombModel = b
+	return b
+end
+
+local function explodeBomb()
+	if not bombModel then return end
+	local pos = bombModel.Position
+	-- Explosion: Blitz + fetter Boom + Kill-Radius
+	local flash = Instance.new("Part")
+	flash.Shape = Enum.PartType.Ball
+	flash.Size = Vector3.new(6, 6, 6)
+	flash.Position = pos
+	flash.Color = Color3.fromRGB(255, 200, 90)
+	flash.Material = Enum.Material.Neon
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.Parent = workspace
+	game:GetService("TweenService"):Create(flash, TweenInfo.new(0.7),
+		{ Size = Vector3.new(70, 70, 70), Transparency = 1 }):Play()
+	Debris:AddItem(flash, 0.8)
+	Assets.playAt(pos, Assets.SFX.GunBoom, 1, 0.55, 0.6)
+	Assets.playAt(pos, Assets.SFX.Boom, 1, 0.8, 0.9)
+
+	-- alles im Radius stirbt
+	if match then
+		for _, e in ipairs(match.entities) do
+			if e.bot and e.bot.alive and e.bot.model.PrimaryPart
+				and (e.bot.model.PrimaryPart.Position - pos).Magnitude < 45 then
+				e.bot.kill()
+			elseif e.player then
+				local char = e.player.Character
+				local root = char and char:FindFirstChild("HumanoidRootPart")
+				local hum = char and char:FindFirstChildOfClass("Humanoid")
+				if root and hum and hum.Health > 0 and (root.Position - pos).Magnitude < 45 then
+					hum.Health = 0
+				end
+			end
+		end
+	end
+	destroyBomb()
+end
+
+-- ── Runden-Logik ──────────────────────────────────────────────────────────────
+local endRound   -- forward
+local plantPrompt = nil
+
+local function plantBomb(pos)
+	if not match or match.ended or not match.live or match.bombPlanted then return end
+	match.bombPlanted = true
+	match.deadline = os.clock() + Config.DEFUSE_BOMB_TIME
+	spawnBombModel(pos)
+	net.Notify:FireClient(match.player, "💣 BOMBE GELEGT! " .. Config.DEFUSE_BOMB_TIME .. "s bis zur Explosion")
+	net.PlaySFX:FireClient(match.player, "ChimeSoft", 0.8, 0.8)
+	sendState("live")
+
+	-- CT-Bots: nächster lebender Bot rückt zum Entschärfen aus
+	task.spawn(function()
+		while match and match.live and match.bombPlanted and not match.ended do
+			local defender = nil
+			local bombPos = bombModel and bombModel.Position
+			if not bombPos then return end
+			for _, e in ipairs(match.entities) do
+				if e.team == "CT" and e.bot and e.bot.alive and not e.defusing then
+					defender = e
+					break
+				end
+			end
+			if defender then
+				defender.defusing = true
+				defender.bot.setRoute({ bombPos }, function(bot)
+					-- am Ziel: entschärfen (unterbrochen, wenn der Bot stirbt)
+					task.delay(Config.DEFUSE_DEFUSE_TIME, function()
+						if match and match.live and match.bombPlanted and bot.alive
+							and bombModel and bot.model.PrimaryPart
+							and (bot.model.PrimaryPart.Position - bombModel.Position).Magnitude < 12 then
+							endRound("CT", "Bombe entschärft!")
+						end
+					end)
+				end)
+			end
+			task.wait(2)
+		end
+	end)
+end
+
+local function setPrompts()
+	-- Plant-Prompt (nur Spieler im T-Team)
+	if plantPrompt then plantPrompt:Destroy() end
+	plantPrompt = Instance.new("ProximityPrompt")
+	plantPrompt.ActionText = "Bombe legen"
+	plantPrompt.ObjectText = "Bombenplatz A"
+	plantPrompt.HoldDuration = Config.DEFUSE_PLANT_TIME
+	plantPrompt.MaxActivationDistance = 16
+	plantPrompt.RequiresLineOfSight = false
+	plantPrompt.Enabled = false
+	plantPrompt.Parent = sitePart
+	plantPrompt.Triggered:Connect(function(plr)
+		if match and plr == match.player and match.playerTeam == "T"
+			and match.live and not match.bombPlanted then
+			local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+			plantBomb(root and root.Position or sitePart.Position)
+			plantPrompt.Enabled = false
+		end
+	end)
+end
+
+local function startRound()
+	match.round += 1
+	match.live = false
+	match.bombPlanted = false
+	match.deadline = os.clock() + Config.DEFUSE_ROUND_TIME + Config.COUNTDOWN
+	destroyBomb()
+
+	-- Seitenwechsel jede Runde: ungerade = Spieler greift an (T)
+	match.playerTeam = (match.round % 2 == 1) and "T" or "CT"
+	local botTeamT  = match.playerTeam == "T" and Config.DEFUSE_TEAM_SIZE - 1 or Config.DEFUSE_TEAM_SIZE
+	local botTeamCT = match.playerTeam == "CT" and Config.DEFUSE_TEAM_SIZE - 1 or Config.DEFUSE_TEAM_SIZE
+
+	-- alte Bots weg
+	for _, e in ipairs(match.entities) do
+		if e.bot then e.bot.destroy() end
+	end
+	match.entities = {}
+
+	-- Spieler (tot aus der Vorrunde? → frisch respawnen)
+	local pchar = match.player.Character
+	local phum = pchar and pchar:FindFirstChildOfClass("Humanoid")
+	if not pchar or not phum or phum.Health <= 0 then
+		match.player:LoadCharacter()
+		task.wait(0.6)
+	end
+	local pe = { player = match.player, team = match.playerTeam, alive = true }
+	table.insert(match.entities, pe)
+	teleport(match.player, match.playerTeam == "T" and tSpawnCF or ctSpawnCF)
+	local root = match.player.Character and match.player.Character:FindFirstChild("HumanoidRootPart")
+	if root then root.Anchored = true end
+
+	-- Ziel-Suche: nächster lebender Feind (Spieler oder Bot) des Teams.
+	-- entity.bot wird direkt nach dem Spawn gesetzt — der Closure liest es lazy.
+	local function acquireFor(myTeam, entity)
+		return function()
+			if not match or not match.live then return nil end
+			local myBot = entity.bot
+			local myPos = myBot and myBot.model.PrimaryPart and myBot.model.PrimaryPart.Position
+			if not myPos then return nil end
+			local best, bestDist = nil, math.huge
+			for _, e in ipairs(match.entities) do
+				if e.team ~= myTeam then
+					local head, applyHit
+					if e.bot then
+						if e.bot.alive then
+							head = e.bot.model:FindFirstChild("Head")
+							local victim = e.bot
+							applyHit = function() victim.kill() end
+						end
+					elseif e.alive then
+						local char = e.player.Character
+						local hum = char and char:FindFirstChildOfClass("Humanoid")
+						if char and hum and hum.Health > 0 then
+							head = char:FindFirstChild("Head")
+							applyHit = function()
+								local h = e.player.Character and e.player.Character:FindFirstChildOfClass("Humanoid")
+								if h and h.Health > 0 then h.Health = 0 end
+							end
+						end
+					end
+					if head then
+						local d = (head.Position - myPos).Magnitude
+						if d < bestDist then
+							bestDist = d
+							best = { head = head, applyHit = applyHit }
+						end
+					end
+				end
+			end
+			return best
+		end
+	end
+
+	-- Bots spawnen
+	local function spawnTeamBots(team, count)
+		for i = 1, count do
+			local isT = team == "T"
+			local route = isT and T_ROUTES[((i - 1) % #T_ROUTES) + 1] or CT_ROUTES[((i - 1) % #CT_ROUTES) + 1]
+			local spawnBase = isT and tSpawnCF or ctSpawnCF
+			local entity = { team = team }
+			local bot = botService.spawn({
+				spawnCF = spawnBase * CFrame.new((i - 2) * 5, 0, 0),
+				name = (isT and "[T] " or "[CT] ") .. "Bot " .. i,
+				visorColor = isT and T_COLOR or CT_COLOR,
+				shouldAct = function()
+					return match ~= nil and match.live and not match.ended
+				end,
+				acquire = acquireFor(team, entity),
+				route = route,
+				loiter = isT and { P(0, -28), P(-12, -30), P(12, -30) } or CT_HOLDS,
+				onRouteDone = isT and function(bot)
+					-- T-Bot am Platz: legen (wenn noch keiner gelegt hat)
+					task.delay(Config.DEFUSE_PLANT_TIME, function()
+						if match and match.live and not match.bombPlanted and bot.alive
+							and bot.model.PrimaryPart then
+							plantBomb(bot.model.PrimaryPart.Position)
+						end
+					end)
+				end or nil,
+			})
+			entity.bot = bot
+			table.insert(match.entities, entity)
+		end
+	end
+
+	spawnTeamBots("T", botTeamT)
+	spawnTeamBots("CT", botTeamCT)
+
+	-- Countdown → live
+	task.spawn(function()
+		for n = Config.COUNTDOWN, 1, -1 do
+			sendState("countdown", { countdown = n })
+			task.wait(1)
+			if not match or match.ended then return end
+		end
+		local r = match.player.Character and match.player.Character:FindFirstChild("HumanoidRootPart")
+		if r then r.Anchored = false end
+		match.live = true
+		match.deadline = os.clock() + Config.DEFUSE_ROUND_TIME
+		plantPrompt.Enabled = (match.playerTeam == "T")
+		sendState("live")
+
+		-- Runden-Loop
+		while match and not match.ended and match.live do
+			task.wait(1)
+			if not match or match.ended or not match.live then break end
+			if not match.player.Parent then
+				DefuseService.stop()
+				break
+			end
+
+			if countAlive("CT") == 0 then
+				endRound("T", "Verteidiger ausgeschaltet!")
+			elseif countAlive("T") == 0 and not match.bombPlanted then
+				endRound("CT", "Angreifer ausgeschaltet!")
+			elseif match.bombPlanted and os.clock() >= match.deadline then
+				explodeBomb()
+				endRound("T", "💥 Die Bombe ist explodiert!")
+			elseif not match.bombPlanted and os.clock() >= match.deadline then
+				endRound("CT", "Zeit abgelaufen — keine Bombe gelegt.")
+			else
+				sendState("live")
+			end
+		end
+	end)
+end
+
+endRound = function(winnerTeam, reason)
+	if not match or match.ended or not match.live then return end
+	match.live = false
+	match.bombPlanted = false
+	destroyBomb()
+	plantPrompt.Enabled = false
+	match.score[winnerTeam] += 1
+
+	local playerWonRound = winnerTeam == match.playerTeam
+	if playerWonRound then
+		dataService.addCredits(match.player, Config.DEFUSE_ROUND_REWARD)
+	end
+	net.Notify:FireClient(match.player,
+		(playerWonRound and "✅ Runde gewonnen: " or "❌ Runde verloren: ") .. reason)
+	net.PlaySFX:FireClient(match.player, playerWonRound and "Chime" or "ChimeSoft", 0.7)
+	sendState("live", { roundOver = true })
+
+	-- Match vorbei?
+	if match.score[winnerTeam] >= Config.DEFUSE_ROUNDS_WIN then
+		local playerWon = winnerTeam == match.playerTeam
+		task.delay(2, function()
+			if match then DefuseService.stop(playerWon) end
+		end)
+		return
+	end
+
+	task.delay(4, function()
+		if match and not match.ended then
+			startRound()
+		end
+	end)
+end
+
+-- ── Public API ────────────────────────────────────────────────────────────────
+function DefuseService.isInLiveMatch(player)
+	return match ~= nil and not match.ended and match.player == player and match.live
+end
+
+function DefuseService.isInMatch(player)
+	return match ~= nil and not match.ended and match.player == player
+end
+
+-- Spieler ist tot bis Rundenende → darf nicht schießen
+function DefuseService.canShoot(player)
+	if not DefuseService.isInLiveMatch(player) then return false end
+	for _, e in ipairs(match.entities) do
+		if e.player == player then return e.alive end
+	end
+	return false
+end
+
+-- Schuss des Spielers auf einen Defuse-Bot
+function DefuseService.tryHitBot(shooter, botModel)
+	if not match or match.ended or not match.live or shooter ~= match.player then return false end
+	for _, e in ipairs(match.entities) do
+		if e.bot and e.bot.model == botModel and e.bot.alive and e.team ~= match.playerTeam then
+			e.bot.kill()
+			dataService.addCredits(shooter, Config.KILL_REWARD)
+			local pd = dataService.get(shooter)
+			if pd then
+				pd.kills += 1
+				dataService.sendUpdate(shooter)
+			end
+			net.PlaySFX:FireClient(shooter, "ChimeSoft", 0.5, 1.6)
+			return true
+		end
+	end
+	return false
+end
+
+function DefuseService.start(player)
+	if match and not match.ended then
+		net.Notify:FireClient(player, "🚧 Defuse-Map ist gerade belegt — gleich nochmal!")
+		return
+	end
+	local data = dataService.get(player)
+	if not data then return end
+
+	match = {
+		player     = player,
+		playerTeam = "T",
+		entities   = {},
+		score      = { T = 0, CT = 0 },
+		round      = 0,
+		live       = false,
+		ended      = false,
+	}
+	net.PlaySFX:FireClient(player, "Teleport", 0.6)
+	net.Notify:FireClient(player, "💣 BOMBEN-DEFUSAL: Erster auf " .. Config.DEFUSE_ROUNDS_WIN
+		.. " Runden. Seitenwechsel jede Runde!")
+	startRound()
+end
+
+function DefuseService.stop(playerWon)
+	if not match then return end
+	match.ended = true
+	match.live = false
+	destroyBomb()
+	for _, e in ipairs(match.entities) do
+		if e.bot then e.bot.destroy() end
+	end
+	local p = match.player
+	if p.Parent then
+		if playerWon ~= nil then
+			dataService.addCredits(p, playerWon and Config.DEFUSE_WIN_REWARD or math.floor(Config.DEFUSE_WIN_REWARD / 3))
+			net.Notify:FireClient(p, playerWon
+				and ("🏆 DEFUSE GEWONNEN! +" .. Config.DEFUSE_WIN_REWARD .. " " .. Config.CURRENCY_NAME)
+				or "💀 Defuse verloren — Revanche?")
+			net.MatchState:FireClient(p, { state = "ended", mode = "defuse",
+				winner = playerWon and p.Name or "Bot-Team", youWon = playerWon == true })
+		else
+			net.MatchState:FireClient(p, { state = "ended", mode = "defuse", winner = "—", youWon = false })
+		end
+		teleport(p, lobbyCFrame())
+	end
+	match = nil
+end
+
+-- ── Init ──────────────────────────────────────────────────────────────────────
+function DefuseService.init(ds, bs, netRef)
+	dataService = ds
+	botService  = bs
+	net         = netRef
+
+	local old = workspace:FindFirstChild("DefuseMap")
+	if old then old:Destroy() end
+	buildMap()
+	setPrompts()
+
+	-- Defuse-Prompt erscheint auf der Bombe, sobald sie liegt
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			if match and match.live and match.bombPlanted and bombModel
+				and match.playerTeam == "CT" and not bombModel:FindFirstChildOfClass("ProximityPrompt") then
+				local dp = Instance.new("ProximityPrompt")
+				dp.ActionText = "Entschärfen"
+				dp.ObjectText = "Bombe"
+				dp.HoldDuration = Config.DEFUSE_DEFUSE_TIME
+				dp.MaxActivationDistance = 10
+				dp.RequiresLineOfSight = false
+				dp.Parent = bombModel
+				dp.Triggered:Connect(function(plr)
+					if match and plr == match.player and match.playerTeam == "CT"
+						and match.live and match.bombPlanted then
+						endRound("CT", "Bombe entschärft!")
+						destroyBomb()
+					end
+				end)
+			end
+		end
+	end)
+
+	-- Spieler-Tod: tot bis Rundenende, Respawn auf der Zuschauer-Plattform
+	local function hookPlayer(player)
+		player.CharacterAdded:Connect(function(char)
+			if match and match.player == player and not match.ended then
+				task.wait(0.2)
+				local entity = nil
+				for _, e in ipairs(match.entities) do
+					if e.player == player then entity = e end
+				end
+				if match.live and entity and not entity.alive then
+					-- tot → zuschauen
+					teleport(player, spectatorCF)
+					local root = char:FindFirstChild("HumanoidRootPart")
+					if root then root.Anchored = true end
+				else
+					teleport(player, match.playerTeam == "T" and tSpawnCF or ctSpawnCF)
+				end
+			end
+
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum then
+				hum.Died:Connect(function()
+					if match and match.player == player and match.live then
+						for _, e in ipairs(match.entities) do
+							if e.player == player then e.alive = false end
+						end
+						sendState("live", { youDied = true })
+					end
+				end)
+			end
+		end)
+	end
+	Players.PlayerAdded:Connect(hookPlayer)
+	for _, p in ipairs(Players:GetPlayers()) do
+		hookPlayer(p)
+	end
+
+	Players.PlayerRemoving:Connect(function(player)
+		if match and match.player == player then
+			DefuseService.stop()
+		end
+	end)
+
+	print("[DefuseService] Bomben-Defusal-Map bereit.")
+end
+
+return DefuseService
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="18">
+        <Properties>
           <string name="Name">EggService</string>
           <string name="Source"><![CDATA[-- EggService.lua — Hatch-Logik, Luck Potion (Dev-Product), Daily Reward
 local EggService = {}
@@ -2478,7 +3247,7 @@ return EggService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="18">
+      <Item class="ModuleScript" referent="19">
         <Properties>
           <string name="Name">LobbyService</string>
           <string name="Source"><![CDATA[-- LobbyService.lua — Neon-Cyber-Mythos-Hauptlobby:
@@ -2496,10 +3265,11 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 local Assets = require(RS:WaitForChild("Shared"):WaitForChild("Assets"))
 
-local arenaService = nil
-local eggService   = nil
-local dataService  = nil
-local net          = nil
+local arenaService  = nil
+local eggService    = nil
+local defuseService = nil
+local dataService   = nil
+local net           = nil
 
 local CYAN    = Color3.fromRGB(70, 200, 255)
 local MAGENTA = Color3.fromRGB(255, 70, 200)
@@ -2639,11 +3409,28 @@ local function buildOmegaCase(folder)
 	part({ size = Vector3.new(16, 0.4, 16), pos = center + Vector3.new(0, 1.6, 0),
 		material = Enum.Material.Neon, color = egg.color, transparency = 0.4, collide = false }, folder)
 
-	-- Das schwebende Artefakt-Gehäuse (Würfel + Neon-Kanten, dreht/schwebt
-	-- client-seitig). Heller Korpus + Eigenlicht, damit es nachts nicht im
-	-- Schwarz verschwindet und nur die Kanten schweben.
-	local case = part({ size = Vector3.new(7, 7, 7), pos = center + Vector3.new(0, 9, 0),
-		material = Enum.Material.Slate, color = Color3.fromRGB(66, 58, 96), reflectance = 0.15, name = "OmegaCase" }, folder)
+	-- Das schwebende OMEGA-EI (Sphere-Mesh vertikal gestreckt, dreht/schwebt
+	-- client-seitig) — mit Eigenlicht, damit es nachts leuchtet
+	local case = part({ size = Vector3.new(8.5, 8.5, 8.5), pos = center + Vector3.new(0, 9, 0),
+		material = Enum.Material.SmoothPlastic, color = egg.color, reflectance = 0.12, name = "OmegaEgg" }, folder)
+	local eggMesh = Instance.new("SpecialMesh")
+	eggMesh.MeshType = Enum.MeshType.Sphere
+	eggMesh.Scale = Vector3.new(1, 1.32, 1)
+	eggMesh.Parent = case
+	-- Helle Sprenkel wie eine Eierschale
+	for i = 1, 7 do
+		local ang = i / 7 * math.pi * 2
+		local fleck = part({ size = Vector3.new(1.2, 1.2, 1.2),
+			pos = center + Vector3.new(math.cos(ang) * 3.4, 9 + math.sin(i * 2.4) * 3.2, math.sin(ang) * 3.4),
+			shape = Enum.PartType.Ball,
+			material = Enum.Material.Neon, color = Color3.fromRGB(220, 200, 255),
+			transparency = 0.45, collide = false }, folder)
+		local fw = Instance.new("WeldConstraint")
+		fw.Part0 = case
+		fw.Part1 = fleck
+		fw.Parent = fleck
+		fleck.Anchored = false
+	end
 	local caseGlow = Instance.new("SurfaceLight")
 	caseGlow.Face = Enum.NormalId.Bottom
 	caseGlow.Color = egg.color
@@ -2662,27 +3449,6 @@ local function buildOmegaCase(folder)
 	shellWeld.Parent = shell
 	shell.Anchored = false
 	CollectionService:AddTag(case, "EggFloat")
-	for _, off in ipairs({
-		Vector3.new(3.5, 0, 3.5), Vector3.new(-3.5, 0, 3.5),
-		Vector3.new(3.5, 0, -3.5), Vector3.new(-3.5, 0, -3.5),
-	}) do
-		local edge = part({ size = Vector3.new(0.35, 7.4, 0.35), pos = case.Position + off,
-			material = Enum.Material.Neon, color = egg.color, collide = false }, folder)
-		local w = Instance.new("WeldConstraint")
-		w.Part0 = case
-		w.Part1 = edge
-		w.Parent = edge
-		edge.Anchored = false
-	end
-	for _, dy in ipairs({ 3.7, -3.7 }) do
-		local frame = part({ size = Vector3.new(7.6, 0.35, 7.6), pos = case.Position + Vector3.new(0, dy, 0),
-			material = Enum.Material.Neon, color = CYAN, transparency = 0.2, collide = false }, folder)
-		local w = Instance.new("WeldConstraint")
-		w.Part0 = case
-		w.Part1 = frame
-		w.Parent = frame
-		frame.Anchored = false
-	end
 
 	-- Statische Leucht-Ringe (gekippt — bewusst NICHT getaggt, s. EggFloat-Handler)
 	for i, tilt in ipairs({ 18, -14 }) do
@@ -2715,11 +3481,11 @@ local function buildOmegaCase(folder)
 	light.Brightness = 1.6
 	light.Parent = case
 
-	billboard(case, Vector3.new(0, 7.5, 0),
-		"📦 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
+	billboard(case, Vector3.new(0, 8, 0),
+		"🥚 " .. egg.name, "E: Öffnen — " .. egg.cost .. " " .. Config.CURRENCY_NAME, egg.color)
 
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Gehäuse öffnen"
+	prompt.ActionText = "Ei öffnen"
 	prompt.ObjectText = egg.name
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0
@@ -2783,21 +3549,23 @@ local function buildPortal5v5(folder, rng)
 	plight.Parent = portal
 
 	billboard(portal, Vector3.new(0, 13.5, 0),
-		"COMPETITIVE: 5V5 BOMBEN-DEFUSAL", "Matchmaking in Entwicklung — Rang steigt im 1v1!", PURPLE, 340)
+		"COMPETITIVE: BOMBEN-DEFUSAL", "Durchlaufen: 3v3 vs Bots — Bombe legen & entschärfen!", PURPLE, 340)
 
 	-- Anker für das client-seitige Rangschild ("DEIN RANG: …" sieht jeder nur für sich)
 	local anchor = part({ size = Vector3.new(1, 1, 1), pos = Vector3.new(cx, 7.5, cz - 7),
 		transparency = 1, collide = false, name = "RankShieldAnchor" }, folder)
 	anchor.CanQuery = false
 
-	-- Touch-Hinweis
+	-- Durchlaufen = Defuse-Match starten (3v3 vs Bots)
 	local touchCd = {}
 	portal.Touched:Connect(function(hit)
 		local player = hit and hit.Parent and Players:GetPlayerFromCharacter(hit.Parent)
 		if not player then return end
-		if os.clock() - (touchCd[player] or 0) < 4 then return end
+		if os.clock() - (touchCd[player] or 0) < 5 then return end
 		touchCd[player] = os.clock()
-		net.Notify:FireClient(player, "🚧 5v5 Bomben-Defusal kommt bald — dein Rang steigt im 1v1!")
+		if defuseService then
+			defuseService.start(player)
+		end
 	end)
 
 	-- RANGTABELLE-Terminal (rechts neben dem Portal)
@@ -3189,11 +3957,12 @@ function LobbyService.pushTicker(text)
 	end
 end
 
-function LobbyService.init(arenaSvc, eggSvc, ds, netRef)
-	arenaService = arenaSvc
-	eggService   = eggSvc
-	dataService  = ds
-	net          = netRef
+function LobbyService.init(arenaSvc, eggSvc, defuseSvc, ds, netRef)
+	arenaService  = arenaSvc
+	eggService    = eggSvc
+	defuseService = defuseSvc
+	dataService   = ds
+	net           = netRef
 
 	local old = workspace:FindFirstChild("Lobby")
 	if old then old:Destroy() end
@@ -3227,7 +3996,7 @@ return LobbyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="19">
+      <Item class="ModuleScript" referent="20">
         <Properties>
           <string name="Name">PrimeService</string>
           <string name="Source"><![CDATA[-- PrimeService.lua — Prime Status (Gamepass): exklusiver Skin + Aura,
@@ -3337,7 +4106,7 @@ return PrimeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="20">
+      <Item class="ModuleScript" referent="21">
         <Properties>
           <string name="Name">TradeService</string>
           <string name="Source"><![CDATA[-- TradeService.lua — Skin-Trading zwischen Spielern.
@@ -3561,7 +4330,7 @@ return TradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="21">
+      <Item class="ModuleScript" referent="22">
         <Properties>
           <string name="Name">WeaponService</string>
           <string name="Source"><![CDATA[-- WeaponService.lua — Server-autoritatives Schießen + Skin-Equip.
@@ -3576,14 +4345,19 @@ local Config        = require(RS:WaitForChild("Shared"):WaitForChild("Config"))
 local Skins         = require(RS:WaitForChild("Shared"):WaitForChild("Skins"))
 local SniperBuilder = require(RS:WaitForChild("Shared"):WaitForChild("SniperBuilder"))
 
-local dataService  = nil
-local arenaService = nil
-local net          = nil
+local dataService   = nil
+local arenaService  = nil
+local defuseService = nil
+local net           = nil
 
 local lastShot = {}   -- [player] = os.clock()
 
 function WeaponService.setArenaService(svc)
 	arenaService = svc
+end
+
+function WeaponService.setDefuseService(svc)
+	defuseService = svc
 end
 
 -- ── Echtes AWP-Mesh: Template ODER Auto-Load aus dem Creator Store ────────────
@@ -3861,9 +4635,13 @@ local function handleShoot(player, targetPos)
 	if lastShot[player] and now - lastShot[player] < Config.SHOT_COOLDOWN then return end
 	lastShot[player] = now
 
-	-- In der Lobby nur Show, in der Arena tödlich
-	local inMatch = arenaService and arenaService.isInLiveMatch(player)
+	-- In der Lobby nur Show, in Arena/Defuse tödlich
+	local inArena  = arenaService and arenaService.isInLiveMatch(player)
+	local inDefuse = defuseService and defuseService.isInLiveMatch(player)
+	local inMatch = inArena or inDefuse
 	if not inMatch and not Config.LOBBY_SHOOTING then return end
+	-- Defuse: Tote schießen nicht (kein Respawn in der Runde)
+	if inDefuse and not defuseService.canShoot(player) then return end
 
 	local origin = head.Position
 	local dir = targetPos - origin
@@ -3885,14 +4663,16 @@ local function handleShoot(player, targetPos)
 		victim = hitModel and Players:GetPlayerFromCharacter(hitModel)
 	end
 
-	-- Trainings-Bot getroffen?
+	-- Bot getroffen? (1v1-Trainings-Bot oder Defuse-Bot)
 	if hitModel and not victim and inMatch and CollectionService:HasTag(hitModel, "ArenaBot") then
-		if arenaService.tryHitBot(player, hitModel) then
+		if inArena and arenaService.tryHitBot(player, hitModel) then
 			killed = true
 			local pdata = dataService.get(player)
 			if pdata then pdata.kills += 1 end
 			dataService.addCredits(player, Config.BOT_KILL_REWARD)
 			net.PlaySFX:FireClient(player, "ChimeSoft", 0.5, 1.6)
+		elseif inDefuse and defuseService.tryHitBot(player, hitModel) then
+			killed = true
 		end
 	end
 
@@ -4000,15 +4780,15 @@ return WeaponService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="22">
+  <Item class="StarterPlayer" referent="23">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="23">
+    <Item class="StarterPlayerScripts" referent="24">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="24">
+      <Item class="LocalScript" referent="25">
         <Properties>
           <string name="Name">Client</string>
           <string name="Source"><![CDATA[-- Client.client.lua — Hatch Snipers: Entry Point, Musik, Lighting, Event-Routing
@@ -4279,11 +5059,11 @@ print("[HatchSnipers] Client bereit.")
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="25">
+      <Item class="Folder" referent="26">
         <Properties>
           <string name="Name">Controllers</string>
         </Properties>
-        <Item class="ModuleScript" referent="26">
+        <Item class="ModuleScript" referent="27">
           <Properties>
             <string name="Name">EffectsController</string>
             <string name="Source"><![CDATA[-- EffectsController.lua — Tracer, Screenflash, Godly-Puls, Ei-Schweben, Juice
@@ -4459,7 +5239,7 @@ return EffectsController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="27">
+        <Item class="ModuleScript" referent="28">
           <Properties>
             <string name="Name">UIController</string>
             <string name="Source"><![CDATA[-- UIController.lua — HUD, Ei-/Inventar-UI (mit offengelegten Odds), Hatch-
@@ -4736,6 +5516,38 @@ local function flashCenter(text, color, dur)
 end
 
 function UIController.onMatchState(payload)
+	-- ── Defuse-Mode: eigenes HUD-Format ──
+	if payload.mode == "defuse" then
+		if payload.state == "countdown" then
+			matchHud.Visible = true
+			matchScore.Text = "💣 RUNDE " .. (payload.round or 1)
+			matchInfo.Text = (payload.yourTeam == "T")
+				and "Du greifst AN — leg die Bombe am Platz A!"
+				or "Du VERTEIDIGST — halte Platz A!"
+			flashCenter(tostring(payload.countdown), C.accent2, 0.9)
+			Assets.play2D(Assets.SFX.ChimeSoft, 0.5, 1.3)
+		elseif payload.state == "live" then
+			matchHud.Visible = true
+			matchScore.Text = ("🟠 %d : %d 🔵  ·  R%d"):format(payload.tScore or 0, payload.ctScore or 0, payload.round or 1)
+			local roleText = (payload.yourTeam == "T") and "Angreifer 💣" or "Verteidiger 🛡"
+			local bombText = payload.bombPlanted
+				and ("💣 GELEGT! " .. (payload.timeLeft or 0) .. "s")
+				or ((payload.timeLeft or 0) .. "s")
+			matchInfo.Text = roleText .. "  ·  " .. bombText
+			if payload.youDied then
+				flashCenter("💀 Tot bis Rundenende", C.red, 1.6)
+			end
+		elseif payload.state == "ended" then
+			matchHud.Visible = false
+			if payload.youWon then
+				flashCenter("🏆 DEFUSE GEWONNEN!", C.gold, 2.4)
+			else
+				flashCenter("Bot-Team gewinnt", C.red, 2.2)
+			end
+		end
+		return
+	end
+
 	if payload.state == "countdown" then
 		matchHud.Visible = true
 		matchScore.Text = "VS " .. (payload.opponent or "?")
@@ -4878,7 +5690,7 @@ function UIController.openEgg()
 	eggWin.Visible = true
 end
 
--- ── Case-Spinner (CS-Style: Tile-Band dreht und bremst auf den Gewinn) ────────
+-- ── Ei-Hatch-Animation (Wackeln → Cracks → Reveal) ───────────────────────────
 local hatchOverlay = Instance.new("Frame")
 hatchOverlay.Size = UDim2.new(1, 0, 1, 0)
 hatchOverlay.BackgroundColor3 = Color3.fromRGB(4, 4, 10)
@@ -4888,77 +5700,21 @@ hatchOverlay.Visible = false
 hatchOverlay.ZIndex = 35
 hatchOverlay.Parent = screenGui
 
-label(hatchOverlay, "📦 " .. Config.EGGS.omega.name, UDim2.new(1, 0, 0, 40), UDim2.new(0, 0, 0.18, 0),
+label(hatchOverlay, "🥚 " .. Config.EGGS.omega.name, UDim2.new(1, 0, 0, 40), UDim2.new(0, 0, 0.12, 0),
 	{ textSize = 30, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 }).ZIndex = 36
 
--- Sichtfenster mit Tile-Band
-local TILE_W = 124
-local spinWindow = Instance.new("Frame")
-spinWindow.Size = UDim2.new(0, 640, 0, 110)
-spinWindow.Position = UDim2.new(0.5, -320, 0.36, 0)
-spinWindow.BackgroundColor3 = C.panel
-spinWindow.BorderSizePixel = 0
-spinWindow.ClipsDescendants = true
-spinWindow.ZIndex = 36
-Theme.applyCorner(spinWindow, Theme.CORNER_LG)
-Theme.applyStroke(spinWindow, C.accent, 2)
-spinWindow.Parent = hatchOverlay
+local hatchEgg = label(hatchOverlay, "🥚", UDim2.new(0, 220, 0, 220), UDim2.new(0.5, -110, 0.38, -110),
+	{ textSize = 150, align = Enum.TextXAlignment.Center })
+hatchEgg.ZIndex = 36
 
-local spinStrip = Instance.new("Frame")
-spinStrip.Size = UDim2.new(0, TILE_W * 60, 1, -12)
-spinStrip.Position = UDim2.new(0, 0, 0, 6)
-spinStrip.BackgroundTransparency = 1
-spinStrip.ZIndex = 36
-spinStrip.Parent = spinWindow
-
--- Mittelmarker
-local marker = Instance.new("Frame")
-marker.Size = UDim2.new(0, 3, 1, 6)
-marker.Position = UDim2.new(0.5, -1, 0, -3)
-marker.BackgroundColor3 = C.gold
-marker.BorderSizePixel = 0
-marker.ZIndex = 38
-marker.Parent = spinWindow
-
-local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 130), UDim2.new(0, 0, 0.56, 0),
+local hatchText = label(hatchOverlay, "", UDim2.new(1, 0, 0, 140), UDim2.new(0, 0, 0.6, 0),
 	{ textSize = 38, font = Theme.FONTS.display, align = Enum.TextXAlignment.Center, stroke = 0.3 })
 hatchText.ZIndex = 36
 hatchText.TextWrapped = true
 
-local pityLabel = label(hatchOverlay, "", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0.78, 0),
+local pityLabel = label(hatchOverlay, "", UDim2.new(1, 0, 0, 26), UDim2.new(0, 0, 0.82, 0),
 	{ color = C.textDim, textSize = 16, align = Enum.TextXAlignment.Center, stroke = 0.5 })
 pityLabel.ZIndex = 36
-
-local function makeSpinTile(skin, x)
-	local t = Instance.new("Frame")
-	t.Size = UDim2.new(0, TILE_W - 8, 1, 0)
-	t.Position = UDim2.new(0, x, 0, 0)
-	t.BackgroundColor3 = C.panel2
-	t.BorderSizePixel = 0
-	t.ZIndex = 37
-	Theme.applyCorner(t)
-	Theme.applyStroke(t, Skins.TIERS[skin.tier].color, 2)
-	t.Parent = spinStrip
-	local n = label(t, skin.name, UDim2.new(1, -8, 0, 44), UDim2.new(0, 4, 0, 14),
-		{ textSize = 15, font = Theme.FONTS.header, align = Enum.TextXAlignment.Center })
-	n.TextWrapped = true
-	n.ZIndex = 37
-	label(t, Skins.TIERS[skin.tier].label, UDim2.new(1, 0, 0, 16), UDim2.new(0, 0, 1, -26),
-		{ color = Skins.TIERS[skin.tier].color, textSize = 12, align = Enum.TextXAlignment.Center }).ZIndex = 37
-	return t
-end
-
--- Gewichteter Zufalls-Skin fürs Band (nur Optik)
-local function randomStripSkin()
-	local r = math.random()
-	local tierName = (r < 0.62 and "Common") or (r < 0.90 and "Rare")
-		or (r < 0.975 and "Legendary") or (r < 0.995 and "Godly") or "Mythical"
-	local pool = {}
-	for _, s in ipairs(Skins.CATALOG) do
-		if s.tier == tierName and Skins.inCasePool(s) then table.insert(pool, s) end
-	end
-	return pool[math.random(1, #pool)]
-end
 
 local hatching = false
 function UIController.playHatch(skinId, _count, pityLeft)
@@ -4973,48 +5729,29 @@ function UIController.playHatch(skinId, _count, pityLeft)
 	local tierColor = Skins.TIERS[skin.tier].color
 	local order = Skins.TIERS[skin.tier].order
 
-	-- Band aufbauen: 48 Tiles, der Gewinn liegt bei Index 42
-	spinStrip:ClearAllChildren()
-	local TARGET = 42
-	for i = 1, 48 do
-		makeSpinTile(i == TARGET and skin or randomStripSkin(), (i - 1) * TILE_W)
-	end
-
 	hatchOverlay.Visible = true
 	hatchText.Text = ""
 	pityLabel.Text = ""
+	hatchEgg.TextTransparency = 0
+	hatchEgg.Rotation = 0
 	Assets.play2D(Assets.SFX.DrumRoll, 0.5)
 
 	task.spawn(function()
-		-- Spin: schnell starten, hart abbremsen, exakt auf dem Gewinn landen
-		local windowCenter = 320
-		local jitter = (math.random() - 0.5) * (TILE_W * 0.4)
-		local targetX = -((TARGET - 0.5) * TILE_W - windowCenter + jitter)
-		local startX = 0
-		spinStrip.Position = UDim2.new(0, startX, 0, 6)
-
-		local dur = 3.6 + order * 0.3
-		local t0 = os.clock()
-		local lastTile = 0
-		while true do
-			local a = math.min(1, (os.clock() - t0) / dur)
-			local eased = 1 - (1 - a) ^ 3   -- Cubic-Out
-			local x = startX + (targetX - startX) * eased
-			spinStrip.Position = UDim2.new(0, x, 0, 6)
-
-			-- Tick-Sound bei jedem Tile-Übergang unterm Marker
-			local tileIdx = math.floor((windowCenter - x) / TILE_W)
-			if tileIdx ~= lastTile then
-				lastTile = tileIdx
-				Assets.play2D(Assets.SFX.Bolt, 0.25, 1.3 + a * 0.4)
+		-- Wackeln + Cracks — je seltener, desto länger die Spannung
+		local shakes = 16 + order * 7
+		for i = 1, shakes do
+			hatchEgg.Rotation = math.sin(i * 1.7) * (6 + i * 0.7)
+			if i % 7 == 0 then
+				Assets.play2D((i % 14 == 0) and Assets.SFX.EggCrack2 or Assets.SFX.EggCrack, 0.8)
+				effects.shake(0.5)
 			end
-			if a >= 1 then break end
-			task.wait()
+			task.wait(0.07)
 		end
 
 		-- Reveal: "GEWONNEN!"
-		Assets.play2D(Assets.SFX.EggCrack2, 0.9)
+		Assets.play2D(Assets.SFX.EggCrack2, 1)
 		Assets.play2D(Assets.SFX.Chime, order >= 3 and 0.95 or 0.55, 0.9 + order * 0.1)
+		hatchEgg.TextTransparency = 1
 		hatchText.Text = "GEWONNEN!\n" .. skin.name .. "\nSELTENHEIT: " .. Skins.TIERS[skin.tier].label
 			.. (skin.flavor and ("\n\"" .. skin.flavor .. "\"") or "")
 		hatchText.TextColor3 = tierColor
@@ -5024,7 +5761,7 @@ function UIController.playHatch(skinId, _count, pityLeft)
 			effects.confetti(screenGui, tierColor, 14 + order * 10)
 		end
 
-		task.wait(order >= 4 and 3.6 or 2.4)
+		task.wait(order >= 4 and 3.4 or 2.2)
 		hatchOverlay.Visible = false
 		hatching = false
 		refreshEggWindow()
@@ -5368,7 +6105,7 @@ local function barButton(emoji, tip, yOrder, cb)
 	return b
 end
 
-barButton("📦", "Omega-Gehäuse & Skins", 1, function()
+barButton("🥚", "Omega-Ei & Skins", 1, function()
 	refreshEggWindow()
 	eggWin.Visible = not eggWin.Visible
 end)
@@ -5478,7 +6215,7 @@ return UIController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="28">
+        <Item class="ModuleScript" referent="29">
           <Properties>
             <string name="Name">WeaponController</string>
             <string name="Source"><![CDATA[-- WeaponController.lua — Schießen, Scope-Zoom, Slide, Mobile-Buttons
