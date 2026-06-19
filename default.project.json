@@ -1,0 +1,62 @@
+{
+  "name": "HatchSnipers",
+  "tree": {
+    "$className": "DataModel",
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Technology": "Future",
+        "GlobalShadows": true,
+        "Brightness": 2.4,
+        "ShadowSoftness": 0.25,
+        "EnvironmentDiffuseScale": 1,
+        "EnvironmentSpecularScale": 1
+      }
+    },
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Assets": {
+        "$className": "Folder",
+        "Awp": { "$path": "assets/Awp.model.json" }
+      },
+      "Shared": {
+        "$className": "Folder",
+        "Config":        { "$path": "src/Shared/Config.lua" },
+        "Skins":         { "$path": "src/Shared/Skins.lua" },
+        "Assets":        { "$path": "src/Shared/Assets.lua" },
+        "UITheme":       { "$path": "src/Shared/UITheme.lua" },
+        "SniperBuilder": { "$path": "src/Shared/SniperBuilder.lua" },
+        "SkinTextures":  { "$path": "src/Shared/SkinTextures.lua" }
+      }
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": { "$path": "src/Server/Server.server.lua" },
+      "Services": {
+        "$className": "Folder",
+        "DataService":   { "$path": "src/Server/Services/DataService.lua" },
+        "EggService":    { "$path": "src/Server/Services/EggService.lua" },
+        "WeaponService": { "$path": "src/Server/Services/WeaponService.lua" },
+        "ArenaService":  { "$path": "src/Server/Services/ArenaService.lua" },
+        "BotService":    { "$path": "src/Server/Services/BotService.lua" },
+        "DefuseService": { "$path": "src/Server/Services/DefuseService.lua" },
+        "LobbyService":  { "$path": "src/Server/Services/LobbyService.lua" },
+        "PrimeService":  { "$path": "src/Server/Services/PrimeService.lua" },
+        "TradeService":  { "$path": "src/Server/Services/TradeService.lua" }
+      }
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Client": { "$path": "src/Client/Client.client.lua" },
+        "Controllers": {
+          "$className": "Folder",
+          "EffectsController": { "$path": "src/Client/Controllers/EffectsController.lua" },
+          "UIController":      { "$path": "src/Client/Controllers/UIController.lua" },
+          "WeaponController":  { "$path": "src/Client/Controllers/WeaponController.lua" }
+        }
+      }
+    }
+  }
+}
